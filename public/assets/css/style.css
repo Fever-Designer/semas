@@ -1,0 +1,338 @@
+/* ===========================================================
+   SEMAS — Custom Theme
+   Palette: Indigo Ink (#1E2A52) + Campus Gold (#D4A24C)
+   + Slate surfaces (#F6F7FB) + Signal Coral (#E2554B) for urgent
+   Type: 'Sora' (display) + 'Inter' (body/UI)
+   =========================================================== */
+
+:root {
+    --semas-ink: #1E2A52;
+    --semas-ink-light: #2E3D6B;
+    --semas-gold: #D4A24C;
+    --semas-gold-light: #F0C988;
+    --semas-coral: #E2554B;
+    --semas-surface: #F6F7FB;
+    --semas-card: #FFFFFF;
+    --semas-border: #E4E7EF;
+    --semas-text: #1B1F2A;
+    --semas-text-muted: #6B7280;
+    --semas-success: #2F9E68;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--semas-surface);
+    color: var(--semas-text);
+}
+
+h1, h2, h3, h4, h5, .display-font {
+    font-family: 'Sora', 'Inter', sans-serif;
+    font-weight: 600;
+    color: var(--semas-ink);
+}
+
+a { color: var(--semas-ink); }
+a:hover { color: var(--semas-gold); }
+
+/* ---------- Layout shell ---------- */
+.semas-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.semas-sidebar {
+    width: 260px;
+    background: var(--semas-ink);
+    color: #fff;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.semas-sidebar .brand {
+    padding: 1.5rem 1.25rem;
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.semas-sidebar .brand span { color: var(--semas-gold); }
+
+.semas-sidebar .nav-link {
+    color: rgba(255,255,255,0.75);
+    padding: 0.7rem 1.25rem;
+    border-radius: 0;
+    font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-left: 3px solid transparent;
+}
+
+.semas-sidebar .nav-link:hover {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+}
+
+.semas-sidebar .nav-link.active {
+    background: rgba(212,162,76,0.12);
+    color: var(--semas-gold-light);
+    border-left-color: var(--semas-gold);
+    font-weight: 600;
+}
+
+.semas-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.semas-topbar {
+    background: #fff;
+    border-bottom: 1px solid var(--semas-border);
+    padding: 0.85rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.semas-content {
+    padding: 1.75rem;
+}
+
+/* ---------- Cards / stats ---------- */
+.semas-card {
+    background: var(--semas-card);
+    border: 1px solid var(--semas-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+}
+
+.stat-card {
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.4rem;
+    background: var(--semas-card);
+    border: 1px solid var(--semas-border);
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card .stat-value {
+    font-family: 'Sora', sans-serif;
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--semas-ink);
+}
+
+.stat-card .stat-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--semas-text-muted);
+}
+
+.stat-card .stat-icon {
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+    font-size: 1.6rem;
+    color: var(--semas-gold);
+    opacity: 0.85;
+}
+
+/* ---------- Buttons ---------- */
+.btn-semas {
+    background: var(--semas-ink);
+    border-color: var(--semas-ink);
+    color: #fff;
+}
+.btn-semas:hover {
+    background: var(--semas-ink-light);
+    border-color: var(--semas-ink-light);
+    color: #fff;
+}
+.btn-semas-gold {
+    background: var(--semas-gold);
+    border-color: var(--semas-gold);
+    color: var(--semas-ink);
+    font-weight: 600;
+}
+.btn-semas-gold:hover {
+    background: var(--semas-gold-light);
+    border-color: var(--semas-gold-light);
+    color: var(--semas-ink);
+}
+
+/* ---------- Badges ---------- */
+.badge-urgent {
+    background: var(--semas-coral);
+    color: #fff;
+}
+.badge-upcoming { background: #E8EEFC; color: var(--semas-ink); }
+.badge-completed { background: #E6F4EC; color: var(--semas-success); }
+.badge-cancelled { background: #F4E6E5; color: var(--semas-coral); }
+
+/* ---------- Notification bell ---------- */
+.notif-bell {
+    position: relative;
+    cursor: pointer;
+    font-size: 1.25rem;
+    color: var(--semas-ink);
+}
+.notif-bell .notif-count {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    background: var(--semas-coral);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.notif-panel {
+    position: absolute;
+    right: 0;
+    top: 2.5rem;
+    width: 340px;
+    max-height: 420px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--semas-border);
+    border-radius: 0.6rem;
+    box-shadow: 0 10px 30px rgba(16,24,40,0.12);
+    z-index: 50;
+    display: none;
+}
+.notif-panel.show { display: block; }
+.notif-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--semas-border);
+    font-size: 0.85rem;
+}
+.notif-item.unread { background: #FBF6EC; }
+.notif-item:last-child { border-bottom: none; }
+
+/* ---------- Auth pages ---------- */
+.auth-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--semas-ink) 0%, #131A33 100%);
+    padding: 1.5rem;
+}
+.auth-card {
+    background: #fff;
+    border-radius: 1rem;
+    padding: 2.5rem;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+.auth-card .brand-mark {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: var(--semas-ink);
+}
+.auth-card .brand-mark span { color: var(--semas-gold); }
+
+.otp-input {
+    text-align: center;
+    font-size: 1.3rem;
+    letter-spacing: 0.4em;
+    font-family: 'Sora', sans-serif;
+}
+
+@media (max-width: 768px) {
+    .semas-sidebar { position: fixed; left: -260px; transition: left 0.2s ease; z-index: 100; }
+    .semas-sidebar.open { left: 0; }
+}
+
+/* ---------- Additions: QR display, JSON/code preview, printable report header ---------- */
+.qr-frame {
+    width: 240px;
+    height: 240px;
+    margin: 0 auto;
+    border: 2px solid var(--semas-ink);
+    border-radius: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: #fff;
+}
+.qr-frame .corner { position: absolute; width: 18px; height: 18px; border: 3px solid var(--semas-gold); }
+.qr-frame .c1 { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+.qr-frame .c2 { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+.qr-frame .c3 { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+.qr-frame .c4 { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+.qr-token-label {
+    font-family: 'Sora', monospace;
+    font-size: 0.75rem;
+    color: var(--semas-text-muted);
+    margin-top: 0.85rem;
+    letter-spacing: 0.03em;
+    word-break: break-all;
+}
+
+.code-preview {
+    background: var(--semas-ink);
+    color: #CFE3FF;
+    padding: 1rem 1.1rem;
+    border-radius: 0.6rem;
+    font-family: 'Sora', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-x: auto;
+}
+
+.email-preview {
+    border: 1px solid var(--semas-border);
+    border-radius: 0.6rem;
+    overflow: hidden;
+}
+.email-preview .email-meta {
+    background: var(--semas-surface);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--semas-border);
+    font-size: 0.82rem;
+}
+.email-preview .email-body {
+    padding: 1.1rem 1.2rem;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    line-height: 1.7;
+}
+
+.report-print-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid var(--semas-ink);
+    padding-bottom: 1rem;
+    margin-bottom: 1.1rem;
+}
+.report-print-head .uok-name {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    color: var(--semas-ink);
+}
+.report-summary-strip { display: flex; gap: 0.9rem; margin-bottom: 1.1rem; }
+.report-summary-strip > div { flex: 1; background: var(--semas-surface); border-radius: 0.6rem; padding: 0.9rem; text-align: center; }
+.report-summary-strip .num { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; color: var(--semas-ink); }
+.report-summary-strip .lab { font-size: 0.7rem; color: var(--semas-text-muted); margin-top: 0.2rem; }
+
+.feed-item-semas { border: 1px solid var(--semas-border); border-radius: 0.6rem; padding: 0.85rem 1rem; margin-bottom: 0.7rem; }
+.feed-item-semas .meta-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; }
