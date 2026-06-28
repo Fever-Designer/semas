@@ -3,19 +3,20 @@
 require_once __DIR__ . '/_layout.php';
 semas_email_open($exam_type . ' Schedule — ' . $module_title);
 
-$dateLabel  = date('d F Y', strtotime($scheduled_date));
-$timeLabel  = date('h:i A', strtotime($start_time)) . ' – ' . date('h:i A', strtotime($end_time));
-
-$typeWord   = $exam_type === 'Exam' ? 'Exam' : 'CAT';
-$actionWord = $exam_type === 'Exam' ? 'Your Exam' : 'Your CAT';
+$dateLabel = date('d F Y', strtotime($scheduled_date));
+$timeLabel = date('h:i A', strtotime($start_time)) . ' – ' . date('h:i A', strtotime($end_time));
+$typeWord  = $exam_type === 'Exam' ? 'Exam' : 'CAT';
 ?>
 <p>Dear <strong><?= htmlspecialchars($full_name) ?></strong>,</p>
 
 <p style="font-size:16px;font-weight:bold;color:#1E2A52;">
-  <?= htmlspecialchars($actionWord) ?> is on <strong><?= htmlspecialchars($day_of_week) ?></strong> — Be Prepared with All Required Documents.
+  Your <?= htmlspecialchars($typeWord) ?> is on <strong><?= htmlspecialchars($day_of_week) ?></strong> , Be Prepared with All Required Documents.
 </p>
 
-<p>Here are the details for your upcoming <strong><?= htmlspecialchars($typeWord) ?></strong>:</p>
+<p>
+  <?= htmlspecialchars($typeWord) ?> decisions are out now!
+  <strong>Check if you are eligible for your <?= htmlspecialchars($typeWord) ?></strong> in the SEMAS portal, knowing your eligibility early reduces stress on <?= htmlspecialchars($typeWord) ?> day.
+</p>
 
 <table cellpadding="0" cellspacing="0" width="100%"
        style="border-collapse:collapse;font-size:14px;margin:16px 0;">
@@ -45,13 +46,50 @@ $actionWord = $exam_type === 'Exam' ? 'Your Exam' : 'Your CAT';
   </tr>
 </table>
 
-<p style="background:#FEF3C7;padding:10px 14px;border-left:4px solid #D97706;border-radius:4px;font-size:13px;margin:12px 0;">
-  <strong>Reminder:</strong> Bring all required documents and arrive <strong>at least 10 minutes early</strong>.
-  Students who are not signed in within the first 20 minutes of the <?= htmlspecialchars($typeWord) ?> will be marked Absent.
-</p>
+<!-- ── Important Instructions block ── -->
+<table cellpadding="0" cellspacing="0" width="100%" style="margin:20px 0;">
+  <tr>
+    <td style="background:#7C2D12;padding:10px 16px;border-radius:6px 6px 0 0;">
+      <span style="color:#FFFFFF;font-size:13px;font-weight:bold;letter-spacing:.05em;">
+        &#9888; IMPORTANT &mdash; STUDENT <?= htmlspecialchars(strtoupper($typeWord)) ?> INSTRUCTIONS
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#FFF7ED;border:2px solid #EA580C;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px;">
+      <table cellpadding="0" cellspacing="0" width="100%">
+        <?php
+        $instructions = [
+            'Arrive at the examination room at least <strong>15–30 minutes before the start time</strong>.',
+            'Bring your <strong>valid student card</strong> and <strong>Entry Slip</strong>.',
+            'Mobile phones and all electronic devices are <strong>strictly not allowed</strong> in the examination room.',
+            'Switch off all devices before entering and keep them outside the exam area as instructed.',
+            'Enter the room in silence and follow seating instructions from invigilators.',
+            'Any form of <strong>cheating or unauthorized communication is strictly prohibited</strong>.',
+            'Read all exam instructions carefully before starting.',
+            'Raise your hand if you need assistance from an invigilator.',
+            'Do not leave the room without permission during the exam.',
+            'Submit your work properly and wait for confirmation before leaving.',
+        ];
+        foreach ($instructions as $i => $text): ?>
+        <tr>
+          <td style="padding:5px 4px;vertical-align:top;width:28px;">
+            <span style="display:inline-block;background:#EA580C;color:#fff;font-size:11px;font-weight:bold;
+                         border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;">
+              <?= $i + 1 ?>
+            </span>
+          </td>
+          <td style="padding:5px 0;font-size:13px;color:#1B1F2A;line-height:1.5;">
+            <?= $text ?>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </table>
+    </td>
+  </tr>
+</table>
 
 <p>If you have any questions, please contact your Head of Department.</p>
-
 <p>Good luck!</p>
 <p><em>SEMAS Academic Team</em></p>
 <?php semas_email_close(); ?>

@@ -50,7 +50,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
       </a>
 
-      <?php if ($roleLabel === 'Administrator'): ?>
+      <?php if ($roleLabel === 'Principal'): ?>
         <div class="nav-section-label">User Management</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/users.php"><i class="bi bi-people-fill"></i> Users &amp; Roles</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'auditlog' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/audit-log.php"><i class="bi bi-clock-history"></i> Audit Log</a>

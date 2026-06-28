@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD']);
+Auth::requireRole(['Principal', 'Dean', 'HOD']);
 
 $pageTitle = 'Users & Roles';
 $activeNav = 'users';
@@ -9,15 +9,15 @@ $db = Database::connection();
 $me = Auth::user();
 $myRole = Auth::role();
 
-// ---- Scope resolution: Administrator sees everyone; Dean is university-wide
+// ---- Scope resolution: Principal sees everyone; Dean is university-wide
 //      and may see/manage every STUDENT account (faculty no longer restricts
 //      a Dean — see migration_004.sql); HOD sees only the STUDENTS in their
 //      own department, plus (per spec) every Dean account for view/activate/
 //      deactivate/reset-password. Restricting by role_name here — not just
 //      department_id — is what stops a Dean from ever touching an HOD/Dean/
-//      Administrator account, and stops an HOD from touching anything
+//      Principal account, and stops an HOD from touching anything
 //      outside their own department other than Deans. ----
-$scopeDeptIds = null; // null = unrestricted (Administrator)
+$scopeDeptIds = null; // null = unrestricted (Principal)
 $hodCanSeeDeans = false;
 $deanUniversityWide = false;
 if ($myRole === 'HOD') {
@@ -30,7 +30,7 @@ if ($myRole === 'HOD') {
 /** Mirrors the same role+department rule used in the listing query below, for POST actions. */
 function user_in_scope(PDO $db, int $userId, string $myRole, ?array $scopeDeptIds, bool $hodCanSeeDeans, bool $deanUniversityWide): bool
 {
-    if ($scopeDeptIds === null && !$deanUniversityWide) return true; // Administrator
+    if ($scopeDeptIds === null && !$deanUniversityWide) return true; // Principal
     $stmt = $db->prepare('SELECT u.department_id, r.role_name FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = :id');
     $stmt->execute(['id' => $userId]);
     $row = $stmt->fetch();
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     csrf_verify();
 
     $newRole = $_POST['new_role'] ?? '';
-    $canCreate = ($myRole === 'Administrator' && in_array($newRole, ['HOD', 'Dean', 'Lecturer'], true))
+    $canCreate = ($myRole === 'Principal' && in_array($newRole, ['HOD', 'Dean', 'Lecturer'], true))
               || ($myRole === 'HOD' && $newRole === 'Dean');
 
     if (!$canCreate) {
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'update_info':
-                // Role and department changes are Administrator-only to prevent
+                // Role and department changes are Principal-only to prevent
                 // a Dean/HOD from escalating a user's privileges or moving them
                 // out of the scope the Dean/HOD can even see.
                 $fields = [
@@ -176,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'year_of_study' => $_POST['year_of_study'] ?: null,
                 ];
                 $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number, session_type=:session_type, year_of_study=:year_of_study';
-                if ($myRole === 'Administrator') {
+                if ($myRole === 'Principal') {
                     $fields['department_id'] = $_POST['department_id'] ?: null;
                     $fields['role_id'] = (int) $_POST['role_id'];
                     $sql .= ', department_id=:department_id, role_id=:role_id';
@@ -273,19 +273,19 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
   <h4 class="display-font mb-1">Users &amp; Roles</h4>
-  <?php if ($myRole === 'Administrator' || $myRole === 'HOD'): ?>
+  <?php if ($myRole === 'Principal' || $myRole === 'HOD'): ?>
     <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#createStaffModal">
-      <i class="bi bi-person-plus-fill me-1"></i> <?= $myRole === 'Administrator' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?>
+      <i class="bi bi-person-plus-fill me-1"></i> <?= $myRole === 'Principal' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?>
     </button>
   <?php endif; ?>
 </div>
 <p class="text-muted small mb-4">
-  <?php if ($myRole === 'Administrator'): ?>Full management of every account.
+  <?php if ($myRole === 'Principal'): ?>Full management of every account.
   <?php elseif ($myRole === 'Dean'): ?>University-wide: every student account, regardless of department or faculty.
   <?php else: ?>Scoped to students in your department, plus all Dean accounts.<?php endif; ?>
 </p>
 
-<?php if ($myRole === 'Administrator' || $myRole === 'HOD'): ?>
+<?php if ($myRole === 'Principal' || $myRole === 'HOD'): ?>
 <div class="modal fade" id="createStaffModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -293,14 +293,14 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="create_staff">
         <div class="modal-header">
-          <h6 class="modal-title display-font"><?= $myRole === 'Administrator' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?></h6>
+          <h6 class="modal-title display-font"><?= $myRole === 'Principal' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?></h6>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <div class="mb-2">
             <label class="form-label small">Account Type</label>
             <select name="new_role" id="newRoleSelect" class="form-select form-select-sm" onchange="toggleStaffFields()" required>
-              <?php if ($myRole === 'Administrator'): ?>
+              <?php if ($myRole === 'Principal'): ?>
                 <option value="HOD">Head of Department (HOD)</option>
                 <option value="Dean">Dean</option>
                 <option value="Lecturer">Lecturer</option>
@@ -427,7 +427,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <?php for ($y = 1; $y <= 6; $y++): ?><option value="<?= $y ?>" <?= (int) $u['year_of_study'] === $y ? 'selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
                       </select>
                     </div>
-                    <?php if ($myRole === 'Administrator'): ?>
+                    <?php if ($myRole === 'Principal'): ?>
                       <div class="mb-2">
                         <label class="form-label small">Department</label>
                         <select name="department_id" class="form-select form-select-sm">

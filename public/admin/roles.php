@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator']);
+Auth::requireRole(['Principal']);
 
 $pageTitle = 'Roles & Permissions';
 $activeNav = 'roles';
@@ -11,23 +11,23 @@ $activeNav = 'roles';
 // from a database table. Presenting this as if it were live-editable would be
 // misleading, so it's deliberately read-only and documents the actual rules.
 $matrix = [
-    ['feature' => 'Create/manage HOD, Dean, Lecturer accounts', 'Administrator' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Create Dean accounts', 'Administrator' => true, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Manage departments', 'Administrator' => true, 'HOD' => 'View only', 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Create/assign modules', 'Administrator' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Manage students (own/university scope)', 'Administrator' => false, 'HOD' => 'Own dept.', 'Dean' => 'University-wide', 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Academic announcements (students/lecturers)', 'Administrator' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => 'Module only', 'Student' => false],
-    ['feature' => 'System-wide announcements', 'Administrator' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Student announcements (general)', 'Administrator' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Event Management', 'Administrator' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'CAT/Exam eligibility decisions', 'Administrator' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Holidays & Umuganda', 'Administrator' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Take/record class attendance', 'Administrator' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => true, 'Student' => 'Self-scan'],
-    ['feature' => 'Register for modules', 'Administrator' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => true],
-    ['feature' => 'Lost & Found: report/claim', 'Administrator' => false, 'HOD' => true, 'Dean' => true, 'Lecturer' => true, 'Student' => true],
-    ['feature' => 'Lost & Found: approve claims', 'Administrator' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Lost & Found: view statistics', 'Administrator' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
-    ['feature' => 'Audit log', 'Administrator' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Create/manage HOD, Dean, Lecturer accounts', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Create Dean accounts', 'Principal' => true, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Manage departments', 'Principal' => true, 'HOD' => 'View only', 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Create/assign modules', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Manage students (own/university scope)', 'Principal' => false, 'HOD' => 'Own dept.', 'Dean' => 'University-wide', 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Academic announcements (students/lecturers)', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => 'Module only', 'Student' => false],
+    ['feature' => 'System-wide announcements', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Student announcements (general)', 'Principal' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Event Management', 'Principal' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'CAT/Exam eligibility decisions', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Holidays & Umuganda', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Take/record class attendance', 'Principal' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => true, 'Student' => 'Self-scan'],
+    ['feature' => 'Register for modules', 'Principal' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => true],
+    ['feature' => 'Lost & Found: report/claim', 'Principal' => false, 'HOD' => true, 'Dean' => true, 'Lecturer' => true, 'Student' => true],
+    ['feature' => 'Lost & Found: approve claims', 'Principal' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Lost & Found: view statistics', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Audit log', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
 ];
 
 function perm_cell($v): string
@@ -50,7 +50,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php foreach ($matrix as $row): ?>
           <tr>
             <td><?= e($row['feature']) ?></td>
-            <td class="text-center"><?= perm_cell($row['Administrator']) ?></td>
+            <td class="text-center"><?= perm_cell($row['Principal']) ?></td>
             <td class="text-center"><?= perm_cell($row['HOD']) ?></td>
             <td class="text-center"><?= perm_cell($row['Dean']) ?></td>
             <td class="text-center"><?= perm_cell($row['Lecturer']) ?></td>

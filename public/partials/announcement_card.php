@@ -27,12 +27,4 @@ $posted = strtotime($a['posted_at']);
     <div class="col-6 col-md-3"><span class="text-muted">Date:</span><br><?= e(date('d F Y', $posted)) ?></div>
     <div class="col-6 col-md-3"><span class="text-muted">Time:</span><br><?= e(date('h:i A', $posted)) ?></div>
   </div>
-  <?php if (!empty($a['sender_scope'])): ?>
-    <div class="small text-muted mt-1"><?= e($a['sender_scope']) ?></div>
-  <?php endif; ?>
-  <div class="small text-muted mt-2" style="font-size:0.7rem;">
-    Audience: <?= e($a['target_audience']) ?>
-    <?php if (isset($a['recipients_count'])): ?>&middot; Reached <?= (int) $a['recipients_count'] ?> recipient(s)<?php endif; ?>
-    <?php if (!empty($a['sms_sent'])): ?>&middot; SMS sent<?php endif; ?>
-  </div>
 </div>

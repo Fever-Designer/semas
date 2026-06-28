@@ -12,7 +12,7 @@ $stmt = $db->prepare(
     "SELECT cs.*, m.module_title, m.session_type, m.room AS module_room,
             d.department_name,
             u.full_name AS invigilator_name, u.photo_path AS invigilator_photo,
-            ul.full_name AS lecturer_name, ul2.title AS invigilator_title,
+            ul.full_name AS lecturer_name,
             sub.submitted_at, sub.notes AS submission_notes,
             e.enrollment_id
      FROM cat_exam_schedules cs
@@ -20,8 +20,6 @@ $stmt = $db->prepare(
      LEFT JOIN departments d ON d.department_id = m.department_id
      LEFT JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
      LEFT JOIN users u ON u.user_id = l.user_id
-     LEFT JOIN lecturers l2 ON l2.lecturer_id = cs.invigilator_id
-     LEFT JOIN users ul2 ON ul2.user_id = l2.user_id
      LEFT JOIN lecturers lm ON lm.lecturer_id = m.lecturer_id
      LEFT JOIN users ul ON ul.user_id = lm.user_id
      LEFT JOIN cat_exam_submissions sub ON sub.schedule_id = cs.schedule_id
@@ -77,7 +75,7 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 <title><?= e($schedule['exam_type']) ?> Evidence Slip — <?= e($schedule['module_title']) ?></title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Georgia, "Times New Roman", serif; background: #f4f5f7; margin: 0; padding: 24px 0; color: #1B1F2A; }
+  body { font-family: 'Times New Roman', Times, serif; background: #f4f5f7; margin: 0; padding: 24px 0; color: #1B1F2A; }
   .page { max-width: 680px; margin: 0 auto; background: #fff; border: 2px solid #1E2A52; border-radius: 8px; overflow: hidden; }
 
   .header { background: #1E2A52; color: #fff; padding: 18px 28px; display: flex; justify-content: space-between; align-items: center; }
@@ -112,7 +110,32 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 
   .no-print { margin: 16px auto; max-width: 680px; text-align: center; }
   .no-print button { padding: 10px 28px; background: #D4A24C; color: #1E2A52; font-weight: bold; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
-  @media print { .no-print { display: none; } body { background: #fff; padding: 0; } }
+
+  @media print {
+    @page { size: A4 portrait; margin: 10mm; }
+    html, body { margin: 0; padding: 0; background: #fff; height: 100%; }
+    .no-print { display: none; }
+    .page {
+      max-width: 100%;
+      width: 100%;
+      border-radius: 0;
+      border: 1.5pt solid #1E2A52;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .header { padding: 10px 18px; }
+    .header .brand { font-size: 16px; }
+    .slip-title { padding: 10px 18px 6px; }
+    .slip-title h2 { font-size: 13px; }
+    .body { padding: 10px 18px; }
+    table.info td { padding: 4px 3px; font-size: 11px; }
+    .sig-section { margin-top: 10px; padding-top: 10px; gap: 14px; }
+    .sig-photo { width: 54px; height: 54px; }
+    .sig-info .name { font-size: 12px; }
+    .sig-info { font-size: 10px; }
+    .qr-section { min-width: 60px; }
+    .footer { padding: 6px 18px; font-size: 9px; }
+  }
 </style>
 </head>
 <body>
@@ -139,20 +162,12 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
       <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '—') ?></td></tr>
       <tr><td class="label">Department</td>         <td class="value"><?= e($schedule['department_name'] ?? '—') ?></td></tr>
       <tr><td class="label">Module</td>             <td class="value"><?= e($schedule['module_title']) ?></td></tr>
-      <tr><td class="label">Lecturer / Examiner</td><td class="value"><?= e($schedule['lecturer_name'] ?? '—') ?></td></tr>
+      <tr><td class="label">Examiner</td><td class="value"><?= e($schedule['lecturer_name'] ?? '—') ?></td></tr>
       <tr><td class="label">Invigilator</td>        <td class="value"><?= e($schedule['invigilator_name'] ?? '—') ?></td></tr>
       <tr><td class="label"><?= e($schedule['exam_type']) ?> Date</td><td class="value"><?= e($dayOfWeek . ', ' . $examDate) ?></td></tr>
-      <tr><td class="label">Scheduled Time</td>     <td class="value"><?= e($timeRange) ?></td></tr>
       <tr><td class="label">Room</td>               <td class="value"><?= e($schedule['room']) ?></td></tr>
       <tr><td class="label">Session</td>            <td class="value"><?= e($schedule['session_type'] ?? '—') ?></td></tr>
-      <tr><td class="label">Attendance Status</td>  <td class="value"><?= e($soutRecord['status'] ?? 'Present') ?></td></tr>
-      <tr><td class="label">Sign In Time</td>       <td class="value"><?= e($sinTime) ?></td></tr>
-      <tr><td class="label">Sign Out Time</td>      <td class="value"><?= e($soutTime) ?></td></tr>
     </table>
-
-    <div class="stamp <?= ($soutRecord['status'] ?? 'Present') !== 'Present' ? 'absent' : '' ?>">
-      <?= ($soutRecord['status'] ?? 'Present') === 'Present' ? '✓ PRESENT — ATTENDANCE CONFIRMED' : '✗ ABSENT — ' . e($soutRecord['status'] ?? '') ?>
-    </div>
 
     <!-- Invigilator Signature Block -->
     <div class="sig-section">
@@ -168,7 +183,7 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
         <?php if ($schedule['submitted_at']): ?>
           <div style="color:#6B7280;margin-top:2px;">Submitted: <?= e(date('d M Y H:i', strtotime($schedule['submitted_at']))) ?></div>
         <?php endif; ?>
-        <div class="sig-line">Digital Signature — Verified via SEMAS</div>
+        <div class="sig-line">Digital Signature Verified via SEMAS</div>
       </div>
       <div class="qr-section" style="min-width:80px;">
         <div id="verifyQr"></div>

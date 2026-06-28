@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator']);
+Auth::requireRole(['Principal']);
 
 $pageTitle = 'System Announcements';
 $activeNav = 'announcements';
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } elseif ($who === 'staff') {
         $audienceKey = 'Staff';
-        $scopeLabel  = 'Staff — Administrators, Deans & HODs';
+        $scopeLabel  = 'Staff — Principals, Deans & HODs';
         $recipients  = AudienceResolver::resolve('Staff');
 
     } elseif ($who === 'lecturers') {
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'message'         => $_POST['message'],
         'status'          => 'Published',
         'recipients'      => $recipients,
-    ], $me, 'Administrator', $scopeLabel, isset($_POST['send_sms']));
+    ], $me, 'Principal', $scopeLabel, isset($_POST['send_sms']));
 
     flash('success', "System announcement sent to {$result['recipients']} user(s). Scope: $scopeLabel.");
     redirect('/admin/announcements.php');

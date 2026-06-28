@@ -30,7 +30,7 @@ final class AudienceResolver
         switch ($audience) {
             case 'Staff':
                 $sql = "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
-                        WHERE r.role_name IN ('Administrator','Dean','HOD') AND u.status = 'Active'";
+                        WHERE r.role_name IN ('Principal','Dean','HOD') AND u.status = 'Active'";
                 return $db->query($sql)->fetchAll();
 
             case 'University Community':

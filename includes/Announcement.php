@@ -67,7 +67,7 @@ final class Announcement
 
             // HOD/Dean/Lecturer role-scoped sends pass a pre-resolved recipient list
             // (so a Dean can never accidentally reach another faculty's
-            // students even if target_audience looks generic); Administrator
+            // students even if target_audience looks generic); Principal
             // sends fall back to Delivery::announce's full AudienceResolver.
             if (isset($data['recipients']) && is_array($data['recipients'])) {
                 $recipients = $data['recipients'];

@@ -15,7 +15,7 @@ $lecturer = $lecStmt->fetch();
 
 if (!$lecturer) {
     require __DIR__ . '/../partials/layout_top.php';
-    echo '<div class="alert alert-warning small">Your lecturer profile is not set up yet. Ask the HOD or Administrator to assign you a department.</div>';
+    echo '<div class="alert alert-warning small">Your lecturer profile is not set up yet. Ask the HOD or Principal to assign you a department.</div>';
     require __DIR__ . '/../partials/layout_bottom.php';
     exit;
 }

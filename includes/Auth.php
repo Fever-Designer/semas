@@ -30,7 +30,7 @@ final class Auth
             return ['ok' => false, 'user' => null, 'error' => 'Please verify your email before logging in.'];
         }
         if ($user['status'] === 'Deactivated') {
-            return ['ok' => false, 'user' => null, 'error' => 'Your account has been deactivated. Contact the administrator.'];
+            return ['ok' => false, 'user' => null, 'error' => 'Your account has been deactivated. Contact the Principal.'];
         }
         return ['ok' => true, 'user' => $user, 'error' => null];
     }

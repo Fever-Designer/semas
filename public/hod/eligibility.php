@@ -53,10 +53,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 AuditLog::record(Auth::id(), 'CAT_EXAM_SCHEDULE_SAVE', 'modules', $moduleId, "exam_type=$examType;room=$room;date=$schedDate;start=$startTime;end=$endTime");
 
-                // Build notification/email payload for enrolled students
-                $invNameRow = $db->prepare('SELECT u.full_name FROM lecturers l JOIN users u ON u.user_id = l.user_id WHERE l.lecturer_id = :id');
-                $invNameRow->execute(['id' => $invigId]);
-                $invName = $invNameRow->fetchColumn() ?: 'TBA';
+                // Fetch invigilator user row (needed for email + notification payload)
+                $invUserRow = $db->prepare('SELECT u.user_id, u.full_name, u.email FROM lecturers l JOIN users u ON u.user_id = l.user_id WHERE l.lecturer_id = :id');
+                $invUserRow->execute(['id' => $invigId]);
+                $invUser = $invUserRow->fetch() ?: [];
+                $invName = $invUser['full_name'] ?? 'TBA';
                 $modTitleRow = $db->prepare('SELECT module_title FROM modules WHERE module_id = :id');
                 $modTitleRow->execute(['id' => $moduleId]);
                 $modTitle = $modTitleRow->fetchColumn() ?: '';
@@ -84,6 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     NotificationCenter::notify((int) $student['user_id'], $notifTitle, $notifBody, 'Attendance');
                     Mailer::sendCatExamSchedule($student, $schedPayload);
                 }
+
+                // Notify the invigilator
+                if (!empty($invUser['email'])) {
+                    Mailer::sendInvigilatorAssigned($invUser, $schedPayload);
+                }
+
                 flash('success', "$examType schedule saved. " . count($enrolledStudents) . " student(s) notified by email and in-app notification.");
             }
         }
@@ -201,16 +208,22 @@ require __DIR__ . '/../partials/layout_top.php';
       <p class="text-muted small mb-1"><i class="bi bi-exclamation-circle me-1"></i>No room/invigilator set yet for this <?= e($examType) ?>. <button class="btn btn-sm btn-semas-gold" data-bs-toggle="collapse" data-bs-target="#scheduleForm">Set Schedule</button></p>
     <?php endif; ?>
     <div class="collapse <?= !$currentSchedule ? 'show' : '' ?>" id="scheduleForm">
-      <form method="post" class="row g-2 mt-1">
+      <?php $moduleDate = $examType === 'CAT' ? ($selectedModule['cat_date'] ?? '') : ($selectedModule['exam_date'] ?? ''); ?>
+      <div class="alert alert-light border small py-2 mt-1 mb-2">
+        <i class="bi bi-calendar-event me-1"></i>
+        Date is taken from the module: <strong><?= e($moduleDate ?: '—') ?></strong>
+      </div>
+      <form method="post" class="row g-2">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_schedule">
         <input type="hidden" name="module_id" value="<?= (int) $moduleId ?>">
         <input type="hidden" name="exam_type" value="<?= e($examType) ?>">
-        <div class="col-md-3">
+        <input type="hidden" name="scheduled_date" value="<?= e($moduleDate) ?>">
+        <div class="col-md-4">
           <label class="form-label small mb-1">Room</label>
           <input name="room" class="form-control form-control-sm" placeholder="e.g. Hall A, Room 201" value="<?= e($currentSchedule['room'] ?? '') ?>" required>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
           <label class="form-label small mb-1">Invigilator (Lecturer)</label>
           <select name="invigilator_id" class="form-select form-select-sm" required>
             <option value="">Select invigilator</option>
@@ -218,13 +231,6 @@ require __DIR__ . '/../partials/layout_top.php';
               <option value="<?= (int) $lect['lecturer_id'] ?>" <?= (int) ($currentSchedule['invigilator_id'] ?? 0) === (int) $lect['lecturer_id'] ? 'selected' : '' ?>><?= e($lect['full_name']) ?></option>
             <?php endforeach; ?>
           </select>
-        </div>
-        <div class="col-md-2">
-          <label class="form-label small mb-1">Scheduled Date</label>
-          <input type="date" name="scheduled_date" class="form-control form-control-sm"
-                 value="<?= e($currentSchedule['scheduled_date'] ?? ($examType === 'CAT' ? ($selectedModule['cat_date'] ?? '') : ($selectedModule['exam_date'] ?? ''))) ?>"
-                 required>
-          <div class="form-text" style="font-size:0.7rem;">Must match <?= e($examType) ?> date: <strong><?= e($examType === 'CAT' ? ($selectedModule['cat_date'] ?? '—') : ($selectedModule['exam_date'] ?? '—')) ?></strong></div>
         </div>
         <div class="col-md-2">
           <label class="form-label small mb-1">Start Time <span class="text-danger">*</span></label>
@@ -236,8 +242,8 @@ require __DIR__ . '/../partials/layout_top.php';
           <input type="time" name="end_time" class="form-control form-control-sm"
                  value="<?= e($currentSchedule['end_time'] ? substr($currentSchedule['end_time'], 0, 5) : '') ?>" required>
         </div>
-        <div class="col-md-1 d-flex align-items-end">
-          <button class="btn btn-semas btn-sm w-100">Save</button>
+        <div class="col-12 text-end">
+          <button class="btn btn-semas btn-sm px-4">Save Schedule</button>
         </div>
       </form>
     </div>

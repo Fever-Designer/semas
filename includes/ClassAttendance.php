@@ -5,11 +5,9 @@ declare(strict_types=1);
  * ClassAttendance
  * ----------------
  * Class attendance runs on FIXED, real-world session windows (not
- * "whenever someone happens to click Start"), evaluated in Africa/Cairo
- * time regardless of the application's own default timezone (Africa/
- * Kigali, set in config/config.php) — every method below builds its own
- * DateTime in the Cairo zone explicitly so this never silently drifts if
- * the server's default timezone changes.
+ * "whenever someone happens to click Start"), evaluated in Africa/Kigali
+ * time — every method below builds its own DateTime in the Kigali zone
+ * explicitly so this never silently drifts if the server timezone changes.
  *
  * Both a student (self-scan, Sign In then later Sign Out — see
  * api/student-attendance-scan.php) and a lecturer (manual roster search,
@@ -38,7 +36,7 @@ final class ClassAttendance
 {
     public const PRESENT_WINDOW_MINUTES = 10;
     public const LATE_WINDOW_MINUTES = 20;
-    private const TZ = 'Africa/Cairo';
+    private const TZ = 'Africa/Kigali';
 
     /** @return array<string,array{start:string,end:string}> 24h HH:MM strings */
     private static function windowDefinitions(): array

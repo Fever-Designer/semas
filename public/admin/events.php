@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         'faculty_id'      => $facultyId,
         'message'         => $_POST['message'],
         'status'          => 'Published',
-    ], Auth::user(), 'Administrator', 'University-wide', true);
+    ], Auth::user(), 'Principal', 'University-wide', true);
 
     flash('success', "Announcement posted (" . AudienceResolver::describe($audience, $deptId, $facultyId, $eventIdForAudience) . ") and reached {$result['recipients']} recipient(s).");
     redirect('/admin/events.php');

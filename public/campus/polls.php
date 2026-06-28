@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Student']);
 
 $pageTitle = 'Polls & Surveys';
 $activeNav = 'polls';
 $db = Database::connection();
 $me = Auth::user();
 $role = Auth::role();
-$isStaff = in_array($role, ['Administrator', 'Dean', 'HOD'], true);
+$isStaff = in_array($role, ['Principal', 'Dean', 'HOD'], true);
 
 // Resolve the scope a HOD/Dean is allowed to target (mirrors the
 // announcement pages: HOD => own department only, Dean => own faculty only).
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($role === 'Dean') {
             $audience = 'Specific Faculty';
             $facultyId = $myFacultyId;
-        } else { // Administrator
+        } else { // Principal
             $deptId = $audience === 'Specific Department' ? (int) $_POST['department_id'] : null;
             $facultyId = $audience === 'Specific Faculty' ? (int) $_POST['faculty_id'] : null;
         }
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pollId = (int) $_POST['poll_id'];
         $owner = $db->prepare('SELECT created_by FROM polls WHERE poll_id = :id');
         $owner->execute(['id' => $pollId]);
-        if ((int) $owner->fetchColumn() === (int) $me['user_id'] || $role === 'Administrator') {
+        if ((int) $owner->fetchColumn() === (int) $me['user_id'] || $role === 'Principal') {
             $db->prepare("UPDATE polls SET status='Closed' WHERE poll_id=:id")->execute(['id' => $pollId]);
             AuditLog::record(Auth::id(), 'POLL_CLOSE', 'polls', $pollId);
             flash('success', 'Poll closed.');
@@ -207,7 +207,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-body">
           <div class="mb-2"><label class="form-label small">Question / Title</label><input name="title" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Description (optional)</label><textarea name="description" class="form-control form-control-sm" rows="2"></textarea></div>
-          <?php if ($role === 'Administrator'): ?>
+          <?php if ($role === 'Principal'): ?>
             <div class="mb-2">
               <label class="form-label small">Audience</label>
               <select name="target_audience" id="pollAudienceSelect" class="form-select form-select-sm" onchange="togglePollAudience()">

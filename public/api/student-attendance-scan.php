@@ -81,7 +81,7 @@ $todaySession = $todayFind->fetch();
 
 $allowSignOut = false;
 if ($todaySession) {
-    $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Cairo'));
+    $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Kigali'));
     $afterEnd = $now->getTimestamp() - $endDt->getTimestamp();
     $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 600); // within 10 min after session end
 }

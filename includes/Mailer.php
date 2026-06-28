@@ -152,6 +152,27 @@ final class Mailer
     }
 
     /**
+     * Notify a lecturer they have been assigned as invigilator for a CAT/Exam.
+     * $schedule must contain: exam_type, module_title, scheduled_date, start_time, end_time, room
+     */
+    public static function sendInvigilatorAssigned(array $invigilator, array $schedule): bool
+    {
+        $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
+        $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        $subject   = 'Invigilator Assignment: ' . $typeWord . ' — ' . $schedule['module_title'] . ' on ' . $dayOfWeek;
+        return self::send($invigilator['email'], $subject, 'invigilator_assigned', [
+            'full_name'      => $invigilator['full_name'],
+            'exam_type'      => $schedule['exam_type'],
+            'module_title'   => $schedule['module_title'],
+            'scheduled_date' => $schedule['scheduled_date'],
+            'start_time'     => $schedule['start_time'],
+            'end_time'       => $schedule['end_time'],
+            'room'           => $schedule['room'],
+            'day_of_week'    => $dayOfWeek,
+        ], (int) $invigilator['user_id']);
+    }
+
+    /**
      * Notify a student of their upcoming CAT or Exam schedule.
      * $schedule must contain: exam_type, module_title, scheduled_date, start_time, end_time, room, invigilator_name
      */

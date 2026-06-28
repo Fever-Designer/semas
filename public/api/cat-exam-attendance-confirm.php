@@ -48,7 +48,52 @@ $submittedStmt = $db->prepare('SELECT submission_id FROM cat_exam_submissions WH
 $submittedStmt->execute(['id' => $scheduleId]);
 $alreadySubmitted = (bool) $submittedStmt->fetch();
 
-// ── Student search ────────────────────────────────────────────────────────
+// ── Student lookup (search + preview in one call) ────────────────────────
+if ($action === 'lookup') {
+    $regNum = trim($_POST['reg_number'] ?? '');
+    if ($regNum === '') { echo json_encode(['ok' => false, 'message' => 'Enter a registration number.']); exit; }
+
+    // Try exact reg number match first (fastest path)
+    $exact = $db->prepare(
+        "SELECT u.user_id FROM users u
+         JOIN roles r ON r.role_id = u.role_id
+         JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
+         WHERE r.role_name = 'Student' AND u.reg_number = :reg LIMIT 1"
+    );
+    $exact->execute(['mid' => $schedule['module_id'], 'reg' => $regNum]);
+    $exactRow = $exact->fetch();
+    if ($exactRow) {
+        $payload = cat_student_payload($db, $schedule, $scheduleId, (int) $exactRow['user_id']);
+        $payload['single'] = true;
+        echo json_encode($payload);
+        exit;
+    }
+
+    // Partial match fallback
+    $partial = $db->prepare(
+        "SELECT u.user_id, u.full_name, u.reg_number FROM users u
+         JOIN roles r ON r.role_id = u.role_id
+         JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
+         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q) LIMIT 10"
+    );
+    $partial->execute(['mid' => $schedule['module_id'], 'q' => "%$regNum%"]);
+    $results = $partial->fetchAll();
+
+    if (count($results) === 0) {
+        echo json_encode(['ok' => false, 'message' => "No enrolled student found matching \"$regNum\"."]);
+        exit;
+    }
+    if (count($results) === 1) {
+        $payload = cat_student_payload($db, $schedule, $scheduleId, (int) $results[0]['user_id']);
+        $payload['single'] = true;
+        echo json_encode($payload);
+        exit;
+    }
+    echo json_encode(['ok' => true, 'single' => false, 'results' => $results]);
+    exit;
+}
+
+// ── Student search (name / reg, returns list only) ────────────────────────
 if ($action === 'search') {
     $q = trim($_POST['q'] ?? '');
     if ($q === '') { echo json_encode(['ok' => true, 'results' => []]); exit; }
@@ -66,7 +111,7 @@ if ($action === 'search') {
 // ── Student preview ───────────────────────────────────────────────────────
 if ($action === 'preview') {
     $studentUserId = (int) ($_POST['user_id'] ?? 0);
-    echo json_encode(cat_student_payload($db, $schedule, $studentUserId, $scheduleId));
+    echo json_encode(cat_student_payload($db, $schedule, $scheduleId, $studentUserId));
     exit;
 }
 
@@ -76,7 +121,7 @@ if ($action === 'sign_in') {
     $studentUserId = (int) ($_POST['user_id'] ?? 0);
 
     // Verify enrolled + eligible
-    $eligCheck = cat_verify_student($db, $schedule, $scheduleId, $studentUserId);
+    $eligCheck = cat_verify_student($db, $schedule, $studentUserId);
     if (!$eligCheck['ok']) { echo json_encode($eligCheck); exit; }
 
     // Block if already signed in
@@ -111,20 +156,8 @@ if ($action === 'sign_out') {
         $nameRow = $db->prepare('SELECT full_name FROM users WHERE user_id = :id');
         $nameRow->execute(['id' => $studentUserId]);
         $name = $nameRow->fetchColumn() ?: 'This student';
-        echo json_encode(['ok' => false, 'message' => $name . ' has not signed in yet.']);
+        echo json_encode(['ok' => false, 'message' => "$name has not signed in yet."]);
         exit;
-    }
-
-    // 1-hour minimum rule: cannot sign out within the first 60 minutes of exam start_time
-    if ($schedule['start_time']) {
-        $startDt  = new DateTime($schedule['scheduled_date'] . ' ' . $schedule['start_time'], new DateTimeZone('Africa/Cairo'));
-        $nowCairo = ClassAttendance::now();
-        $elapsedMin = ($nowCairo->getTimestamp() - $startDt->getTimestamp()) / 60;
-        if ($elapsedMin < 60) {
-            $remainMin = (int) ceil(60 - $elapsedMin);
-            echo json_encode(['ok' => false, 'message' => 'Students cannot leave within the first hour of the ' . $schedule['exam_type'] . '. ' . $remainMin . ' minute(s) remaining before sign-out is allowed.']);
-            exit;
-        }
     }
 
     // Block duplicate sign-out
@@ -146,7 +179,7 @@ if ($action === 'sign_out') {
 
     AuditLog::record(Auth::id(), 'CAT_EXAM_SIGNOUT', 'cat_exam_schedules', $scheduleId, "student_user_id=$studentUserId");
     NotificationCenter::notify($studentUserId, 'Signed out from ' . $schedule['exam_type'], 'You have been signed out from "' . $schedule['module_title'] . '" ' . $schedule['exam_type'] . '. You may now generate your Evidence Slip.', 'Attendance');
-    echo json_encode(['ok' => true, 'message' => $name . ' signed out.']);
+    echo json_encode(['ok' => true, 'message' => "$name signed out."]);
     exit;
 }
 
@@ -198,7 +231,7 @@ if ($action === 'submit') {
 // ── Live roster ───────────────────────────────────────────────────────────
 if ($action === 'roster') {
     $roster = $db->prepare(
-        "SELECT u.full_name, u.reg_number,
+        "SELECT u.user_id, u.full_name, u.reg_number,
                 sin.recorded_at AS signin_time,
                 sout.recorded_at AS signout_time,
                 sout.status AS signout_status,
@@ -218,7 +251,7 @@ if ($action === 'roster') {
 echo json_encode(['ok' => false, 'message' => 'Unknown action.']);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-function cat_verify_student(PDO $db, array $schedule, int $scheduleId, int $userId): array
+function cat_verify_student(PDO $db, array $schedule, int $userId): array
 {
     $stmt = $db->prepare(
         "SELECT u.*, d.department_name FROM users u
@@ -258,7 +291,7 @@ function cat_verify_student(PDO $db, array $schedule, int $scheduleId, int $user
 
 function cat_student_payload(PDO $db, array $schedule, int $scheduleId, int $userId): array
 {
-    $result = cat_verify_student($db, $schedule, $scheduleId, $userId);
+    $result = cat_verify_student($db, $schedule, $userId);
     if (!$result['ok']) return $result;
 
     $sinRow = $db->prepare("SELECT recorded_at FROM cat_exam_attendance_logs WHERE schedule_id = :s AND user_id = :u AND attendance_type = 'Sign In'");

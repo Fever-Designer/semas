@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD', 'Lecturer', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student']);
 
 $pageTitle = 'Lost & Found';
 $activeNav = 'lostfound';
 $db = Database::connection();
 $me = Auth::user();
 $role = Auth::role();
-$isAdmin = $role === 'Administrator'; // view-only / stats, per design — Admin never reports, claims, or approves
+$isAdmin = $role === 'Principal'; // view-only / stats, per design — Admin never reports, claims, or approves
 $isDean = $role === 'Dean';
 
 $categories = ['Electronics', 'Documents/ID', 'Books/Stationery', 'Clothing/Accessories', 'Keys', 'Bag', 'Other'];

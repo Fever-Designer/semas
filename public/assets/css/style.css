@@ -20,13 +20,13 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     background-color: var(--semas-surface);
     color: var(--semas-text);
 }
 
 h1, h2, h3, h4, h5, .display-font {
-    font-family: 'Sora', 'Inter', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     font-weight: 600;
     color: var(--semas-ink);
 }
@@ -53,7 +53,7 @@ a:hover { color: var(--semas-gold); }
 
 .semas-sidebar .brand {
     padding: 1.5rem 1.25rem;
-    font-family: 'Sora', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     font-weight: 700;
     font-size: 1.25rem;
     letter-spacing: 0.5px;
@@ -133,7 +133,7 @@ a:hover { color: var(--semas-gold); }
 }
 
 .stat-card .stat-value {
-    font-family: 'Sora', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     font-size: 1.9rem;
     font-weight: 700;
     color: var(--semas-ink);
@@ -250,7 +250,7 @@ a:hover { color: var(--semas-gold); }
     box-shadow: 0 20px 60px rgba(0,0,0,0.25);
 }
 .auth-card .brand-mark {
-    font-family: 'Sora', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     font-weight: 700;
     font-size: 1.4rem;
     color: var(--semas-ink);
@@ -261,7 +261,7 @@ a:hover { color: var(--semas-gold); }
     text-align: center;
     font-size: 1.3rem;
     letter-spacing: 0.4em;
-    font-family: 'Sora', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
 }
 
 @media (max-width: 768px) {
@@ -334,13 +334,13 @@ a:hover { color: var(--semas-gold); }
     margin-bottom: 1.1rem;
 }
 .report-print-head .uok-name {
-    font-family: 'Sora', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     font-weight: 700;
     color: var(--semas-ink);
 }
 .report-summary-strip { display: flex; gap: 0.9rem; margin-bottom: 1.1rem; }
 .report-summary-strip > div { flex: 1; background: var(--semas-surface); border-radius: 0.6rem; padding: 0.9rem; text-align: center; }
-.report-summary-strip .num { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; color: var(--semas-ink); }
+.report-summary-strip .num { font-family: 'Times New Roman', Times, serif; font-size: 1.3rem; font-weight: 700; color: var(--semas-ink); }
 .report-summary-strip .lab { font-size: 0.7rem; color: var(--semas-text-muted); margin-top: 0.2rem; }
 
 .feed-item-semas { border: 1px solid var(--semas-border); border-radius: 0.6rem; padding: 0.85rem 1rem; margin-bottom: 0.7rem; }

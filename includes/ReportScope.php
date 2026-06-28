@@ -11,7 +11,7 @@ declare(strict_types=1);
  * the central academic authority across all departments in this one. So
  * neither role gets extra row-level scoping here anymore; the explicit
  * $getParams filters (event_id, department_id, dates, student_id) are the
- * only filtering, same as Administrator used to get.
+ * only filtering, same as Principal used to get.
  */
 function scoped_report_filters(array $getParams, array $currentUser): array
 {

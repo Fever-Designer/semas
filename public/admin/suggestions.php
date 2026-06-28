@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD']);
+Auth::requireRole(['Principal', 'Dean', 'HOD']);
 
 $pageTitle = 'Suggestion Box';
 $activeNav = 'suggestions';
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/admin/suggestions.php');
 }
 
-// HOD only sees suggestions from their own department; Administrator and Dean see all
+// HOD only sees suggestions from their own department; Principal and Dean see all
 // (Dean scoping to faculty would require joining departments — kept simple here since
 // suggestions are meant to surface broadly; tighten to faculty scope if you prefer).
 $scopeDept = Auth::role() === 'HOD' ? $user['department_id'] : null;

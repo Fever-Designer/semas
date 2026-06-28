@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD', 'Lecturer', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student']);
 
 $db = Database::connection();
 $role = Auth::role();
@@ -9,8 +9,8 @@ $user = Auth::user();
 $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
 
-if ($role === 'Administrator') {
-    // Administrator's scope is USER MANAGEMENT + SYSTEM CONFIG ONLY.
+if ($role === 'Principal') {
+    // Principal's scope is USER MANAGEMENT + SYSTEM CONFIG ONLY.
     // No events/attendance/modules/exam data is queried or shown here by design.
     $stats = [
         'total_users'     => (int) $db->query('SELECT COUNT(*) FROM users')->fetchColumn(),
@@ -143,7 +143,7 @@ if ($role === 'Administrator') {
 require __DIR__ . '/partials/layout_top.php';
 ?>
 
-<?php if ($role === 'Administrator'): ?>
+<?php if ($role === 'Principal'): ?>
   <h4 class="display-font mb-1">Analytics Dashboard</h4>
   <p class="text-muted small mb-3">Your scope is user management and system configuration. Academic and event operations are managed by the HOD and Dean.</p>
   <div class="row g-3 mb-3">
@@ -466,7 +466,7 @@ require __DIR__ . '/partials/layout_top.php';
   </div>
 <?php endif; ?>
 
-<?php if (in_array($role, ['Administrator', 'Dean', 'HOD', 'Lecturer'], true)): ?>
+<?php if (in_array($role, ['Principal', 'Dean', 'HOD', 'Lecturer'], true)): ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const ROLE = <?= json_encode($role) ?>;
@@ -490,7 +490,7 @@ function pieChart(id, labels, data, colors) {
 }
 
 function render(data) {
-  if (ROLE === 'Administrator') {
+  if (ROLE === 'Principal') {
     const ubr = data.users_by_role || [];
     pieChart('chartUsersByRole', ubr.map(r => r.role_name), ubr.map(r => r.c), [COLORS.ink, COLORS.gold, COLORS.coral, COLORS.success, COLORS.muted]);
     const su = data.signups_trend || [];

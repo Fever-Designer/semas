@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD', 'Lecturer']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer']);
 header('Content-Type: application/json');
 
 $db = Database::connection();
@@ -9,8 +9,8 @@ $me = Auth::user();
 $role = Auth::role();
 $out = ['ok' => true, 'role' => $role, 'generated_at' => date('H:i:s')];
 
-if ($role === 'Administrator') {
-    // Administrator's scope is USER MANAGEMENT + SYSTEM CONFIG ONLY — no academic
+if ($role === 'Principal') {
+    // Principal's scope is USER MANAGEMENT + SYSTEM CONFIG ONLY — no academic
     // or event/attendance data here by design (see README increment on HOD centralization).
     $stmt = $db->query("SELECT r.role_name, COUNT(*) AS c FROM users u JOIN roles r ON r.role_id = u.role_id GROUP BY r.role_name");
     $out['users_by_role'] = $stmt->fetchAll();
