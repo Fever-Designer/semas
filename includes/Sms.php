@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Sms
  * ----
- * Sends real SMS via Africa's Talking or Twilio's HTTP APIs using cURL
+ * Sends real SMS via Africa's Talking or Vonage (Messages API) using cURL
  * (no SDK dependency required). Select the provider with SMS_PROVIDER in
  * .env. Every send attempt is logged to sms_logs regardless of outcome.
  */
@@ -13,8 +13,8 @@ final class Sms
     public static function send(string $toPhone, string $message, ?int $userId = null): bool
     {
         $provider = SMS_PROVIDER;
-        $result = $provider === 'twilio'
-            ? self::sendViaTwilio($toPhone, $message)
+        $result = $provider === 'vonage'
+            ? self::sendViaVonage($toPhone, $message)
             : self::sendViaAfricasTalking($toPhone, $message);
 
         $db = Database::connection();
@@ -34,6 +34,46 @@ final class Sms
         return $result['ok'];
     }
 
+    private static function sendViaVonage(string $toPhone, string $message): array
+    {
+        if (VONAGE_API_KEY === '' || VONAGE_API_SECRET === '' || VONAGE_FROM === '') {
+            return ['ok' => false, 'error' => 'Vonage credentials not configured.'];
+        }
+
+        $ch = curl_init('https://rest.nexmo.com/sms/json');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query([
+                'api_key'    => VONAGE_API_KEY,
+                'api_secret' => VONAGE_API_SECRET,
+                'from'       => VONAGE_FROM,
+                'to'         => $toPhone,
+                'text'       => $message,
+            ]),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'],
+            CURLOPT_TIMEOUT    => 15,
+        ]);
+        $response = curl_exec($ch);
+        $errno    = curl_errno($ch);
+        $err      = curl_error($ch);
+        curl_close($ch);
+
+        if ($errno) {
+            return ['ok' => false, 'error' => "cURL error: $err"];
+        }
+
+        $data   = json_decode((string) $response, true);
+        $status = $data['messages'][0]['status'] ?? null;
+
+        if ($status === '0') {
+            return ['ok' => true, 'error' => null];
+        }
+
+        $errText = $data['messages'][0]['error-text'] ?? ('Vonage error: ' . (string) $response);
+        return ['ok' => false, 'error' => $errText];
+    }
+
     private static function sendViaAfricasTalking(string $toPhone, string $message): array
     {
         if (AT_USERNAME === '' || AT_API_KEY === '') {
@@ -44,19 +84,17 @@ final class Sms
             ? 'https://api.sandbox.africastalking.com/version1/messaging'
             : 'https://api.africastalking.com/version1/messaging';
 
-        $postFields = http_build_query([
-            'username' => AT_USERNAME,
-            'to'       => $toPhone,
-            'message'  => $message,
-            'from'     => AT_SHORTCODE,
-        ]);
-
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $postFields,
-            CURLOPT_HTTPHEADER     => [
+            CURLOPT_POSTFIELDS     => http_build_query([
+                'username' => AT_USERNAME,
+                'to'       => $toPhone,
+                'message'  => $message,
+                'from'     => AT_SHORTCODE,
+            ]),
+            CURLOPT_HTTPHEADER => [
                 'apiKey: ' . AT_API_KEY,
                 'Content-Type: application/x-www-form-urlencoded',
                 'Accept: application/json',
@@ -64,52 +102,18 @@ final class Sms
             CURLOPT_TIMEOUT => 15,
         ]);
         $response = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $err = curl_error($ch);
+        $errno    = curl_errno($ch);
+        $err      = curl_error($ch);
         curl_close($ch);
 
         if ($errno) {
             return ['ok' => false, 'error' => "cURL error: $err"];
         }
-        $data = json_decode((string) $response, true);
+        $data   = json_decode((string) $response, true);
         $status = $data['SMSMessageData']['Recipients'][0]['status'] ?? null;
         if ($status === 'Success') {
             return ['ok' => true, 'error' => null];
         }
         return ['ok' => false, 'error' => 'Africa\'s Talking response: ' . (string) $response];
-    }
-
-    private static function sendViaTwilio(string $toPhone, string $message): array
-    {
-        if (TWILIO_SID === '' || TWILIO_TOKEN === '' || TWILIO_FROM_NUMBER === '') {
-            return ['ok' => false, 'error' => 'Twilio credentials not configured.'];
-        }
-        $url = "https://api.twilio.com/2010-04-01/Accounts/" . TWILIO_SID . "/Messages.json";
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => http_build_query([
-                'From' => TWILIO_FROM_NUMBER,
-                'To'   => $toPhone,
-                'Body' => $message,
-            ]),
-            CURLOPT_USERPWD => TWILIO_SID . ':' . TWILIO_TOKEN,
-            CURLOPT_TIMEOUT => 15,
-        ]);
-        $response = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $err = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($errno) {
-            return ['ok' => false, 'error' => "cURL error: $err"];
-        }
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return ['ok' => true, 'error' => null];
-        }
-        return ['ok' => false, 'error' => "Twilio HTTP $httpCode: $response"];
     }
 }

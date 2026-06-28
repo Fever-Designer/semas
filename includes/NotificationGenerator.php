@@ -81,7 +81,7 @@ final class NotificationGenerator
 
     /** Publishes a saved AI notification as a real announcement and queues
      *  email/SMS delivery to the matching audience. */
-    public static function publish(int $notificationId, int $publishedByUserId): void
+    public static function publish(int $notificationId, array $publishedByUser, string $publishedByRole): void
     {
         $db = Database::connection();
         $stmt = $db->prepare('SELECT * FROM ai_notifications WHERE notification_id = :id');
@@ -91,24 +91,16 @@ final class NotificationGenerator
             throw new RuntimeException('Notification not found.');
         }
 
-        $db->prepare(
-            'INSERT INTO announcements (title, category, priority, target_audience, message, posted_by)
-             VALUES (:title, :category, :priority, :audience, :message, :uid)'
-        )->execute([
+        // Route through the single shared Announcement::create() path so an
+        // AI-generated announcement gets the exact same sender snapshot and
+        // recipient-tracking (for the scoped Announcement Board) as every
+        // other send path — never a second, drifted implementation.
+        $result = Announcement::create([
             'title' => $n['title'], 'category' => $n['category'], 'priority' => $n['priority'],
-            'audience' => $n['target_audience'], 'message' => $n['content'], 'uid' => $publishedByUserId,
-        ]);
-        $announcementId = (int) $db->lastInsertId();
+            'target_audience' => $n['target_audience'], 'message' => $n['content'], 'status' => 'Published',
+        ], $publishedByUser, $publishedByRole, null, false);
 
         $db->prepare('UPDATE ai_notifications SET published_announcement_id = :aid WHERE notification_id = :id')
-           ->execute(['aid' => $announcementId, 'id' => $notificationId]);
-
-        // Route through the single shared audience-resolution path so this
-        // generator can never drift from the strict no-cross-role-leakage
-        // rules enforced for every other delivery path (events.php, etc.).
-        $announcementRow = ['title' => $n['title'], 'message' => $n['content'], 'target_audience' => $n['target_audience'],
-            'category' => $n['category'], 'priority' => $n['priority'],
-            'department_id' => null, 'faculty_id' => null, 'event_id' => null];
-        Delivery::announce($announcementRow);
+           ->execute(['aid' => $result['announcement_id'], 'id' => $notificationId]);
     }
 }

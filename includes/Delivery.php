@@ -11,8 +11,8 @@ declare(strict_types=1);
  */
 final class Delivery
 {
-    /** @return int number of recipients reached */
-    public static function announce(array $announcement, bool $sendSms = false): int
+    /** @return array the list of recipient user rows actually reached */
+    public static function announce(array $announcement, bool $sendSms = false): array
     {
         $recipients = AudienceResolver::resolve(
             $announcement['target_audience'],
@@ -20,6 +20,9 @@ final class Delivery
             $announcement['faculty_id'] ?? null,
             $announcement['event_id'] ?? null
         );
+
+        $uniName    = Settings::get('university_name', 'University of Kigali');
+        $senderName = $announcement['sender_name'] ?? 'SEMAS';
 
         foreach ($recipients as $user) {
             NotificationCenter::notify(
@@ -30,10 +33,23 @@ final class Delivery
                 $announcement['announcement_id'] ?? null
             );
             Mailer::sendAnnouncementNotification($user, $announcement);
-            if ($sendSms && !empty($user['sms_opt_in']) && !empty($user['phone_number'])) {
-                Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
+
+            if (!empty($user['phone_number'])) {
+                // WhatsApp — sent to every user who has a phone number
+                $waText = WhatsApp::formatAnnouncement(
+                    $announcement['title'],
+                    $announcement['message'],
+                    $senderName,
+                    $uniName
+                );
+                WhatsApp::send($user['phone_number'], $waText, (int) $user['user_id']);
+
+                // SMS — only when the sender checked "Also send via SMS" AND user opted in
+                if ($sendSms && !empty($user['sms_opt_in'])) {
+                    Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
+                }
             }
         }
-        return count($recipients);
+        return $recipients;
     }
 }

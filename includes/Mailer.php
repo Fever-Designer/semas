@@ -142,4 +142,34 @@ final class Mailer
             'full_name' => $user['full_name'],
         ], (int) $user['user_id']);
     }
+
+    public static function sendStaffAccountCreated(array $user, string $roleLabel, string $tempPassword, string $createdByName): bool
+    {
+        return self::send($user['email'], 'Your SEMAS ' . $roleLabel . ' account has been created', 'staff_account_created', [
+            'full_name' => $user['full_name'], 'role_label' => $roleLabel,
+            'temp_password' => $tempPassword, 'created_by_name' => $createdByName,
+        ], (int) $user['user_id']);
+    }
+
+    /**
+     * Notify a student of their upcoming CAT or Exam schedule.
+     * $schedule must contain: exam_type, module_title, scheduled_date, start_time, end_time, room, invigilator_name
+     */
+    public static function sendCatExamSchedule(array $user, array $schedule): bool
+    {
+        $dayOfWeek  = date('l', strtotime($schedule['scheduled_date']));
+        $typeWord   = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        $subject    = 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' — ' . $schedule['module_title'];
+        return self::send($user['email'], $subject, 'cat_exam_schedule', [
+            'full_name'        => $user['full_name'],
+            'exam_type'        => $schedule['exam_type'],
+            'module_title'     => $schedule['module_title'],
+            'scheduled_date'   => $schedule['scheduled_date'],
+            'start_time'       => $schedule['start_time'],
+            'end_time'         => $schedule['end_time'],
+            'room'             => $schedule['room'],
+            'invigilator_name' => $schedule['invigilator_name'],
+            'day_of_week'      => $dayOfWeek,
+        ], (int) $user['user_id']);
+    }
 }

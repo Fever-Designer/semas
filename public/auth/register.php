@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $regNumber = trim($_POST['reg_number'] ?? '');
     $phone = trim($_POST['phone_number'] ?? '');
     $departmentId = (int) ($_POST['department_id'] ?? 0);
+    $yearOfStudy = (int) ($_POST['year_of_study'] ?? 0) ?: null;
     $password = (string) ($_POST['password'] ?? '');
     $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
 
@@ -38,8 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $studentRoleId = (int) $db->query("SELECT role_id FROM roles WHERE role_name = 'Student'")->fetchColumn();
 
         $db->prepare(
-            'INSERT INTO users (role_id, department_id, reg_number, full_name, email, phone_number, password_hash, status)
-             VALUES (:role_id, :dept, :reg, :name, :email, :phone, :hash, :status)'
+            'INSERT INTO users (role_id, department_id, reg_number, full_name, email, phone_number, password_hash, status, year_of_study)
+             VALUES (:role_id, :dept, :reg, :name, :email, :phone, :hash, :status, :year)'
         )->execute([
             'role_id' => $studentRoleId,
             'dept'    => $departmentId ?: null,
@@ -49,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'phone'   => $phone ?: null,
             'hash'    => password_hash($password, PASSWORD_BCRYPT),
             'status'  => 'Pending',
+            'year'    => $yearOfStudy,
         ]);
         $userId = (int) $db->lastInsertId();
         AuditLog::record($userId, 'REGISTER');
@@ -92,6 +94,13 @@ require __DIR__ . '/../partials/auth_top.php';
           <?php foreach ($departments as $d): ?>
             <option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option>
           <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small">Year of Study</label>
+        <select name="year_of_study" class="form-select">
+          <option value="">Select year</option>
+          <?php for ($y = 1; $y <= 6; $y++): ?><option value="<?= $y ?>">Year <?= $y ?></option><?php endfor; ?>
         </select>
       </div>
       <div class="mb-3"><label class="form-label small">Password</label><input type="password" name="password" class="form-control" required></div>

@@ -8,5 +8,15 @@
 </table>
 <h3 style="margin:0 0 10px;color:#1E2A52;"><?= htmlspecialchars($announcement['title']) ?></h3>
 <p><?= nl2br(htmlspecialchars($announcement['message'])) ?></p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<table cellpadding="0" cellspacing="0" style="margin-top:14px;border-top:1px solid #E3E6EE;padding-top:10px;width:100%;font-size:12px;color:#5B6478;">
+  <tr>
+    <td style="width:50%;">Sent by:<br><strong style="color:#1E2A52;"><?= htmlspecialchars($announcement['sender_name'] ?? 'University Administration') ?></strong></td>
+    <td style="width:50%;">Role:<br><strong style="color:#1E2A52;"><?= htmlspecialchars($announcement['sender_role'] ?? '') ?></strong><?= !empty($announcement['sender_scope']) ? '<br>' . htmlspecialchars($announcement['sender_scope']) : '' ?></td>
+  </tr>
+  <tr>
+    <td style="padding-top:6px;">Date:<br><?= htmlspecialchars(date('d F Y', strtotime($announcement['posted_at'] ?? 'now'))) ?></td>
+    <td style="padding-top:6px;">Time:<br><?= htmlspecialchars(date('h:i A', strtotime($announcement['posted_at'] ?? 'now'))) ?></td>
+  </tr>
+</table>
+<p>Best regards,<br>University of Kigali</p>
 <?php semas_email_close(); ?>

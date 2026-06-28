@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator', 'Dean', 'HOD']);
+Auth::requireRole(['Dean']);
 
 $pageTitle = 'Scan / Mark Attendance';
 $activeNav = 'attendance';
@@ -35,14 +35,21 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="col-md-6">
     <div class="semas-card p-3">
       <h6 class="display-font mb-2"><i class="bi bi-search me-1"></i> Method 3: Manual Search</h6>
-      <input id="searchBox" class="form-control" placeholder="Search by name or registration number...">
-      <div id="searchResults" class="mt-2"></div>
+      <form id="searchForm" class="d-flex gap-2 mb-2" onsubmit="return false;">
+        <input id="searchBox" class="form-control" placeholder="Search by name or registration number...">
+        <button id="searchBtn" class="btn btn-semas text-nowrap">Search</button>
+      </form>
+      <div id="searchResults"></div>
+      <div id="foundBar" class="alert alert-success small d-none mt-2 d-flex justify-content-between align-items-center">
+        <span id="foundText"></span>
+        <button id="confirmFoundBtn" class="btn btn-sm btn-semas-gold">Confirm &amp; View Profile</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="previewPanel" class="semas-card p-3 mt-3" style="display:none;">
-  <h6 class="display-font mb-3">Confirm Attendance</h6>
+  <h6 class="display-font mb-3">Student Profile — Confirm Attendance</h6>
   <div class="d-flex gap-3">
     <img id="prevPhoto" src="" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
     <div>
@@ -105,29 +112,38 @@ document.getElementById('startScanBtn').addEventListener('click', function () {
 });
 
 let searchTimer;
-document.getElementById('searchBox').addEventListener('input', function (e) {
-  clearTimeout(searchTimer);
-  const q = e.target.value;
+function doManualSearch() {
+  const q = document.getElementById('searchBox').value;
   const eventId = document.getElementById('eventSelect').value;
-  searchTimer = setTimeout(function () {
-    if (!eventId || q.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
-    fetch(APP_URL + '/api/admin-scan-preview.php?mode=search&event_id=' + eventId + '&q=' + encodeURIComponent(q))
-      .then(r => r.json()).then(function (data) {
-        document.getElementById('searchResults').innerHTML = (data.results || []).map(function (s) {
-          return '<div class="border-bottom py-1 small" style="cursor:pointer;" data-uid="' + s.user_id + '">' +
-                 s.full_name + ' <span class="text-muted">(' + (s.reg_number || '—') + ')</span></div>';
-        }).join('');
-      });
-  }, 300);
-});
+  if (!eventId) { alert('Please select an event first.'); return; }
+  if (q.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
+  fetch(APP_URL + '/api/admin-scan-preview.php?mode=search&event_id=' + eventId + '&q=' + encodeURIComponent(q))
+    .then(r => r.json()).then(function (data) {
+      document.getElementById('searchResults').innerHTML = (data.results || []).map(function (s) {
+        return '<div class="border-bottom py-1 small" style="cursor:pointer;" data-uid="' + s.user_id + '" data-name="' + s.full_name + '" data-reg="' + (s.reg_number || '') + '">' +
+               s.full_name + ' <span class="text-muted">(' + (s.reg_number || '—') + ')</span></div>';
+      }).join('') || '<p class="text-muted small mb-0">No matching students found.</p>';
+    });
+}
+document.getElementById('searchBtn').addEventListener('click', doManualSearch);
+document.getElementById('searchBox').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(doManualSearch, 300); });
+document.getElementById('searchBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') doManualSearch(); });
 
+let foundUserId = null;
 document.getElementById('searchResults').addEventListener('click', function (e) {
   const row = e.target.closest('[data-uid]');
   if (!row) return;
+  foundUserId = row.getAttribute('data-uid');
+  document.getElementById('foundText').textContent = 'Found: ' + row.getAttribute('data-name') + ' (Reg: ' + (row.getAttribute('data-reg') || '—') + ')';
+  document.getElementById('foundBar').classList.remove('d-none');
+  document.getElementById('previewPanel').style.display = 'none';
+});
+
+document.getElementById('confirmFoundBtn').addEventListener('click', function () {
   const eventId = getEventId();
-  if (!eventId) return;
-  fetch(APP_URL + '/api/admin-scan-preview.php?mode=select&event_id=' + eventId + '&user_id=' + row.getAttribute('data-uid'))
-    .then(r => r.json()).then(data => showPreview(data, 'manual'));
+  if (!eventId || !foundUserId) return;
+  fetch(APP_URL + '/api/admin-scan-preview.php?mode=select&event_id=' + eventId + '&user_id=' + foundUserId)
+    .then(r => r.json()).then(function (data) { document.getElementById('foundBar').classList.add('d-none'); showPreview(data, 'manual'); });
 });
 
 document.getElementById('cancelBtn').addEventListener('click', function () {

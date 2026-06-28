@@ -63,15 +63,18 @@ define('MAIL_FROM_ADDRESS', env('MAIL_FROM_ADDRESS', 'noreply@uok.ac.rw'));
 define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'University of Kigali — SEMAS'));
 
 // ---------------------------------------------------------------------
-// SMS — pick ONE provider in .env: africastalking | twilio
+// SMS — pick ONE provider in .env: vonage | africastalking
 // ---------------------------------------------------------------------
-define('SMS_PROVIDER', env('SMS_PROVIDER', 'africastalking'));
-define('AT_USERNAME', env('AT_USERNAME', ''));
-define('AT_API_KEY', env('AT_API_KEY', ''));
+define('SMS_PROVIDER', env('SMS_PROVIDER', 'vonage'));
+// Vonage (nexmo.com) credentials — shared by SMS and WhatsApp
+define('VONAGE_API_KEY',       env('VONAGE_API_KEY',       ''));
+define('VONAGE_API_SECRET',    env('VONAGE_API_SECRET',    ''));
+define('VONAGE_FROM',          env('VONAGE_FROM',          ''));   // SMS: number or alphanumeric sender ID
+define('VONAGE_WHATSAPP_FROM', env('VONAGE_WHATSAPP_FROM', ''));   // WhatsApp Business number (E.164 digits, no +)
+// Africa's Talking credentials (fallback provider)
+define('AT_USERNAME',  env('AT_USERNAME',  ''));
+define('AT_API_KEY',   env('AT_API_KEY',   ''));
 define('AT_SHORTCODE', env('AT_SHORTCODE', 'SEMAS'));
-define('TWILIO_SID', env('TWILIO_SID', ''));
-define('TWILIO_TOKEN', env('TWILIO_TOKEN', ''));
-define('TWILIO_FROM_NUMBER', env('TWILIO_FROM_NUMBER', ''));
 
 // ---------------------------------------------------------------------
 // Security / OTP / GPS defaults (overridable per-row in system_settings table)

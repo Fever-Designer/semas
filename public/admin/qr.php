@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator']);
+Auth::requireRole(['Dean']);
 
 $pageTitle = 'Attendance & QR Codes';
 $activeNav = 'attendance';

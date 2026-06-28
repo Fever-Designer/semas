@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator']);
+Auth::requireRole(['Dean']);
 
 $pageTitle = 'AI Notification Generator';
 $activeNav = 'ai';
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'publish') {
     csrf_verify();
-    NotificationGenerator::publish((int) $_POST['notification_id'], (int) Auth::id());
+    NotificationGenerator::publish((int) $_POST['notification_id'], Auth::user(), Auth::role());
     flash('success', 'Notification published as an announcement and queued for email delivery.');
     redirect('/admin/ai_generator.php');
 }

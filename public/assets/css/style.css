@@ -85,6 +85,15 @@ a:hover { color: var(--semas-gold); }
     font-weight: 600;
 }
 
+.semas-sidebar .nav-section-label {
+    color: rgba(255,255,255,0.38);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    padding: 0.9rem 1.25rem 0.25rem;
+}
+
 .semas-main {
     flex: 1;
     min-width: 0;

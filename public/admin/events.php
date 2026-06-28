@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Administrator']);
+Auth::requireRole(['Dean']);
 
 $pageTitle = 'Events & Announcement Management';
 $activeNav = 'events';
@@ -37,24 +37,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $facultyId = $audience === 'Specific Faculty' ? (int) $_POST['faculty_id'] : null;
     $eventIdForAudience = $audience === 'Event Participants' ? (int) $_POST['event_id'] : null;
 
-    $db->prepare(
-        'INSERT INTO announcements (event_id, title, category, priority, target_audience, department_id, faculty_id, message, posted_by)
-         VALUES (:event_id, :title, :category, :priority, :audience, :dept, :faculty, :message, :uid)'
-    )->execute([
-        'event_id' => $_POST['event_id'] ?: null, 'title' => $_POST['title'], 'category' => $_POST['category'],
-        'priority' => $_POST['priority'], 'audience' => $audience, 'dept' => $deptId, 'faculty' => $facultyId,
-        'message' => $_POST['message'], 'uid' => Auth::id(),
-    ]);
-    $announcementId = (int) $db->lastInsertId();
-    AuditLog::record(Auth::id(), 'CREATE_ANNOUNCEMENT', 'announcements', $announcementId);
+    $result = Announcement::create([
+        'event_id'        => $eventIdForAudience,
+        'title'           => $_POST['title'],
+        'category'        => $_POST['category'],
+        'priority'        => $_POST['priority'],
+        'target_audience' => $audience,
+        'department_id'   => $deptId,
+        'faculty_id'      => $facultyId,
+        'message'         => $_POST['message'],
+        'status'          => 'Published',
+    ], Auth::user(), 'Administrator', 'University-wide', true);
 
-    $stmt = $db->prepare('SELECT * FROM announcements WHERE announcement_id = :id');
-    $stmt->execute(['id' => $announcementId]);
-    $announcement = $stmt->fetch();
-    $announcement['event_id'] = $eventIdForAudience; // for AudienceResolver's Event Participants branch
-    $reachedCount = Delivery::announce($announcement, true);
-
-    flash('success', "Announcement posted (" . AudienceResolver::describe($audience, $deptId, $facultyId, $eventIdForAudience) . ") and queued to $reachedCount recipient(s).");
+    flash('success', "Announcement posted (" . AudienceResolver::describe($audience, $deptId, $facultyId, $eventIdForAudience) . ") and reached {$result['recipients']} recipient(s).");
     redirect('/admin/events.php');
 }
 
@@ -63,7 +58,7 @@ $events = $db->query(
      FROM events e ORDER BY e.event_date DESC"
 )->fetchAll();
 $announcements = $db->query(
-    "SELECT a.*, u.full_name AS poster FROM announcements a JOIN users u ON u.user_id=a.posted_by ORDER BY a.posted_at DESC LIMIT 15"
+    "SELECT * FROM announcements ORDER BY posted_at DESC LIMIT 15"
 )->fetchAll();
 $departments = $db->query('SELECT department_id, department_name FROM departments ORDER BY department_name')->fetchAll();
 $faculties = $db->query('SELECT faculty_id, faculty_name FROM faculties ORDER BY faculty_name')->fetchAll();
@@ -159,7 +154,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <div class="col-md-2">
         <label class="form-label small">Audience</label>
         <select name="target_audience" class="form-select" id="audienceSelect" onchange="toggleAudienceFields()">
-          <?php foreach (['All Students','Specific Department','Specific Faculty','Day Students','Evening Students','Weekend Students','Staff','Event Participants','University Community'] as $a): ?><option><?= e($a) ?></option><?php endforeach; ?>
+          <?php foreach (['All Students','First Year Students','Final Year Students','Specific Department','Specific Faculty','Day Students','Evening Students','Weekend Students','Staff','Event Participants','University Community'] as $a): ?><option><?= e($a) ?></option><?php endforeach; ?>
         </select>
       </div>
       <div class="col-md-3" id="deptField">
@@ -189,16 +184,8 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3">
   <h6 class="display-font mb-3">Posted Announcements</h6>
-  <?php foreach ($announcements as $a): ?>
-    <div class="feed-item-semas">
-      <div class="meta-row">
-        <div class="fw-semibold small"><?= e($a['title']) ?></div>
-        <span class="badge badge-urgent"><?= e($a['priority']) ?></span>
-      </div>
-      <p class="text-muted small mb-1"><?= e($a['message']) ?></p>
-      <div class="text-muted" style="font-size:0.72rem;">Posted by <?= e($a['poster']) ?> &middot; <?= e($a['posted_at']) ?></div>
-    </div>
-  <?php endforeach; ?>
+  <?php foreach ($announcements as $a): include __DIR__ . '/../partials/announcement_card.php'; endforeach; ?>
+  <?php if (!$announcements): ?><p class="text-muted small mb-0">No announcements yet.</p><?php endif; ?>
 </div>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/GpsService.php';
 require_once __DIR__ . '/../includes/QrService.php';
 require_once __DIR__ . '/../includes/Mailer.php';
 require_once __DIR__ . '/../includes/Sms.php';
+require_once __DIR__ . '/../includes/WhatsApp.php';
 require_once __DIR__ . '/../includes/NotificationGenerator.php';
 require_once __DIR__ . '/../includes/ReportQuery.php';
 require_once __DIR__ . '/../includes/ReportScope.php';
@@ -18,6 +19,11 @@ require_once __DIR__ . '/../includes/NotificationCenter.php';
 require_once __DIR__ . '/../includes/AudienceResolver.php';
 require_once __DIR__ . '/../includes/Delivery.php';
 require_once __DIR__ . '/../includes/Suggestion.php';
+require_once __DIR__ . '/../includes/Announcement.php';
+require_once __DIR__ . '/../includes/ClassAttendance.php';
+require_once __DIR__ . '/../includes/Settings.php';
+require_once __DIR__ . '/../includes/Module.php';
+require_once __DIR__ . '/../includes/Eligibility.php';
 
 Auth::start();
 

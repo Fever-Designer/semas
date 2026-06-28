@@ -13,6 +13,9 @@ declare(strict_types=1);
  */
 final class AudienceResolver
 {
+    /** Year-of-study considered "final year" for the 'Final Year Students' audience (see resolve()). */
+    private const FINAL_YEAR_THRESHOLD = 4;
+
     /**
      * @param string   $audience      One of the announcements.target_audience ENUM values.
      * @param int|null $departmentId  Required when $audience === 'Specific Department'.
@@ -82,15 +85,73 @@ final class AudienceResolver
                 return $stmt->fetchAll();
 
             case 'First Year Students':
+                $stmt = $db->prepare(
+                    "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                     WHERE r.role_name = 'Student' AND u.status = 'Active' AND u.year_of_study = 1"
+                );
+                $stmt->execute();
+                return $stmt->fetchAll();
+
             case 'Final Year Students':
-                // Not yet tracked by a dedicated year-of-study column; falls back to
-                // All Students rather than silently sending to nobody or to staff.
+                // "Final year" varies by programme length; FINAL_YEAR_THRESHOLD is a configurable
+                // approximation (most bachelor's programmes here run 3-4 years) rather than a perfect
+                // per-programme rule. Adjust the constant below if your programmes differ.
+                $stmt = $db->prepare(
+                    "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                     WHERE r.role_name = 'Student' AND u.status = 'Active' AND u.year_of_study >= :threshold"
+                );
+                $stmt->execute(['threshold' => self::FINAL_YEAR_THRESHOLD]);
+                return $stmt->fetchAll();
+
             case 'All Students':
             default:
                 $sql = "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
                         WHERE r.role_name = 'Student' AND u.status = 'Active'";
                 return $db->query($sql)->fetchAll();
         }
+    }
+
+    /**
+     * Role-scoped resolver used by HOD and Dean announcement/poll pages.
+     * Unlike resolve(), every filter here is ANDed and the caller (the
+     * HOD/Dean send page) is responsible for hard-coding department_id /
+     * faculty_id to the sender's OWN scope — never from user input — so a
+     * HOD can never reach another department and a Dean can never reach
+     * another faculty.
+     *
+     * @param array{department_id?:int|null, faculty_id?:int|null, session_type?:string|null, year_of_study?:int|null} $filters
+     * @return array<int,array>
+     */
+    public static function resolveStudentsScoped(array $filters): array
+    {
+        $db = Database::connection();
+        $where = ["r.role_name = 'Student'", "u.status = 'Active'"];
+        $params = [];
+
+        if (!empty($filters['department_id'])) {
+            $where[] = 'u.department_id = :dept';
+            $params['dept'] = (int) $filters['department_id'];
+        }
+        if (!empty($filters['faculty_id'])) {
+            $where[] = 'd.faculty_id = :fac';
+            $params['fac'] = (int) $filters['faculty_id'];
+        }
+        if (!empty($filters['session_type'])) {
+            $where[] = 'u.session_type = :session';
+            $params['session'] = $filters['session_type'];
+        }
+        if (!empty($filters['year_of_study'])) {
+            $where[] = 'u.year_of_study = :year';
+            $params['year'] = (int) $filters['year_of_study'];
+        }
+
+        $sql = "SELECT u.* FROM users u
+                JOIN roles r ON r.role_id = u.role_id
+                LEFT JOIN departments d ON d.department_id = u.department_id
+                WHERE " . implode(' AND ', $where);
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     /** Human-readable description of the resolved scope, for confirmation UI before sending. */

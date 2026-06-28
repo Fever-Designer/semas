@@ -9,31 +9,119 @@ $db = Database::connection();
 $me = Auth::user();
 $myRole = Auth::role();
 
-// ---- Scope resolution: Administrator sees everyone; Dean sees their faculty's
-//      departments; HOD sees only their own department. ----
+// ---- Scope resolution: Administrator sees everyone; Dean is university-wide
+//      and may see/manage every STUDENT account (faculty no longer restricts
+//      a Dean — see migration_004.sql); HOD sees only the STUDENTS in their
+//      own department, plus (per spec) every Dean account for view/activate/
+//      deactivate/reset-password. Restricting by role_name here — not just
+//      department_id — is what stops a Dean from ever touching an HOD/Dean/
+//      Administrator account, and stops an HOD from touching anything
+//      outside their own department other than Deans. ----
 $scopeDeptIds = null; // null = unrestricted (Administrator)
+$hodCanSeeDeans = false;
+$deanUniversityWide = false;
 if ($myRole === 'HOD') {
     $scopeDeptIds = [(int) $me['department_id']];
+    $hodCanSeeDeans = true;
 } elseif ($myRole === 'Dean') {
-    $facStmt = $db->prepare('SELECT faculty_id FROM faculties WHERE dean_user_id = :uid');
-    $facStmt->execute(['uid' => $me['user_id']]);
-    $facultyId = $facStmt->fetchColumn();
-    if ($facultyId) {
-        $deptStmt = $db->prepare('SELECT department_id FROM departments WHERE faculty_id = :fid');
-        $deptStmt->execute(['fid' => $facultyId]);
-        $scopeDeptIds = array_map('intval', $deptStmt->fetchAll(PDO::FETCH_COLUMN));
-    } else {
-        $scopeDeptIds = [];
-    }
+    $deanUniversityWide = true;
 }
 
-function user_in_scope(PDO $db, int $userId, ?array $scopeDeptIds): bool
+/** Mirrors the same role+department rule used in the listing query below, for POST actions. */
+function user_in_scope(PDO $db, int $userId, string $myRole, ?array $scopeDeptIds, bool $hodCanSeeDeans, bool $deanUniversityWide): bool
 {
-    if ($scopeDeptIds === null) return true; // Administrator
-    $stmt = $db->prepare('SELECT department_id FROM users WHERE user_id = :id');
+    if ($scopeDeptIds === null && !$deanUniversityWide) return true; // Administrator
+    $stmt = $db->prepare('SELECT u.department_id, r.role_name FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = :id');
     $stmt->execute(['id' => $userId]);
-    $dept = (int) $stmt->fetchColumn();
-    return in_array($dept, $scopeDeptIds, true);
+    $row = $stmt->fetch();
+    if (!$row) return false;
+
+    if ($deanUniversityWide) {
+        return $row['role_name'] === 'Student'; // Dean: any student, university-wide; never staff accounts
+    }
+    if ($hodCanSeeDeans && $row['role_name'] === 'Dean') {
+        return true; // HOD may manage any Dean account, per spec
+    }
+    // HOD may otherwise only touch Student accounts within their own department.
+    return $row['role_name'] === 'Student' && in_array((int) $row['department_id'], $scopeDeptIds ?? [], true);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_staff') {
+    csrf_verify();
+
+    $newRole = $_POST['new_role'] ?? '';
+    $canCreate = ($myRole === 'Administrator' && in_array($newRole, ['HOD', 'Dean', 'Lecturer'], true))
+              || ($myRole === 'HOD' && $newRole === 'Dean');
+
+    if (!$canCreate) {
+        flash('error', 'You are not permitted to create that type of account.');
+        redirect('/admin/users.php');
+    }
+
+    $fullName = trim($_POST['full_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone_number'] ?? '') ?: null;
+
+    if ($fullName === '' || $email === '') {
+        flash('error', 'Full name and email are required.');
+        redirect('/admin/users.php');
+    }
+    $exists = $db->prepare('SELECT user_id FROM users WHERE email = :email');
+    $exists->execute(['email' => $email]);
+    if ($exists->fetch()) {
+        flash('error', 'An account with this email already exists.');
+        redirect('/admin/users.php');
+    }
+
+    $roleStmt = $db->prepare('SELECT role_id FROM roles WHERE role_name = :rn');
+    $roleStmt->execute(['rn' => $newRole]);
+    $roleId = (int) $roleStmt->fetchColumn();
+    $tempPassword = bin2hex(random_bytes(5));
+    $deptIdForNewUser = null;
+
+    if ($newRole === 'HOD' || $newRole === 'Lecturer') {
+        $deptIdForNewUser = (int) ($_POST['target_department_id'] ?? 0) ?: null;
+    }
+
+    $db->prepare(
+        'INSERT INTO users (role_id, department_id, full_name, email, phone_number, password_hash, status, email_verified_at, created_by)
+         VALUES (:role_id, :dept, :name, :email, :phone, :hash, :status, NOW(), :created_by)'
+    )->execute([
+        'role_id' => $roleId,
+        'dept'    => $deptIdForNewUser,
+        'name'    => $fullName,
+        'email'   => $email,
+        'phone'   => $phone,
+        'hash'    => password_hash($tempPassword, PASSWORD_BCRYPT),
+        'status'  => 'Active', // staff accounts created by Admin/HOD are pre-verified; only self-registered students go through email verification
+        'created_by' => Auth::id(),
+    ]);
+    $newUserId = (int) $db->lastInsertId();
+
+    if ($newRole === 'HOD' && $deptIdForNewUser) {
+        $db->prepare('UPDATE departments SET hod_user_id = :uid WHERE department_id = :dept')
+           ->execute(['uid' => $newUserId, 'dept' => $deptIdForNewUser]);
+    } elseif ($newRole === 'Lecturer') {
+        $db->prepare('INSERT INTO lecturers (user_id, department_id, title, specialization) VALUES (:uid, :dept, :title, :spec)')
+           ->execute([
+               'uid' => $newUserId, 'dept' => $deptIdForNewUser,
+               'title' => trim($_POST['lecturer_title'] ?? '') ?: null,
+               'spec' => trim($_POST['lecturer_specialization'] ?? '') ?: null,
+           ]);
+    } elseif ($newRole === 'Dean') {
+        $targetFacultyId = (int) ($_POST['target_faculty_id'] ?? 0) ?: null;
+        if ($targetFacultyId) {
+            $db->prepare('UPDATE faculties SET dean_user_id = :uid WHERE faculty_id = :fac')
+               ->execute(['uid' => $newUserId, 'fac' => $targetFacultyId]);
+        }
+    }
+
+    AuditLog::record(Auth::id(), 'CREATE_STAFF_ACCOUNT', 'users', $newUserId, "role=$newRole created_by_role=$myRole");
+    Mailer::sendStaffAccountCreated(['user_id' => $newUserId, 'full_name' => $fullName, 'email' => $email], $newRole, $tempPassword, $me['full_name']);
+    NotificationCenter::notify($newUserId, 'Welcome to SEMAS', "Your $newRole account has been created. Check your email for login details.", 'System');
+
+    flash('success', "$newRole account created for $fullName. Login credentials were emailed to $email.");
+    redirect('/admin/users.php');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $targetUserId = (int) ($_POST['user_id'] ?? 0);
 
-    if (!user_in_scope($db, $targetUserId, $scopeDeptIds)) {
+    if (!user_in_scope($db, $targetUserId, $myRole, $scopeDeptIds, $hodCanSeeDeans, $deanUniversityWide)) {
         flash('error', 'You do not have permission to manage that user.');
         redirect('/admin/users.php');
     }
@@ -85,8 +173,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email' => trim($_POST['email']),
                     'phone_number' => trim($_POST['phone_number']) ?: null,
                     'session_type' => $_POST['session_type'] ?: null,
+                    'year_of_study' => $_POST['year_of_study'] ?: null,
                 ];
-                $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number, session_type=:session_type';
+                $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number, session_type=:session_type, year_of_study=:year_of_study';
                 if ($myRole === 'Administrator') {
                     $fields['department_id'] = $_POST['department_id'] ?: null;
                     $fields['role_id'] = (int) $_POST['role_id'];
@@ -131,13 +220,24 @@ $statusFilter = $_GET['status'] ?? '';
 
 $where = [];
 $params = [];
-if ($scopeDeptIds !== null) {
-    if (!$scopeDeptIds) {
-        $where[] = '1=0'; // Dean with no faculty assigned sees nobody, rather than everybody
+if ($deanUniversityWide) {
+    $where[] = "r.role_name = 'Student'"; // Dean: every student in the university, never staff accounts
+} elseif ($scopeDeptIds !== null) {
+    if (!$scopeDeptIds && !$hodCanSeeDeans) {
+        $where[] = '1=0';
     } else {
-        $placeholders = [];
-        foreach ($scopeDeptIds as $i => $d) { $placeholders[] = ":dept$i"; $params["dept$i"] = $d; }
-        $where[] = 'u.department_id IN (' . implode(',', $placeholders) . ')';
+        $scopeClauses = [];
+        if ($scopeDeptIds) {
+            $placeholders = [];
+            foreach ($scopeDeptIds as $i => $d) { $placeholders[] = ":dept$i"; $params["dept$i"] = $d; }
+            $scopeClauses[] = "(r.role_name = 'Student' AND u.department_id IN (" . implode(',', $placeholders) . "))";
+        } else {
+            $scopeClauses[] = '1=0';
+        }
+        if ($hodCanSeeDeans) {
+            $scopeClauses[] = "r.role_name = 'Dean'";
+        }
+        $where[] = '(' . implode(' OR ', $scopeClauses) . ')';
     }
 }
 if ($search !== '') {
@@ -167,15 +267,91 @@ $users = $stmt->fetchAll();
 
 $roles = $db->query('SELECT * FROM roles ORDER BY role_id')->fetchAll();
 $departments = $db->query('SELECT department_id, department_name FROM departments ORDER BY department_name')->fetchAll();
+$faculties = $db->query('SELECT faculty_id, faculty_name FROM faculties ORDER BY faculty_name')->fetchAll();
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
-<h4 class="display-font mb-1">Users &amp; Roles</h4>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+  <h4 class="display-font mb-1">Users &amp; Roles</h4>
+  <?php if ($myRole === 'Administrator' || $myRole === 'HOD'): ?>
+    <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#createStaffModal">
+      <i class="bi bi-person-plus-fill me-1"></i> <?= $myRole === 'Administrator' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?>
+    </button>
+  <?php endif; ?>
+</div>
 <p class="text-muted small mb-4">
   <?php if ($myRole === 'Administrator'): ?>Full management of every account.
-  <?php elseif ($myRole === 'Dean'): ?>Scoped to students in your faculty's departments.
-  <?php else: ?>Scoped to students in your department.<?php endif; ?>
+  <?php elseif ($myRole === 'Dean'): ?>University-wide: every student account, regardless of department or faculty.
+  <?php else: ?>Scoped to students in your department, plus all Dean accounts.<?php endif; ?>
 </p>
+
+<?php if ($myRole === 'Administrator' || $myRole === 'HOD'): ?>
+<div class="modal fade" id="createStaffModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="create_staff">
+        <div class="modal-header">
+          <h6 class="modal-title display-font"><?= $myRole === 'Administrator' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small">Account Type</label>
+            <select name="new_role" id="newRoleSelect" class="form-select form-select-sm" onchange="toggleStaffFields()" required>
+              <?php if ($myRole === 'Administrator'): ?>
+                <option value="HOD">Head of Department (HOD)</option>
+                <option value="Dean">Dean</option>
+                <option value="Lecturer">Lecturer</option>
+              <?php else: ?>
+                <option value="Dean">Dean</option>
+              <?php endif; ?>
+            </select>
+          </div>
+          <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" required></div>
+          <div class="mb-2"><label class="form-label small">Email Address</label><input type="email" name="email" class="form-control form-control-sm" required></div>
+          <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" placeholder="+250..."></div>
+          <div class="mb-2" id="targetDeptField">
+            <label class="form-label small">Department (for HOD / Lecturer)</label>
+            <select name="target_department_id" class="form-select form-select-sm">
+              <option value="">Select department</option>
+              <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="mb-2" id="lecturerExtraFields" style="display:none;">
+            <label class="form-label small">Title (optional)</label>
+            <input name="lecturer_title" class="form-control form-control-sm mb-2" placeholder="e.g. Dr., Senior Lecturer">
+            <label class="form-label small">Specialization (optional)</label>
+            <input name="lecturer_specialization" class="form-control form-control-sm" placeholder="e.g. Database Systems">
+          </div>
+          <div class="mb-2" id="targetFacultyField" style="display:none;">
+            <label class="form-label small">Faculty (for Dean)</label>
+            <select name="target_faculty_id" class="form-select form-select-sm">
+              <option value="">Select faculty</option>
+              <?php foreach ($faculties as $f): ?><option value="<?= (int) $f['faculty_id'] ?>"><?= e($f['faculty_name']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <p class="text-muted" style="font-size:0.78rem;">A temporary password will be generated automatically and emailed to this address. The account is created already Active (no email verification step), since it was provisioned by staff rather than self-registered.</p>
+        </div>
+        <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Create Account</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+function toggleStaffFields() {
+  const v = document.getElementById('newRoleSelect').value;
+  document.getElementById('targetDeptField').style.display = (v === 'HOD' || v === 'Lecturer') ? '' : 'none';
+  document.getElementById('lecturerExtraFields').style.display = (v === 'Lecturer') ? '' : 'none';
+  document.getElementById('targetFacultyField').style.display = (v === 'Dean') ? '' : 'none';
+}
+document.addEventListener('DOMContentLoaded', function () {
+  const sel = document.getElementById('newRoleSelect');
+  if (sel) { toggleStaffFields(); sel.addEventListener('change', toggleStaffFields); }
+});
+</script>
+<?php endif; ?>
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
@@ -242,6 +418,13 @@ require __DIR__ . '/../partials/layout_top.php';
                       <select name="session_type" class="form-select form-select-sm">
                         <option value="">Not set</option>
                         <?php foreach (['Day', 'Evening', 'Weekend'] as $s): ?><option <?= $u['session_type'] === $s ? 'selected' : '' ?>><?= $s ?></option><?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label small">Year of Study</label>
+                      <select name="year_of_study" class="form-select form-select-sm">
+                        <option value="">Not set</option>
+                        <?php for ($y = 1; $y <= 6; $y++): ?><option value="<?= $y ?>" <?= (int) $u['year_of_study'] === $y ? 'selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
                       </select>
                     </div>
                     <?php if ($myRole === 'Administrator'): ?>
