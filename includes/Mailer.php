@@ -193,4 +193,23 @@ final class Mailer
             'day_of_week'      => $dayOfWeek,
         ], (int) $user['user_id']);
     }
+
+    /**
+     * Notify a student of a published semester calendar.
+     * $calendar must contain: academic_year, intake, semester_name, start_date, end_date, notes
+     */
+    public static function sendSemesterCalendar(array $user, array $calendar): bool
+    {
+        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' — Starts ' . date('d M Y', strtotime($calendar['start_date']));
+        return self::send($user['email'], $subject, 'semester_calendar', [
+            'full_name'     => $user['full_name'],
+            'academic_year' => $calendar['academic_year'],
+            'intake'        => $calendar['intake'],
+            'semester_name' => $calendar['semester_name'],
+            'start_date'    => $calendar['start_date'],
+            'end_date'      => $calendar['end_date'],
+            'notes'         => $calendar['notes'] ?? '',
+            'login_url'     => APP_URL . '/auth/login.php',
+        ], (int) $user['user_id']);
+    }
 }

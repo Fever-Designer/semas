@@ -14,13 +14,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'register') {
         $moduleId = (int) $_POST['module_id'];
-        $modStmt = $db->prepare("SELECT * FROM modules WHERE module_id = :id AND status = 'Ongoing'");
-        $modStmt->execute(['id' => $moduleId]);
+
+        // Verify module is accessible to this student (department + intake match)
+        $studentDeptId  = (int) ($me['department_id'] ?? 0);
+        $studentIntake  = $me['intake'] ?? null;
+
+        $modStmt = $db->prepare(
+            "SELECT m.* FROM modules m
+             WHERE m.module_id = :id AND m.status = 'Ongoing'
+               AND (
+                 m.department_id = :dept
+                 OR EXISTS (SELECT 1 FROM module_departments md WHERE md.module_id = m.module_id AND md.department_id = :dept2)
+               )
+               AND (
+                 NOT EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id)
+                 OR EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id AND mi.intake = :intake)
+               )"
+        );
+        $modStmt->execute([
+            'id'     => $moduleId,
+            'dept'   => $studentDeptId,
+            'dept2'  => $studentDeptId,
+            'intake' => $studentIntake,
+        ]);
         $module = $modStmt->fetch();
+
         if (!$module) {
             flash('error', 'Module not available for registration.');
         } else {
-            // Block registration if student already has an ongoing module in the same session type
+            // Block if already has an ongoing module in the same session type
             $conflict = false;
             if ($module['session_type']) {
                 $chk = $db->prepare(
@@ -33,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $existingTitle = $chk->fetchColumn();
                 if ($existingTitle) {
                     $conflict = true;
-                    flash('error', 'You are already registered for "' . $existingTitle . '" which runs in the same ' . $module['session_type'] . ' session. You can only register one module per session type. Contact your HOD if you need an exception.');
+                    flash('error', 'You are already registered for "' . $existingTitle . '" in the same ' . $module['session_type'] . ' session. Contact your HoD if you need an exception.');
                 }
             }
             if (!$conflict) {
@@ -52,21 +74,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
-    redirect('/student/modules.php?tab=' . ($_GET['tab'] ?? 'browse'));
+    redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
 }
 
 $tab = $_GET['tab'] ?? 'browse';
 
-// Browse: Ongoing modules not yet registered, grouped by department.
-$browseStmt = $db->query(
+// Browse: Ongoing modules scoped to student's department + intake.
+$studentDeptId = (int) ($me['department_id'] ?? 0);
+$studentIntake = $me['intake'] ?? null;
+
+$browseParams = [
+    'dept'   => $studentDeptId,
+    'dept2'  => $studentDeptId,
+    'intake' => $studentIntake,
+];
+
+$browseStmt = $db->prepare(
     "SELECT m.*, d.department_name, u.full_name AS lecturer_name
      FROM modules m
      LEFT JOIN departments d ON d.department_id = m.department_id
      LEFT JOIN lecturers l ON l.lecturer_id = m.lecturer_id
      LEFT JOIN users u ON u.user_id = l.user_id
-     WHERE m.status = 'Ongoing' ORDER BY d.department_name, m.module_title"
+     WHERE m.status = 'Ongoing'
+       AND (
+         m.department_id = :dept
+         OR EXISTS (SELECT 1 FROM module_departments md WHERE md.module_id = m.module_id AND md.department_id = :dept2)
+       )
+       AND (
+         NOT EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id)
+         OR EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id AND mi.intake = :intake)
+       )
+     ORDER BY d.department_name, m.module_title"
 );
+$browseStmt->execute($browseParams);
 $browseModules = $browseStmt->fetchAll();
+
 $myEnrolledIds = $db->prepare('SELECT module_id FROM module_enrollments WHERE user_id = :uid');
 $myEnrolledIds->execute(['uid' => $me['user_id']]);
 $myEnrolledIds = array_map('intval', $myEnrolledIds->fetchAll(PDO::FETCH_COLUMN));
@@ -105,7 +147,7 @@ $myCompleted = $completedStmt->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module Registration</h4>
-<p class="text-muted small mb-3">Browse available modules, register, and access attendance, assignments, and announcements once registered.</p>
+<p class="text-muted small mb-3">Browse available modules for your department and intake, then register. To cancel a registration, contact your HoD.</p>
 
 <ul class="nav nav-pills mb-3">
   <li class="nav-item"><a class="nav-link <?= $tab === 'browse' ? 'active' : '' ?>" href="?tab=browse">Browse &amp; Register</a></li>
@@ -121,21 +163,37 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="col-md-4">
           <div class="semas-card p-3 h-100">
             <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
-            <p class="text-muted small mb-2">Lecturer: <?= e($m['lecturer_name'] ?? 'TBA') ?><br><?= e($m['session_type'] ?? 'Any session') ?><?= $m['room'] ? ' &middot; Room ' . e($m['room']) : '' ?></p>
+            <p class="text-muted small mb-2">
+              Lecturer: <?= e($m['lecturer_name'] ?? 'TBA') ?><br>
+              <?= e($m['session_type'] ?? 'Any session') ?>
+              <?= $m['room'] ? ' &middot; Room ' . e($m['room']) : '' ?>
+            </p>
             <?php if ($isEnrolled): ?>
               <span class="badge badge-completed">Registered</span>
             <?php else: ?>
-              <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="register"><input type="hidden" name="module_id" value="<?= (int) $m['module_id'] ?>">
-                <button class="btn btn-sm btn-semas-gold">Register</button></form>
+              <button class="btn btn-sm btn-semas-gold"
+                onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= json_encode($m['module_title']) ?>, <?= json_encode($m['lecturer_name'] ?? 'TBA') ?>, <?= json_encode($m['session_type'] ?? '') ?>)">
+                Register
+              </button>
             <?php endif; ?>
           </div>
         </div>
       <?php endforeach; ?>
     </div>
   <?php endforeach; ?>
-  <?php if (!$grouped): ?><div class="semas-card p-4 text-center text-muted small">No modules are currently open for registration.</div><?php endif; ?>
+  <?php if (!$grouped): ?>
+    <div class="semas-card p-4 text-center text-muted small">
+      No modules are currently open for registration in your department
+      <?= $studentIntake ? '(' . e($studentIntake) . ' intake)' : '' ?>.
+      Check back later or contact your HoD.
+    </div>
+  <?php endif; ?>
 
 <?php elseif ($tab === 'mine'): ?>
+  <div class="alert alert-info small mb-3">
+    <i class="bi bi-info-circle me-1"></i>
+    To de-register from a module, contact your <strong>Head of Department (HoD)</strong>. Only the HoD can remove a registration.
+  </div>
   <div class="row g-3">
     <?php foreach ($myOngoing as $m): ?>
       <div class="col-md-4">
@@ -143,13 +201,15 @@ require __DIR__ . '/../partials/layout_top.php';
           <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
           <p class="text-muted small mb-2">Lecturer: <?= e($m['lecturer_name'] ?? 'TBA') ?><br><?= e($m['department_name'] ?? '') ?></p>
           <div class="d-flex flex-wrap gap-1">
-            <a href="<?= APP_URL ?>/student/attendance.php#hist-<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas">Attendance</a>
-            <a href="<?= APP_URL ?>/student/assignments.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark">Assignments</a>
+            <a href="<?= APP_URL ?>/student/attendance#hist-<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas">Attendance</a>
+            <a href="<?= APP_URL ?>/student/assignments?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark">Assignments</a>
           </div>
         </div>
       </div>
     <?php endforeach; ?>
-    <?php if (!$myOngoing): ?><div class="col-12"><div class="semas-card p-4 text-center text-muted small">You're not registered for any ongoing module yet. <a href="?tab=browse">Browse modules</a>.</div></div><?php endif; ?>
+    <?php if (!$myOngoing): ?>
+      <div class="col-12"><div class="semas-card p-4 text-center text-muted small">You're not registered for any ongoing module yet. <a href="?tab=browse">Browse modules</a>.</div></div>
+    <?php endif; ?>
   </div>
 
 <?php else: /* completed */ ?>
@@ -159,12 +219,59 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="semas-card p-3 h-100">
           <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
           <p class="text-muted small mb-2">Lecturer: <?= e($m['lecturer_name'] ?? 'TBA') ?><br><?= e($m['department_name'] ?? '') ?></p>
-          <a href="<?= APP_URL ?>/student/cat-exam-slips.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas-gold"><i class="bi bi-printer me-1"></i> CAT / Exam Slips</a>
+          <a href="<?= APP_URL ?>/student/cat-exam-slips?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas-gold"><i class="bi bi-printer me-1"></i> CAT / Exam Slips</a>
         </div>
       </div>
     <?php endforeach; ?>
-    <?php if (!$myCompleted): ?><div class="col-12"><div class="semas-card p-4 text-center text-muted small">No completed modules yet.</div></div><?php endif; ?>
+    <?php if (!$myCompleted): ?>
+      <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No completed modules yet.</div></div>
+    <?php endif; ?>
   </div>
 <?php endif; ?>
+
+<!-- Registration Confirmation Modal -->
+<div class="modal fade" id="registerConfirmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font"><i class="bi bi-journal-check me-1"></i> Confirm Registration</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">You are about to register for:</p>
+        <div class="semas-card p-3 mb-3">
+          <div class="fw-semibold" id="confirmModuleTitle"></div>
+          <div class="text-muted small mt-1">Lecturer: <span id="confirmLecturer"></span></div>
+          <div class="text-muted small">Session: <span id="confirmSession"></span></div>
+        </div>
+        <p class="small text-muted mb-0">
+          <i class="bi bi-exclamation-circle me-1"></i>
+          Once registered, only your HoD can cancel this registration. Make sure this is the right module.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" id="registerConfirmForm">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="register">
+          <input type="hidden" name="module_id" id="confirmModuleId">
+          <button type="submit" class="btn btn-semas-gold btn-sm">
+            <i class="bi bi-check-circle me-1"></i> Yes, Register Me
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openRegisterConfirm(moduleId, title, lecturer, session) {
+    document.getElementById('confirmModuleTitle').textContent = title;
+    document.getElementById('confirmLecturer').textContent = lecturer || 'TBA';
+    document.getElementById('confirmSession').textContent = session || 'Any session';
+    document.getElementById('confirmModuleId').value = moduleId;
+    new bootstrap.Modal(document.getElementById('registerConfirmModal')).show();
+}
+</script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

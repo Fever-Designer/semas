@@ -36,7 +36,16 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
-<style>:root { --semas-gold: <?= e($themeGold) ?>; --semas-ink: <?= e($themeInk) ?>; }</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.css">
+<style>
+:root { --semas-gold: <?= e($themeGold) ?>; --semas-ink: <?= e($themeInk) ?>; }
+#nprogress .bar { background: var(--semas-gold); height: 3px; }
+#nprogress .peg { box-shadow: 0 0 10px var(--semas-gold), 0 0 5px var(--semas-gold); }
+.semas-main { animation: semasIn 0.15s ease-out; }
+@keyframes semasIn { from { opacity: 0.4; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.min.js"></script>
+<script>NProgress.configure({ showSpinner: false, trickleSpeed: 60 }); NProgress.start();</script>
 </head>
 <body>
 <script>window.SEMAS_BASE_URL = "<?= APP_URL ?>";</script>
@@ -71,7 +80,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements &amp; Holidays</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/users.php"><i class="bi bi-people-fill"></i> Manage Students</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
@@ -80,7 +88,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <?php if ($roleLabel === 'Dean'): ?>
         <div class="nav-section-label">Students</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/dean/announcements.php"><i class="bi bi-megaphone-fill"></i> Student Announcements</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/users.php"><i class="bi bi-people-fill"></i> Manage Students</a>
         <div class="nav-section-label">Event Management</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/events.php"><i class="bi bi-calendar-event-fill"></i> Events</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'ai' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/ai_generator.php"><i class="bi bi-robot"></i> AI Notification Generator</a>
@@ -102,6 +109,27 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link" href="<?= APP_URL ?>/lecturer/announcements.php"><i class="bi bi-megaphone-fill"></i> Module Announcements</a>
         <div class="nav-section-label">Lost &amp; Found</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Report / Claim Items</a>
+      <?php endif; ?>
+
+      <?php if ($roleLabel === 'Registrar'): ?>
+        <div class="nav-section-label">Student Management</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'students' ? 'active' : '' ?>" href="<?= APP_URL ?>/registrar/students.php"><i class="bi bi-person-badge-fill"></i> Manage Students</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'semester-calendar' ? 'active' : '' ?>" href="<?= APP_URL ?>/registrar/semester-calendar.php"><i class="bi bi-calendar3"></i> Semester Calendar</a>
+        <div class="nav-section-label">Communication</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/registrar/announcements.php"><i class="bi bi-megaphone-fill"></i> Student Announcements</a>
+        <div class="nav-section-label">More</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
+      <?php endif; ?>
+
+      <?php if ($roleLabel === 'Coordinator'): ?>
+        <div class="nav-section-label">Weekend Academic</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Weekend Modules</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements</a>
+        <div class="nav-section-label">More</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Student'): ?>

@@ -11,6 +11,11 @@ $me = Auth::user();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
+    if (empty(trim($_POST['title'] ?? '')) || empty(trim($_POST['message'] ?? ''))) {
+        flash('error', 'Title and message are required and cannot be empty.');
+        redirect('/dean/announcements.php');
+    }
+
     $who      = $_POST['who']       ?? 'students';
     $subScope = $_POST['sub_scope'] ?? 'all';
     $sessionT = $_POST['session_type']  ?? '';
@@ -159,7 +164,7 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
 
     <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
-      <button class="btn btn-semas" name="save_as" value="publish"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
+      <button class="btn btn-semas" name="save_as" value="publish" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
       <button class="btn btn-outline-dark" name="save_as" value="draft">Save as Draft</button>
       <div class="form-check mb-0">
         <input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">

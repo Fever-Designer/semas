@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'Dean', 'HOD', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Student', 'Lecturer', 'Registrar', 'Coordinator']);
 
 $pageTitle = 'My Profile';
 $db = Database::connection();
@@ -24,9 +24,15 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'contact') {
     csrf_verify();
     $phone = trim($_POST['phone_number'] ?? '');
-    $session = $_POST['session_type'] ?: null;
-    $db->prepare('UPDATE users SET phone_number = :phone, session_type = :session WHERE user_id = :id')
-       ->execute(['phone' => $phone ?: null, 'session' => $session, 'id' => $userId]);
+    if ($me['role_name'] === 'Student') {
+        // Students: phone only — session and email are managed by Registrar
+        $db->prepare('UPDATE users SET phone_number = :phone WHERE user_id = :id')
+           ->execute(['phone' => $phone ?: null, 'id' => $userId]);
+    } else {
+        $session = $_POST['session_type'] ?: null;
+        $db->prepare('UPDATE users SET phone_number = :phone, session_type = :session WHERE user_id = :id')
+           ->execute(['phone' => $phone ?: null, 'session' => $session, 'id' => $userId]);
+    }
     AuditLog::record($userId, 'PROFILE_UPDATE_CONTACT');
     flash('success', 'Contact details updated.');
     redirect('/profile.php');
@@ -61,6 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'passwor
 // ---- Request email change (sends a verification link to the NEW address; live email is untouched until confirmed) ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'email') {
     csrf_verify();
+    if ($me['role_name'] === 'Student') {
+        flash('error', 'Students cannot change their email address. Please contact the Registrar Office.');
+        redirect('/profile.php');
+    }
     $newEmail = trim($_POST['new_email'] ?? '');
 
     if (!filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
@@ -132,7 +142,7 @@ $activeNav = 'dashboard';
 require __DIR__ . '/partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">My Profile</h4>
-<p class="text-muted small mb-4">You can only view and edit your own information.</p>
+<p class="text-muted small mb-4">You can  view and edit your own information.</p>
 
 <?php foreach ($errors as $err): ?><div class="alert alert-danger small"><?= e($err) ?></div><?php endforeach; ?>
 
@@ -174,12 +184,8 @@ require __DIR__ . '/partials/layout_top.php';
           <?php if ($me['role_name'] === 'Student'): ?>
           <div class="col-md-6">
             <label class="form-label small">Session</label>
-            <select name="session_type" class="form-select">
-              <option value="">Not set</option>
-              <?php foreach (['Day', 'Evening', 'Weekend'] as $s): ?>
-                <option value="<?= $s ?>" <?= $me['session_type'] === $s ? 'selected' : '' ?>><?= $s ?></option>
-              <?php endforeach; ?>
-            </select>
+            <div class="form-control bg-light" style="cursor:not-allowed;"><?= e($me['session_type'] ?? 'Not set') ?></div>
+            <div class="form-text"><i class="bi bi-lock-fill me-1"></i>Managed by Registrar</div>
           </div>
           <?php endif; ?>
         </div>
@@ -187,16 +193,24 @@ require __DIR__ . '/partials/layout_top.php';
       </form>
     </div>
 
+    <?php if ($me['role_name'] !== 'Student'): ?>
     <div class="semas-card p-3 mb-3">
       <h6 class="display-font mb-3">Change Email Address</h6>
       <p class="text-muted small">Current: <strong><?= e($me['email']) ?></strong>. Changing it sends a confirmation link to the new address — your login email stays the same until you click it.</p>
       <form method="post" class="d-flex gap-2">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="email">
-        <input type="email" name="new_email" class="form-control" placeholder="new.email@example.com" required>
+        <input type="email" name="new_email" class="form-control" placeholder="new.email@uok.ac.rw" required>
         <button class="btn btn-semas-gold text-nowrap">Send Confirmation</button>
       </form>
     </div>
+    <?php else: ?>
+    <div class="semas-card p-3 mb-3">
+      <h6 class="display-font mb-3">Email Address</h6>
+      <p class="mb-1 small">Current: <strong><?= e($me['email']) ?></strong></p>
+      <div class="alert alert-light border small py-2 mb-0"><i class="bi bi-lock-fill me-1"></i>Your email is managed by the Registrar Office. Contact them to request a change.</div>
+    </div>
+    <?php endif; ?>
 
     <div class="semas-card p-3">
       <h6 class="display-font mb-3">Change Password</h6>

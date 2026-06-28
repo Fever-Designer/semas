@@ -14,13 +14,14 @@ final class Auth
     public static function attempt(string $email, string $password): array
     {
         // Returns ['ok' => bool, 'user' => array|null, 'error' => string|null]
+        // Accepts email OR registration number as the first credential.
         $db = Database::connection();
         $stmt = $db->prepare(
             'SELECT u.*, r.role_name FROM users u
              JOIN roles r ON r.role_id = u.role_id
-             WHERE u.email = :email LIMIT 1'
+             WHERE (u.email = :email OR u.reg_number = :reg) LIMIT 1'
         );
-        $stmt->execute(['email' => $email]);
+        $stmt->execute(['email' => $email, 'reg' => $email]);
         $user = $stmt->fetch();
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
@@ -39,16 +40,37 @@ final class Auth
     {
         self::start();
         session_regenerate_id(true);
-        $_SESSION['user_id']   = (int) $user['user_id'];
-        $_SESSION['role']      = $user['role_name'];
-        $_SESSION['full_name'] = $user['full_name'];
-        $_SESSION['email']     = $user['email'];
+        $_SESSION['user_id']              = (int) $user['user_id'];
+        $_SESSION['role']                 = $user['role_name'];
+        $_SESSION['full_name']            = $user['full_name'];
+        $_SESSION['email']                = $user['email'];
+        $_SESSION['must_change_password'] = (bool) ($user['must_change_password'] ?? false);
 
         $db = Database::connection();
         $db->prepare('UPDATE users SET last_login_at = NOW() WHERE user_id = :id')
            ->execute(['id' => $user['user_id']]);
 
         AuditLog::record((int) $user['user_id'], 'LOGIN');
+    }
+
+    /** Returns true if the logged-in user must change their password before accessing anything. */
+    public static function mustChangePassword(): bool
+    {
+        self::start();
+        return !empty($_SESSION['must_change_password']);
+    }
+
+    /** Call at the top of any protected page to enforce the first-login password change. */
+    public static function enforceMustChangePassword(): void
+    {
+        if (self::check() && self::mustChangePassword()) {
+            // Avoid infinite redirect loop on the change-password page itself
+            $script = $_SERVER['SCRIPT_NAME'] ?? '';
+            if (!str_ends_with($script, 'change-password.php') && !str_ends_with($script, 'logout.php')) {
+                header('Location: ' . APP_URL . '/auth/change-password.php');
+                exit;
+            }
+        }
     }
 
     public static function logout(): void

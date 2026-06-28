@@ -2,6 +2,9 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 
+// Student self-registration is disabled. Accounts are created by the Registrar.
+flash('error', 'Student self-registration is not available. Please contact the Registrar office for your login credentials.');
+redirect('/auth/login.php');
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

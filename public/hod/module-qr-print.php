@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD']);
+Auth::requireRole(['HOD', 'Coordinator']);
 
 $db       = Database::connection();
 $moduleId = (int) ($_GET['module_id'] ?? 0);
@@ -59,7 +59,7 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 
 <div class="instruction">
   <strong>Students:</strong> Scan this QR code with your phone camera to mark your attendance.<br>
-  Sign in within the first 10 minutes to be marked <strong>Present</strong>, within 20 minutes for <strong>Late</strong>.
+  Sign in within the first 10 minutes to be marked <strong>Present</strong>
 </div>
 
 <div class="meta">

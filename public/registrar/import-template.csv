@@ -1,0 +1,3 @@
+reg_number,full_name,email,phone,department_code,session_type,intake,year_of_study
+2401001001,John Doe,johndoe@example.com,+250700000001,IT,Day,JAN,1
+2401001002,Jane Smith,janesmith@example.com,+250700000002,CS,Evening,MAY,2

@@ -123,12 +123,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/hod/eligibility.php?module_id=' . $moduleId . '&exam_type=' . ($_POST['exam_type'] ?? $_GET['exam_type'] ?? 'CAT'));
 }
 
-$moduleId = (int) ($_GET['module_id'] ?? 0);
-$examType = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
+$moduleId  = (int) ($_GET['module_id'] ?? 0);
+$examType  = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
+$viewMode  = ($_GET['view'] ?? 'active') === 'history' ? 'history' : 'active';
 
 $modules = $db->query(
     "SELECT m.*, d.department_name FROM modules m LEFT JOIN departments d ON d.department_id = m.department_id
-     WHERE m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL ORDER BY m.module_title"
+     WHERE m.status = 'Ongoing' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL)
+     ORDER BY m.module_title"
+)->fetchAll();
+
+$completedModules = $db->query(
+    "SELECT m.*, d.department_name FROM modules m LEFT JOIN departments d ON d.department_id = m.department_id
+     WHERE m.status = 'Completed' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL)
+     ORDER BY m.module_title"
 )->fetchAll();
 
 $list = [];
@@ -163,13 +171,20 @@ $lecturers = $db->query(
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Eligibility</h4>
-<p class="text-muted small mb-4">Select a module to generate or review eligibility. A student who missed 2 or more classes before the cutoff is recommended "Not Allowed" — you can Approve that, or Override it with a reason.</p>
+<p class="text-muted small mb-3">Manage eligibility and schedules. Students who missed 2+ classes are recommended "Not Allowed" — you can Approve or Override with a reason.</p>
 
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link <?= $viewMode === 'active' ? 'active' : '' ?>" href="?view=active">Ongoing Modules</a></li>
+  <li class="nav-item"><a class="nav-link <?= $viewMode === 'history' ? 'active' : '' ?>" href="?view=history"><i class="bi bi-clock-history me-1"></i>History (Completed)</a></li>
+</ul>
+
+<?php if ($viewMode === 'active'): ?>
 <div class="semas-card p-3 mb-4">
   <form method="get" class="row g-2">
+    <input type="hidden" name="view" value="active">
     <div class="col-md-6">
       <select name="module_id" class="form-select form-select-sm" onchange="this.form.submit()">
-        <option value="">Select a module</option>
+        <option value="">Select an ongoing module</option>
         <?php foreach ($modules as $m): ?><option value="<?= (int) $m['module_id'] ?>" <?= $moduleId === (int) $m['module_id'] ? 'selected' : '' ?>><?= e($m['module_title']) ?> (<?= e($m['department_name'] ?? '') ?>)</option><?php endforeach; ?>
       </select>
     </div>
@@ -298,6 +313,77 @@ require __DIR__ . '/../partials/layout_top.php';
       </table>
     </div>
   </div>
+<?php endif; // $selectedModule ?>
+
+<?php elseif ($viewMode === 'history'): ?>
+<!-- History: Completed modules — read-only view -->
+<?php if (!$completedModules): ?>
+  <div class="semas-card p-4 text-center text-muted small">No completed modules with CAT/Exam dates found.</div>
+<?php else: ?>
+  <?php
+  $histModId = (int) ($_GET['module_id'] ?? 0);
+  $histExamType = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
+  ?>
+  <?php if (!$histModId): ?>
+  <div class="semas-card p-3">
+    <p class="small text-muted mb-2">Completed modules (read-only — no actions available):</p>
+    <div class="row g-2">
+      <?php foreach ($completedModules as $m): ?>
+      <div class="col-md-4">
+        <a href="?view=history&module_id=<?= $m['module_id'] ?>&exam_type=CAT" class="btn btn-outline-secondary btn-sm w-100 text-start py-2">
+          <strong><?= e($m['module_title']) ?></strong><br>
+          <small class="text-muted"><?= e($m['department_name'] ?? '') ?></small>
+        </a>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php else: ?>
+  <?php
+  $histMod = null;
+  foreach ($completedModules as $m) { if ((int)$m['module_id'] === $histModId) { $histMod = $m; break; } }
+  $histList = [];
+  if ($histMod) {
+      $hs = $db->prepare("SELECT ce.*, u.full_name, u.reg_number FROM cat_exam_eligibility ce JOIN users u ON u.user_id = ce.user_id WHERE ce.module_id = :mid AND ce.exam_type = :type ORDER BY u.full_name");
+      $hs->execute(['mid' => $histModId, 'type' => $histExamType]);
+      $histList = $hs->fetchAll();
+  }
+  ?>
+  <div class="mb-2 d-flex gap-2 flex-wrap">
+    <a href="?view=history&module_id=<?= $histModId ?>&exam_type=CAT" class="btn btn-sm <?= $histExamType==='CAT' ? 'btn-semas' : 'btn-outline-dark' ?>">CAT</a>
+    <a href="?view=history&module_id=<?= $histModId ?>&exam_type=Exam" class="btn btn-sm <?= $histExamType==='Exam' ? 'btn-semas' : 'btn-outline-dark' ?>">Exam</a>
+    <a href="?view=history" class="btn btn-sm btn-outline-secondary ms-auto">← All Completed</a>
+  </div>
+  <?php if ($histMod): ?>
+  <div class="semas-card p-3 mb-3">
+    <h6 class="display-font mb-1"><?= e($histMod['module_title']) ?> <span class="badge bg-secondary ms-1">Completed</span></h6>
+    <small class="text-muted"><?= e($histMod['department_name'] ?? '') ?> · <?= $histExamType ?> Date: <?= e($histExamType==='CAT' ? ($histMod['cat_date']??'—') : ($histMod['exam_date']??'—')) ?></small>
+  </div>
+  <div class="semas-card p-3">
+    <div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-eye me-1"></i>History view — read only. No changes can be made to completed modules.</div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Student</th><th>Reg No.</th><th>Missed</th><th>System Decision</th><th>HOD Status</th><th>Final</th></tr></thead>
+        <tbody>
+          <?php foreach ($histList as $row): ?>
+          <tr>
+            <td><?= e($row['full_name']) ?></td>
+            <td><?= e($row['reg_number'] ?? '—') ?></td>
+            <td><?= (int) $row['absences_count'] ?></td>
+            <td><span class="badge <?= $row['system_decision']==='Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['system_decision']) ?></span></td>
+            <td><span class="badge bg-secondary"><?= e($row['hod_decision']) ?></span></td>
+            <td><span class="badge <?= $row['final_decision']==='Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['final_decision']) ?></span></td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (!$histList): ?><tr><td colspan="6" class="text-muted small text-center py-3">No eligibility records for this module/exam type.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <?php endif; ?>
+  <?php endif; ?>
 <?php endif; ?>
+
+<?php endif; // $viewMode ?>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

@@ -24,8 +24,10 @@ require_once __DIR__ . '/../includes/ClassAttendance.php';
 require_once __DIR__ . '/../includes/Settings.php';
 require_once __DIR__ . '/../includes/Module.php';
 require_once __DIR__ . '/../includes/Eligibility.php';
+require_once __DIR__ . '/../includes/IntakeHelper.php';
 
 Auth::start();
+Auth::enforceMustChangePassword();
 
 function csrf_token(): string
 {
@@ -49,13 +51,15 @@ function csrf_verify(): void
     }
 }
 
-function e(?string $value): string
+function e(mixed $value): string
 {
-    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
 function redirect(string $path): void
 {
+    // Strip .php extension so PHP redirects produce clean URLs
+    $path = preg_replace('/\.php(?=\?|#|$)/', '', $path);
     header('Location: ' . APP_URL . $path);
     exit;
 }

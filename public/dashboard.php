@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student', 'Registrar', 'Coordinator']);
 
 $db = Database::connection();
 $role = Auth::role();
@@ -117,6 +117,14 @@ if ($role === 'Principal') {
         $ongoingModules = array_values(array_filter($allModules, function ($m) { return $m['status'] === 'Ongoing'; }));
         $completedModules = array_values(array_filter($allModules, function ($m) { return $m['status'] === 'Completed'; }));
     }
+
+} elseif ($role === 'Registrar') {
+    // Redirect Registrar to their own dashboard
+    redirect('/registrar/dashboard.php');
+
+} elseif ($role === 'Coordinator') {
+    // Redirect Coordinator to their own dashboard
+    redirect('/coordinator/dashboard.php');
 
 } else { // Student
     $upcoming = $db->query("SELECT * FROM events WHERE status IN ('Scheduled','Ongoing') ORDER BY event_date LIMIT 6");

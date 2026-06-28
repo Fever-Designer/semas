@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student', 'Registrar', 'Coordinator']);
 
 $pageTitle = 'Announcement Board';
 $activeNav = 'announcements';

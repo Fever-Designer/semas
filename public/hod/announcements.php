@@ -15,6 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Announcement send ──────────────────────────────────────────────────
     if ($action === 'send_announcement') {
+        if (empty(trim($_POST['title'] ?? '')) || empty(trim($_POST['message'] ?? ''))) {
+            flash('error', 'Title and message are required and cannot be empty.');
+            redirect('/hod/announcements.php');
+        }
         $audience = $_POST['audience'] ?? 'students';
         $deptId   = (int) ($_POST['department_id'] ?? 0) ?: null;
         $deptName = null;
@@ -237,7 +241,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">
-        <button class="btn btn-semas" name="save_as" value="publish"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
+        <button class="btn btn-semas" name="save_as" value="publish" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
         <button class="btn btn-outline-dark" name="save_as" value="draft">Save as Draft</button>
       </div>
     </form>

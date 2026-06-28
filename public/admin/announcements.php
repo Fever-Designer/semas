@@ -11,6 +11,11 @@ $me = Auth::user();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
+    if (empty(trim($_POST['title'] ?? '')) || empty(trim($_POST['message'] ?? ''))) {
+        flash('error', 'Title and message are required and cannot be empty.');
+        redirect('/admin/announcements.php');
+    }
+
     // ── Resolve recipients ────────────────────────────────────────────────
     $who      = $_POST['who']      ?? 'everyone';       // everyone|students|lecturers|staff
     $subScope = $_POST['sub_scope'] ?? 'all';           // all|department|session|year|first_year|final_year
@@ -28,9 +33,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $recipients  = AudienceResolver::resolve('University Community');
 
     } elseif ($who === 'staff') {
-        $audienceKey = 'Staff';
-        $scopeLabel  = 'Staff — Principals, Deans & HODs';
-        $recipients  = AudienceResolver::resolve('Staff');
+        $audienceKey = 'All Staff';
+        $scopeLabel  = 'All Staff — Principals, Deans, HODs, Registrars, Coordinators & Lecturers';
+        // Include all non-student roles
+        $stmt = $db->query(
+            "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
+             WHERE r.role_name IN ('Principal','Dean','HOD','Lecturer','Registrar','Coordinator')
+               AND u.status='Active'"
+        );
+        $recipients = $stmt->fetchAll();
+
+    } elseif ($who === 'registrar') {
+        $audienceKey = 'Registrar';
+        $scopeLabel  = 'Registrar Office';
+        $stmt = $db->query(
+            "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
+             WHERE r.role_name='Registrar' AND u.status='Active'"
+        );
+        $recipients = $stmt->fetchAll();
+
+    } elseif ($who === 'coordinator') {
+        $audienceKey = 'Coordinator';
+        $scopeLabel  = 'Weekend Coordinators';
+        $stmt = $db->query(
+            "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
+             WHERE r.role_name='Coordinator' AND u.status='Active'"
+        );
+        $recipients = $stmt->fetchAll();
 
     } elseif ($who === 'lecturers') {
         $audienceKey = 'Department Lecturers';
@@ -136,7 +165,9 @@ require __DIR__ . '/../partials/layout_top.php';
           <option value="everyone">Everyone (all users)</option>
           <option value="students">Students</option>
           <option value="lecturers">Lecturers</option>
-          <option value="staff">Staff only (Admins / Deans / HODs)</option>
+          <option value="staff">All Staff (Admins / Deans / HODs / Registrars / Coordinators)</option>
+          <option value="registrar">Registrar Office only</option>
+          <option value="coordinator">Coordinator(s) only</option>
         </select>
       </div>
 
@@ -187,7 +218,9 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
 
     <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
-      <button class="btn btn-semas"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
+      <button class="btn btn-semas" id="adminSendBtn" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()">
+        <i class="bi bi-send me-1"></i> Publish &amp; Notify
+      </button>
       <div class="form-check mb-0">
         <input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">
         <label class="form-check-label small" for="send_sms">Also send via SMS</label>
@@ -206,16 +239,14 @@ require __DIR__ . '/../partials/layout_top.php';
 function syncWho() {
   const who = document.getElementById('whoSelect').value;
   document.getElementById('subScopeWrap').style.display = (who === 'students') ? '' : 'none';
-  // Lecturers can optionally filter by department
-  const showDeptForLec = (who === 'lecturers');
-  if (showDeptForLec) {
+  if (who === 'lecturers') {
     document.getElementById('deptWrap').style.display = '';
     document.getElementById('sessionWrap').style.display = 'none';
     document.getElementById('yearWrap').style.display = 'none';
   } else if (who === 'students') {
     syncSubScope();
   } else {
-    // everyone / staff: no sub-filters
+    // everyone / staff / registrar / coordinator: no sub-filters
     document.getElementById('deptWrap').style.display = 'none';
     document.getElementById('sessionWrap').style.display = 'none';
     document.getElementById('yearWrap').style.display = 'none';

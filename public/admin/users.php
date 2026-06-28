@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'Dean', 'HOD']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Registrar']);
 
 $pageTitle = 'Users & Roles';
 $activeNav = 'users';
@@ -17,14 +17,18 @@ $myRole = Auth::role();
 //      department_id — is what stops a Dean from ever touching an HOD/Dean/
 //      Principal account, and stops an HOD from touching anything
 //      outside their own department other than Deans. ----
-$scopeDeptIds = null; // null = unrestricted (Principal)
+$scopeDeptIds = null; // null = unrestricted (Principal — but still excludes Students, see below)
 $hodCanSeeDeans = false;
 $deanUniversityWide = false;
+$registrarMode = false;
 if ($myRole === 'HOD') {
     $scopeDeptIds = [(int) $me['department_id']];
     $hodCanSeeDeans = true;
 } elseif ($myRole === 'Dean') {
     $deanUniversityWide = true;
+} elseif ($myRole === 'Registrar') {
+    // Registrar: redirect to dedicated students page for student management
+    redirect('/registrar/students.php');
 }
 
 /** Mirrors the same role+department rule used in the listing query below, for POST actions. */
@@ -50,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     csrf_verify();
 
     $newRole = $_POST['new_role'] ?? '';
-    $canCreate = ($myRole === 'Principal' && in_array($newRole, ['HOD', 'Dean', 'Lecturer'], true))
+    $canCreate = ($myRole === 'Principal' && in_array($newRole, ['HOD', 'Dean', 'Lecturer', 'Registrar', 'Coordinator'], true))
               || ($myRole === 'HOD' && $newRole === 'Dean');
 
     if (!$canCreate) {
@@ -220,7 +224,10 @@ $statusFilter = $_GET['status'] ?? '';
 
 $where = [];
 $params = [];
-if ($deanUniversityWide) {
+if ($myRole === 'Principal') {
+    // Principal manages staff roles only; students are managed exclusively by the Registrar
+    $where[] = "r.role_name != 'Student'";
+} elseif ($deanUniversityWide) {
     $where[] = "r.role_name = 'Student'"; // Dean: every student in the university, never staff accounts
 } elseif ($scopeDeptIds !== null) {
     if (!$scopeDeptIds && !$hodCanSeeDeans) {

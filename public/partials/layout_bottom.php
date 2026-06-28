@@ -97,6 +97,18 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
   loadNotifications();
   setInterval(loadNotifications, 20000); // AJAX auto-refresh every 20s
 })();
+
+// Navigation progress bar
+NProgress.done();
+document.addEventListener('click', function(e) {
+    var a = e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.getAttribute('href');
+    if (!href || href.charAt(0) === '#' || href.indexOf('javascript') === 0 || a.target || a.hasAttribute('data-bs-toggle') || a.hasAttribute('data-bs-dismiss') || a.download) return;
+    NProgress.start();
+});
+document.addEventListener('submit', function() { NProgress.start(); });
+window.addEventListener('pageshow', function(e) { if (e.persisted) NProgress.done(); });
 </script>
 </body>
 </html>

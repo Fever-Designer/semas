@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student']);
+Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student', 'Registrar', 'Coordinator']);
 
 $pageTitle = 'Lost & Found';
 $activeNav = 'lostfound';
@@ -10,6 +10,8 @@ $me = Auth::user();
 $role = Auth::role();
 $isAdmin = $role === 'Principal'; // view-only / stats, per design — Admin never reports, claims, or approves
 $isDean = $role === 'Dean';
+$isRegistrar = $role === 'Registrar'; // can report items but cannot claim
+$isCoordinator = $role === 'Coordinator'; // same as Registrar — report only
 
 $categories = ['Electronics', 'Documents/ID', 'Books/Stationery', 'Clothing/Accessories', 'Keys', 'Bag', 'Other'];
 

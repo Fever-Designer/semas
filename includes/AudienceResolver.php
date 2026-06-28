@@ -33,6 +33,22 @@ final class AudienceResolver
                         WHERE r.role_name IN ('Principal','Dean','HOD') AND u.status = 'Active'";
                 return $db->query($sql)->fetchAll();
 
+            case 'All Staff':
+                $sql = "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                        WHERE r.role_name IN ('Principal','Dean','HOD','Lecturer','Registrar','Coordinator')
+                          AND u.status = 'Active'";
+                return $db->query($sql)->fetchAll();
+
+            case 'Registrar':
+                $sql = "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                        WHERE r.role_name = 'Registrar' AND u.status = 'Active'";
+                return $db->query($sql)->fetchAll();
+
+            case 'Coordinator':
+                $sql = "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                        WHERE r.role_name = 'Coordinator' AND u.status = 'Active'";
+                return $db->query($sql)->fetchAll();
+
             case 'University Community':
                 $sql = "SELECT * FROM users WHERE status = 'Active'";
                 return $db->query($sql)->fetchAll();

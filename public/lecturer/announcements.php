@@ -23,6 +23,12 @@ $selectedModuleId = (int) ($_GET['module_id'] ?? ($modules[0]['module_id'] ?? 0)
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
+
+    if (empty(trim($_POST['title'] ?? '')) || empty(trim($_POST['message'] ?? ''))) {
+        flash('error', 'Title and message are required and cannot be empty.');
+        redirect('/lecturer/announcements.php');
+    }
+
     $moduleId = (int) $_POST['module_id'];
     $modCheck = $db->prepare('SELECT * FROM modules WHERE module_id = :id AND lecturer_id = :lec');
     $modCheck->execute(['id' => $moduleId, 'lec' => $lecturer['lecturer_id'] ?? 0]);
@@ -98,7 +104,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <label class="form-check-label small" for="send_sms">Also send via SMS</label></div>
         </div>
       </div>
-      <button class="btn btn-semas mt-3"><i class="bi bi-send me-1"></i> Send to Registered Students</button>
+      <button class="btn btn-semas mt-3" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Send to Registered Students</button>
     </form>
   </div>
 <?php endif; ?>
