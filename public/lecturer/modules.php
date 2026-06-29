@@ -39,7 +39,12 @@ function lec_module_matches_window(array $module, ?array $window): bool
     if (!$module['session_type']) return true;
     if ($module['session_type'] === 'Day')     return $window['name'] === 'Day';
     if ($module['session_type'] === 'Evening') return $window['name'] === 'Evening';
-    if ($module['session_type'] === 'Weekend') return in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+    if ($module['session_type'] === 'Weekend') {
+        $slot = $module['weekend_slot'] ?? '';
+        if ($slot === 'Morning')   return in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+        if ($slot === 'Afternoon') return in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+        return in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+    }
     return true;
 }
 

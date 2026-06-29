@@ -278,6 +278,30 @@ SQL
         ], isset($invigilator['user_id']) ? (int) $invigilator['user_id'] : null);
     }
 
+    public static function enqueueAssignmentNotification(array $student, array $assignment, array $module, string $lecturerName): void
+    {
+        $deadlineFormatted = date('d M Y, h:i A', strtotime($assignment['deadline']));
+        $attachmentUrl = !empty($assignment['attachment_path'])
+            ? rtrim(APP_URL, '/') . '/' . ltrim($assignment['attachment_path'], '/')
+            : '';
+        self::enqueue(
+            $student['email'],
+            'New Assignment: ' . $assignment['title'] . ' — ' . $module['module_title'],
+            'assignment_notification',
+            [
+                'full_name'          => $student['full_name'],
+                'assignment_title'   => $assignment['title'],
+                'module_title'       => $module['module_title'],
+                'lecturer_name'      => $lecturerName,
+                'session_type'       => $module['session_type'] ?? 'N/A',
+                'deadline_formatted' => $deadlineFormatted,
+                'instructions'       => $assignment['instructions'] ?? '',
+                'attachment_url'     => $attachmentUrl,
+            ],
+            isset($student['user_id']) ? (int) $student['user_id'] : null
+        );
+    }
+
     // --- Convenience wrappers for every email type listed in the spec ---
 
     public static function sendVerification(array $user, string $verifyUrl): bool

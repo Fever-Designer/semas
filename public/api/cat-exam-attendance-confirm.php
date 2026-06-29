@@ -223,6 +223,12 @@ if ($action === 'submit') {
         throw $e;
     }
 
+    // If this was an Exam, automatically mark the module as Completed
+    if ($schedule['exam_type'] === 'Exam') {
+        $db->prepare("UPDATE modules SET status = 'Completed' WHERE module_id = :mid AND status = 'Ongoing'")
+           ->execute(['mid' => $schedule['module_id']]);
+    }
+
     AuditLog::record(Auth::id(), 'CAT_EXAM_SUBMIT', 'cat_exam_schedules', $scheduleId);
     echo json_encode(['ok' => true, 'message' => 'Attendance list submitted to HOD successfully.']);
     exit;

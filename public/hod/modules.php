@@ -16,6 +16,13 @@ if ($isCoordinator) {
     $sessionTypes = ['Weekend'];
 }
 
+// Ensure weekend_slot column exists (added for Morning/Afternoon sub-session support)
+try {
+    $db->exec('ALTER TABLE modules ADD COLUMN weekend_slot VARCHAR(20) NULL DEFAULT NULL');
+} catch (PDOException $e) {
+    if (($e->errorInfo[1] ?? 0) !== 1060) throw $e; // 1060 = duplicate column, safe to ignore
+}
+
 function hodAvailableRooms(PDO $db, string $sessionType = '', int $excludeModuleId = 0): array
 {
     if ($sessionType === '') {
@@ -45,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $catDate   = trim($_POST['cat_date']   ?? '');
         $examDate  = trim($_POST['exam_date']  ?? '');
         $sessionType = trim($_POST['session_type'] ?? '');
-        $lecId     = (int) ($_POST['lecturer_id'] ?? 0);
+        $lecUserId = (int) ($_POST['lecturer_user_id'] ?? 0);
         $roomId    = (int) ($_POST['room_id'] ?? 0) ?: null;
         $modId     = $action === 'update' ? (int) $_POST['module_id'] : 0;
 
@@ -53,14 +60,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $deptIds = array_map('intval', array_filter($_POST['dept_ids'] ?? []));
         $primaryDeptId = $deptIds[0] ?? 0;
         $extraDeptIds  = array_slice($deptIds, 1);
+        $weekendSlot = $sessionType === 'Weekend' ? (in_array($_POST['weekend_slot'] ?? '', ['Morning', 'Afternoon'], true) ? $_POST['weekend_slot'] : null) : null;
 
-        if (!in_array($sessionType, $sessionTypes, true)) { flash('error', 'A valid session must be selected.'); redirect('/hod/modules.php'); }
-        if ($isCoordinator && $sessionType !== 'Weekend') { flash('error', 'Coordinators may only create or edit Weekend modules.'); redirect('/hod/modules.php'); }
-        if (!$lecId)          { flash('error', 'A lecturer must be assigned.');   redirect('/hod/modules.php'); }
-        if (!$primaryDeptId)  { flash('error', 'At least one department is required.'); redirect('/hod/modules.php'); }
-        if (!$startDate || !$endDate || !$catDate || !$examDate) { flash('error', 'All dates are required.'); redirect('/hod/modules.php'); }
-        if ($startDate < $today && $action === 'create') { flash('error', 'Start date cannot be in the past.'); redirect('/hod/modules.php'); }
-        if ($startDate > $catDate || $catDate > $examDate || $examDate > $endDate) { flash('error', 'Dates must follow: Start ≤ CAT ≤ Exam ≤ End.'); redirect('/hod/modules.php'); }
+        // Helper: store error in session and reopen the form modal
+        $formError = function(string $msg) use ($action, $modId): void {
+            $_SESSION['mf_error'] = $msg;
+            $_SESSION['mf_data']  = $_POST;
+            $qs = ($action === 'create') ? '?reopen=create' : '?reopen=edit&rid=' . $modId;
+            redirect('/hod/modules.php' . $qs);
+        };
+
+        if (!in_array($sessionType, $sessionTypes, true)) { $formError('A valid session must be selected.'); }
+        if ($isCoordinator && $sessionType !== 'Weekend')  { $formError('Coordinators may only create or edit Weekend modules.'); }
+        if (!$lecId)         { $formError('A lecturer must be assigned.'); }
+        if (!$primaryDeptId) { $formError('At least one department is required.'); }
+        if (!$startDate || !$endDate || !$catDate || !$examDate) { $formError('All dates are required.'); }
+        if ($startDate < $today && $action === 'create') { $formError('Start date cannot be in the past.'); }
+        if ($startDate > $catDate || $catDate > $examDate || $examDate > $endDate) { $formError('Dates must follow: Start ≤ CAT ≤ Exam ≤ End.'); }
 
         // Validate intakes
         $intakes = array_filter($_POST['intakes'] ?? [], 'isValidIntakeCode');
@@ -69,8 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lc = $db->prepare("SELECT COUNT(*) FROM modules WHERE lecturer_id=:lec AND session_type=:session AND status='Ongoing' AND module_id!=:mid");
         $lc->execute(['lec' => $lecId, 'session' => $sessionType, 'mid' => $modId]);
         if ((int) $lc->fetchColumn() > 0) {
-            flash('error', 'This lecturer already has an Ongoing ' . $sessionType . ' module.');
-            redirect('/hod/modules.php');
+            $formError('This lecturer already has an Ongoing ' . $sessionType . ' module. One lecturer per session type.');
         }
 
         // Room conflict
@@ -78,20 +93,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $rc = $db->prepare("SELECT COUNT(*) FROM modules WHERE room_id=:r AND session_type=:session AND status='Ongoing' AND module_id!=:mid");
             $rc->execute(['r' => $roomId, 'session' => $sessionType, 'mid' => $modId]);
             if ((int) $rc->fetchColumn() > 0) {
-                flash('error', 'This room is already assigned to another Ongoing ' . $sessionType . ' module.');
-                redirect('/hod/modules.php');
+                $formError('This room is already assigned to another Ongoing ' . $sessionType . ' module.');
             }
         }
 
         if ($action === 'create') {
             $qrSecret = bin2hex(random_bytes(32));
             $db->prepare(
-                'INSERT INTO modules (module_title, department_id, lecturer_id, session_type, room_id,
+                'INSERT INTO modules (module_title, department_id, lecturer_id, session_type, weekend_slot, room_id,
                  cat_date, exam_date, module_qr_secret, start_date, end_date, created_by)
-                 VALUES (:title, :dept, :lec, :session, :room, :cat, :exam, :qr, :start, :end, :uid)'
+                 VALUES (:title, :dept, :lec, :session, :wslot, :room, :cat, :exam, :qr, :start, :end, :uid)'
             )->execute([
                 'title' => trim($_POST['module_title']), 'dept' => $primaryDeptId, 'lec' => $lecId,
-                'session' => $sessionType, 'room' => $roomId,
+                'session' => $sessionType, 'wslot' => $weekendSlot, 'room' => $roomId,
                 'cat' => $catDate, 'exam' => $examDate, 'qr' => $qrSecret,
                 'start' => $startDate, 'end' => $endDate, 'uid' => $me['user_id'],
             ]);
@@ -99,11 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $db->prepare(
                 'UPDATE modules SET module_title=:title, department_id=:dept, lecturer_id=:lec,
-                 session_type=:session, room_id=:room, cat_date=:cat, exam_date=:exam, start_date=:start, end_date=:end
+                 session_type=:session, weekend_slot=:wslot, room_id=:room,
+                 cat_date=:cat, exam_date=:exam, start_date=:start, end_date=:end
                  WHERE module_id=:id'
             )->execute([
                 'title' => trim($_POST['module_title']), 'dept' => $primaryDeptId, 'lec' => $lecId,
-                'session' => $sessionType, 'room' => $roomId, 'cat' => $catDate, 'exam' => $examDate,
+                'session' => $sessionType, 'wslot' => $weekendSlot, 'room' => $roomId,
+                'cat' => $catDate, 'exam' => $examDate,
                 'start' => $startDate, 'end' => $endDate, 'id' => $modId,
             ]);
         }
@@ -176,7 +192,7 @@ if ($isCoordinator) { $where[] = "m.session_type = 'Weekend'"; }
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $stmt = $db->prepare(
-    "SELECT m.*, d.department_name, u.full_name AS lecturer_name, r.room_name,
+    "SELECT m.*, d.department_name, u.full_name AS lecturer_name, u.user_id AS lecturer_user_id, l.title AS lecturer_title, r.room_name,
         (SELECT COUNT(*) FROM module_enrollments e WHERE e.module_id=m.module_id) AS student_count,
         (SELECT GROUP_CONCAT(mi.intake ORDER BY mi.intake SEPARATOR ', ') FROM module_intakes mi WHERE mi.module_id=m.module_id) AS intakes_list
      FROM modules m
@@ -193,7 +209,26 @@ $completedModules = array_values(array_filter($modules, function ($m) { return (
 
 $departments = $db->query('SELECT d.department_id, d.department_name, d.department_code, f.faculty_name FROM departments d JOIN faculties f ON f.faculty_id=d.faculty_id ORDER BY f.faculty_name, d.department_name')->fetchAll();
 $allRooms    = hodAvailableRooms($db);
-$lecturers   = $db->query("SELECT l.lecturer_id, u.full_name FROM lecturers l JOIN users u ON u.user_id=l.user_id WHERE u.status='Active' ORDER BY u.full_name")->fetchAll();
+// Include Lecturers, HOD, and Coordinators (they can all teach and invigilate)
+$lecturers   = $db->query(
+    "SELECT u.user_id, u.full_name, r.role_name, COALESCE(l.title,'') AS title
+     FROM users u
+     JOIN roles r ON r.role_id = u.role_id
+     LEFT JOIN lecturers l ON l.user_id = u.user_id
+     WHERE u.status = 'Active' AND r.role_name IN ('Lecturer','HOD','Coordinator')
+     ORDER BY u.full_name"
+)->fetchAll();
+
+// Read inline-form error from session (set on validation failure to reopen modal)
+$mfError     = '';
+$mfData      = [];
+$reopenModal  = $_GET['reopen'] ?? '';
+$reopenEditId = (int) ($_GET['rid'] ?? 0);
+if (isset($_SESSION['mf_error'])) {
+    $mfError = (string) $_SESSION['mf_error'];
+    $mfData  = (array) ($_SESSION['mf_data'] ?? []);
+    unset($_SESSION['mf_error'], $_SESSION['mf_data']);
+}
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -243,7 +278,11 @@ require __DIR__ . '/../partials/layout_top.php';
       ?>
         <tr>
           <td class="fw-semibold"><?= e($m['module_title']) ?></td>
-          <td><?= e($m['session_type'] ?? '—') ?></td>
+          <td><?php
+            $stype = $m['session_type'] ?? '—';
+            $slot  = $m['weekend_slot'] ?? '';
+            echo e($stype === 'Weekend' && $slot ? "Weekend – $slot" : $stype);
+          ?></td>
           <td><?= e($m['department_name'] ?? '—') ?></td>
           <td><?= e($m['lecturer_name'] ?? '—') ?></td>
           <td><?= e($m['room_name'] ?? '—') ?></td>
@@ -284,7 +323,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <input type="hidden" name="module_id" value="<?= $mId ?>">
                 <div class="modal-header"><h6 class="modal-title display-font">Edit: <?= e($m['module_title']) ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                  <?= moduleFormFields("e{$mId}", $lecturers, $editRooms, $intakeList, $sessionTypes, $m, $editDepts, $today, $m['room_id']) ?>
+                  <?= moduleFormFields("e{$mId}", $lecturers, $editRooms, $intakeList, $sessionTypes, $m, $editDepts, $today, $m['room_id'], ($reopenModal === 'edit' && $reopenEditId === $mId) ? $mfError : '') ?>
                 </div>
                 <div class="modal-footer"><button class="btn btn-semas btn-sm">Save Changes</button></div>
               </form>
@@ -441,7 +480,11 @@ require __DIR__ . '/../partials/layout_top.php';
         <input type="hidden" name="action" value="create">
         <div class="modal-header"><h6 class="modal-title display-font">New Module</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <?= moduleFormFields('new', $lecturers, $allRooms, $intakeList, $sessionTypes, [], [], $today, null) ?>
+          <?php
+            $createPreFill = ($reopenModal === 'create' && $mfData) ? $mfData : [];
+            $createError   = ($reopenModal === 'create') ? $mfError : '';
+          ?>
+          <?= moduleFormFields('new', $lecturers, $allRooms, $intakeList, $sessionTypes, $createPreFill, [], $today, null, $createError) ?>
         </div>
         <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Create Module</button></div>
       </form>
@@ -463,9 +506,13 @@ require __DIR__ . '/../partials/layout_top.php';
  * @param int|null $currentRoomId
  */
 function moduleFormFields(string $uid, array $lecturers, array $rooms, array $intakeList,
-                          array $sessionTypes, array $mod, array $selectedDepts, string $today, ?int $currentRoomId): string
+                          array $sessionTypes, array $mod, array $selectedDepts, string $today, ?int $currentRoomId, string $error = ''): string
 {
+    $isCreate = empty($mod['module_id']);
     ob_start(); ?>
+    <?php if ($error !== ''): ?>
+      <div class="alert alert-danger alert-sm small py-2 mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i><?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
     <div class="row g-2">
 
       <!-- Title -->
@@ -504,6 +551,18 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
           <?php endforeach; ?>
         </select>
       </div>
+
+      <!-- Weekend Slot (shown only when Weekend session selected) -->
+      <?php $currentSlot = $mod['weekend_slot'] ?? ''; ?>
+      <div class="col-md-6 weekend-slot-wrap-<?= $uid ?>" <?= ($mod['session_type'] ?? '') !== 'Weekend' ? 'style="display:none;"' : '' ?>>
+        <label class="form-label small fw-semibold">Weekend Session <span class="text-danger">*</span></label>
+        <select name="weekend_slot" class="form-select form-select-sm" id="wslot-<?= $uid ?>">
+          <option value="">Select slot</option>
+          <option value="Morning" <?= $currentSlot === 'Morning' ? 'selected' : '' ?>>Weekend Morning</option>
+          <option value="Afternoon" <?= $currentSlot === 'Afternoon' ? 'selected' : '' ?>>Weekend Afternoon</option>
+        </select>
+      </div>
+      <?php if (($mod['session_type'] ?? '') !== 'Weekend'): ?><div class="col-md-6 weekend-slot-placeholder-<?= $uid ?>"></div><?php endif; ?>
 
       <!-- Lecturer -->
       <div class="col-md-6">
@@ -549,7 +608,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
 
       <!-- Dates -->
       <div class="col-6"><label class="form-label small fw-semibold">Start Date <span class="text-danger">*</span></label>
-        <input type="date" name="start_date" class="form-control form-control-sm" required value="<?= e($mod['start_date'] ?? '') ?>"></div>
+        <input type="date" name="start_date" class="form-control form-control-sm" <?= $isCreate ? 'min="' . $today . '"' : '' ?> required value="<?= e($mod['start_date'] ?? '') ?>"></div>
       <div class="col-6"><label class="form-label small fw-semibold">End Date <span class="text-danger">*</span></label>
         <input type="date" name="end_date" class="form-control form-control-sm" min="<?= $today ?>" required value="<?= e($mod['end_date'] ?? '') ?>"></div>
       <div class="col-6"><label class="form-label small fw-semibold">CAT Date <span class="text-danger">*</span></label>
@@ -583,6 +642,17 @@ foreach ($modules as $m) {
 
 <script>
 const DEPTS_DATA = <?= $deptJson ?>;
+<?php if ($reopenModal === 'create'): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    var m = new bootstrap.Modal(document.getElementById('newModuleModal'));
+    m.show();
+});
+<?php elseif ($reopenModal === 'edit' && $reopenEditId): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('edit-<?= $reopenEditId ?>');
+    if (el) { var m = new bootstrap.Modal(el); m.show(); }
+});
+<?php endif; ?>
 const MODULE_INTAKES = <?= json_encode($moduleIntakesMap) ?>;
 
 // Pre-check intakes for each edit modal
@@ -606,7 +676,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.querySelectorAll('.module-session-select').forEach(function(select) {
-        select.addEventListener('change', function() { refreshRoomsForSession(this); });
+        select.addEventListener('change', function() {
+            refreshRoomsForSession(this);
+            toggleWeekendSlot(this);
+        });
     });
 
     document.querySelectorAll('.hist-toggle').forEach(function(btn) {
@@ -616,6 +689,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+function toggleWeekendSlot(select) {
+    var uid = select.dataset.uid;
+    var isWeekend = select.value === 'Weekend';
+    var wrap = document.querySelector('.weekend-slot-wrap-' + uid);
+    var placeholder = document.querySelector('.weekend-slot-placeholder-' + uid);
+    if (wrap) wrap.style.display = isWeekend ? '' : 'none';
+    if (placeholder) placeholder.style.display = isWeekend ? 'none' : '';
+    var slotSelect = document.getElementById('wslot-' + uid);
+    if (slotSelect && !isWeekend) slotSelect.value = '';
+}
 
 function refreshRoomsForSession(select) {
     var uid = select.dataset.uid;
@@ -632,7 +716,7 @@ function refreshRoomsForSession(select) {
     fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var options = ['<option value="">— No room —</option>'];
+            var options = ['<option value="">— TBC —</option>'];
             if (data.ok && Array.isArray(data.rooms)) {
                 data.rooms.forEach(function(room) {
                     var selected = String(room.room_id) === String(previousValue) ? ' selected' : '';

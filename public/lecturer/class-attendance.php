@@ -1,405 +1,487 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireRole(['Lecturer', 'HOD', 'Coordinator']);
+Module::autoCompleteExpired();
 
 $pageTitle = 'Class Attendance';
-$activeNav = 'modules';
-$db = Database::connection();
-$me = Auth::user();
+$activeNav = 'class-attendance';
+$db        = Database::connection();
+$me        = Auth::user();
+$today     = date('Y-m-d');
 
-$lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');
-$lecStmt->execute(['uid' => $me['user_id']]);
-$lecturer = $lecStmt->fetch();
-
-$moduleId  = (int) ($_GET['module_id'] ?? 0);
-$tab       = $_GET['tab'] ?? 'live';
-$rangeType = $_GET['range'] ?? 'monthly';
-$rangeDate = $_GET['date'] ?? date('Y-m-d');
-
-if ($rangeType === 'weekly') {
-    $dateFrom = date('Y-m-d', strtotime('monday this week', strtotime($rangeDate)));
-    $dateTo   = date('Y-m-d', strtotime('sunday this week', strtotime($rangeDate)));
-} elseif ($rangeType === 'daily') {
-    $dateFrom = $rangeDate;
-    $dateTo   = $rangeDate;
-} else {
-    $dateFrom = date('Y-m-01', strtotime($rangeDate));
-    $dateTo   = date('Y-m-t',  strtotime($rangeDate));
-}
-
-$modStmt = $db->prepare('SELECT * FROM modules WHERE module_id = :id AND lecturer_id = :lec');
-$modStmt->execute(['id' => $moduleId, 'lec' => $lecturer['lecturer_id'] ?? 0]);
-$module = $modStmt->fetch();
-
-if (!$module) {
-    require __DIR__ . '/../partials/layout_top.php';
-    echo '<div class="alert alert-warning small">Module not found, or it is not assigned to you. <a href="' . APP_URL . '/lecturer/modules.php">Back to My Modules</a></div>';
-    require __DIR__ . '/../partials/layout_bottom.php';
-    exit;
-}
-
-// CSV export
-if (($_GET['export'] ?? '') === 'csv') {
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="attendance_' . $moduleId . '_' . date('Ymd') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['Student Name', 'Reg Number', 'Date', 'Session', 'Status', 'Check-in Time', 'Method']);
-    $rows = $db->prepare(
-        "SELECT u.full_name, u.reg_number, cs.session_date, cs.window_name,
-                cal.status, cal.checkin_time, cal.verification_method
-         FROM class_attendance_logs cal
-         JOIN class_sessions cs ON cs.session_id = cal.session_id
-         JOIN users u ON u.user_id = cal.user_id
-         WHERE cs.module_id = :mid AND cs.session_date BETWEEN :from AND :to
-               AND cal.attendance_type = 'Sign In'
-         ORDER BY cs.session_date, u.full_name"
-    );
-    $rows->execute(['mid' => $moduleId, 'from' => $dateFrom, 'to' => $dateTo]);
-    foreach ($rows->fetchAll() as $r) {
-        fputcsv($out, [$r['full_name'], $r['reg_number'], $r['session_date'], $r['window_name'], $r['status'], $r['verification_method'] !== 'Auto' ? $r['checkin_time'] : '', $r['verification_method']]);
-    }
-    fclose($out);
-    exit;
-}
-
-$activeWindow = ClassAttendance::currentWindow();
-$session = null;
-
+// ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
-    $action = $_POST['action'] ?? '';
-    if ($action === 'open_attendance' && $activeWindow) {
-        // Find-or-create exactly one class_sessions row for (module, today, this window).
-        $find = $db->prepare("SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win");
-        $find->execute(['mid' => $moduleId, 'win' => $activeWindow['name']]);
-        $existing = $find->fetch();
-        if (!$existing) {
-            $secret = QrService::generateSecret();
+    $action   = $_POST['action']    ?? '';
+    $moduleId = (int) ($_POST['module_id'] ?? 0);
+
+    if ($action === 'manual_mark') {
+        $sessionId = (int) ($_POST['session_id'] ?? 0);
+        $userId    = (int) ($_POST['user_id']    ?? 0);
+        $mark      = $_POST['mark_status'] ?? '';
+        if (!in_array($mark, ['Present', 'Late', 'Absent'], true) || !$sessionId || !$userId) {
+            flash('error', 'Invalid mark request.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        // Lecturers can only manually mark during the live class window
+        $sessInfo = $db->prepare("SELECT start_time, end_time FROM class_sessions WHERE session_id = :sid");
+        $sessInfo->execute(['sid' => $sessionId]);
+        $sessData = $sessInfo->fetch();
+        $signInTime  = null;
+        $signOutTime = null;
+        if ($sessData && $sessData['start_time'] && $sessData['end_time']) {
+            $tz      = new DateTimeZone('Africa/Kigali');
+            $nowDt   = new DateTime('now', $tz);
+            $startDt = new DateTime($sessData['start_time'], $tz);
+            $endDt   = new DateTime($sessData['end_time'], $tz);
+            if ($nowDt < $startDt || $nowDt > $endDt) {
+                flash('error', 'Manual marking is only allowed during the class session ('
+                    . $startDt->format('H:i') . ' – ' . $endDt->format('H:i') . ').');
+                redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            }
+            $signInTime  = $sessData['start_time'];
+            $signOutTime = $sessData['end_time'];
+        }
+        $db->prepare("DELETE FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid")
+           ->execute(['sid' => $sessionId, 'uid' => $userId]);
+        if ($mark === 'Absent') {
             $db->prepare(
-                'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, created_by)
-                 VALUES (:mid, CURDATE(), :win, :start, :end, :secret, :uid)'
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
+                 VALUES (:sid, :uid, 'Sign In', 'Absent', 'Auto')"
+            )->execute(['sid' => $sessionId, 'uid' => $userId]);
+        } else {
+            // Sign-in at class start time, sign-out at class end time
+            $db->prepare(
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, checkin_time)
+                 VALUES (:sid, :uid, 'Sign In', :st, 'Manual', :cin)"
+            )->execute(['sid' => $sessionId, 'uid' => $userId, 'st' => $mark, 'cin' => $signInTime]);
+            $db->prepare(
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, checkin_time)
+                 VALUES (:sid, :uid, 'Sign Out', 'Present', 'Manual', :cout)"
+            )->execute(['sid' => $sessionId, 'uid' => $userId, 'cout' => $signOutTime]);
+        }
+        AuditLog::record(Auth::id(), 'MANUAL_MARK_ATTENDANCE', 'class_sessions', $sessionId, "user={$userId};mark={$mark}");
+        flash('success', 'Attendance updated.');
+        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+    }
+
+    if ($action === 'create_session') {
+        $sessDate   = trim($_POST['session_date'] ?? '');
+        $windowName = trim($_POST['window_name']  ?? '');
+        if (!$sessDate || !$windowName || !$moduleId) {
+            flash('error', 'Date and window are required.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        $defaultTimes = [
+            'Day' => ['08:00:00','13:00:00'], 'Evening' => ['17:00:00','21:00:00'],
+            'WeekendMorning' => ['08:00:00','13:00:00'], 'WeekendAfternoon' => ['13:00:00','17:00:00'],
+            'UmugandaMorning' => ['08:00:00','13:00:00'], 'UmugandaAfternoon' => ['13:00:00','17:00:00'],
+        ];
+        [$defStart, $defEnd] = $defaultTimes[$windowName] ?? ['08:00:00','17:00:00'];
+        try {
+            $db->prepare(
+                "INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, status, created_by)
+                 VALUES (:mid, :date, :win, :st, :en, 'Open', :uid)"
             )->execute([
-                'mid' => $moduleId, 'win' => $activeWindow['name'],
-                'start' => $activeWindow['start']->format('Y-m-d H:i:s'), 'end' => $activeWindow['end']->format('Y-m-d H:i:s'),
-                'secret' => $secret, 'uid' => $me['user_id'],
+                'mid' => $moduleId, 'date' => $sessDate, 'win' => $windowName,
+                'st' => $sessDate . ' ' . $defStart, 'en' => $sessDate . ' ' . $defEnd,
+                'uid' => $me['user_id'],
             ]);
-            $newSessionId = (int) $db->lastInsertId();
-            AuditLog::record(Auth::id(), 'CLASS_SESSION_OPEN', 'class_sessions', $newSessionId);
-            // Auto-add all enrolled students to the roster with Absent status.
-            // When they actually scan in, this record gets updated to Present/Late.
+            $newSid = (int) $db->lastInsertId();
             $db->prepare(
                 "INSERT IGNORE INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
                  SELECT :sid, e.user_id, 'Sign In', 'Absent', 'Auto'
                  FROM module_enrollments e WHERE e.module_id = :mid"
-            )->execute(['sid' => $newSessionId, 'mid' => $moduleId]);
+            )->execute(['sid' => $newSid, 'mid' => $moduleId]);
+            AuditLog::record(Auth::id(), 'CREATE_SESSION_MANUAL', 'class_sessions', $newSid);
+            flash('success', 'Session added. Students pre-marked Absent — update individually as needed.');
+        } catch (PDOException $e) {
+            flash('error', 'Session already exists for this date/window, or an error occurred.');
         }
-        flash('success', 'Attendance is open for ' . ClassAttendance::describeWindow($activeWindow) . '.');
-    } elseif ($action === 'close_session') {
-        $sessionId = (int) $_POST['session_id'];
-        $db->prepare("UPDATE class_sessions SET status='Closed' WHERE session_id=:id AND module_id=:mid")
-           ->execute(['id' => $sessionId, 'mid' => $moduleId]);
-        AuditLog::record(Auth::id(), 'CLASS_SESSION_CLOSE', 'class_sessions', $sessionId);
-        flash('success', 'Attendance closed for this session.');
+        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
     }
-    redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+
+    redirect('/lecturer/class-attendance.php');
 }
 
-if ($activeWindow) {
-    $find = $db->prepare("SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win AND status = 'Open'");
-    $find->execute(['mid' => $moduleId, 'win' => $activeWindow['name']]);
-    $session = $find->fetch();
+// ── Lecturer's modules ─────────────────────────────────────────────────────
+$allModules = $db->prepare(
+    "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, m.status,
+            m.start_date, m.end_date, m.cat_date, m.exam_date,
+            d.department_name, COALESCE(lt.title,'') AS lecturer_title,
+            u.full_name AS lecturer_name, r.room_name
+     FROM modules m
+     LEFT JOIN departments d ON d.department_id = m.department_id
+     LEFT JOIN lecturers lt  ON lt.lecturer_id  = m.lecturer_id
+     LEFT JOIN users u       ON u.user_id        = lt.user_id
+     LEFT JOIN rooms r       ON r.room_id        = m.room_id
+     WHERE lt.user_id = :uid AND m.status = 'Ongoing'
+     ORDER BY m.module_title"
+);
+$allModules->execute(['uid' => $me['user_id']]);
+$allModules = $allModules->fetchAll();
+
+$moduleId = (int) ($_GET['module_id'] ?? 0);
+$module   = null;
+foreach ($allModules as $am) {
+    if ((int) $am['module_id'] === $moduleId) { $module = $am; break; }
 }
 
-$countStmt = $db->prepare('SELECT COUNT(*) FROM module_enrollments WHERE module_id = :mid');
-$countStmt->execute(['mid' => $moduleId]);
-$enrolledCount = (int) $countStmt->fetchColumn();
+// ── Attendance data ────────────────────────────────────────────────────────
+$sessions   = [];
+$students   = [];
+$attMap     = [];
+$holidayMap = [];
 
-// Calendar: all sessions for this module
-$calStmt = $db->prepare(
-    "SELECT session_id, session_date, window_name FROM class_sessions
-     WHERE module_id = :mid ORDER BY session_date ASC, window_name ASC"
-);
-$calStmt->execute(['mid' => $moduleId]);
-$calendarSessions = $calStmt->fetchAll();
+if ($module) {
+    $excludeDates = array_values(array_filter([$module['cat_date'], $module['exam_date']]));
 
-// All enrolled students
-$calStudentsStmt = $db->prepare(
-    "SELECT u.user_id, u.full_name, u.reg_number
-     FROM module_enrollments me JOIN users u ON u.user_id = me.user_id
-     WHERE me.module_id = :mid ORDER BY u.full_name"
-);
-$calStudentsStmt->execute(['mid' => $moduleId]);
-$calendarStudents = $calStudentsStmt->fetchAll();
+    $sessStmt = $db->prepare(
+        "SELECT session_id, session_date, window_name, start_time, end_time, status
+         FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC, start_time ASC"
+    );
+    $sessStmt->execute(['mid' => $moduleId]);
+    $allSess = $sessStmt->fetchAll();
+    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates) {
+        return !in_array($s['session_date'], $excludeDates, true);
+    }));
 
-// Attendance pivot
-$calAttMap = [];
-if ($calendarSessions) {
-    $calAttStmt = $db->prepare(
-        "SELECT cal.user_id, cal.session_id, cal.status
+    foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
+        $holidayMap[$h['holiday_date']] = true;
+    }
+
+    $stuStmt = $db->prepare(
+        "SELECT u.user_id, u.full_name, u.reg_number
+         FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
+         WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
+    );
+    $stuStmt->execute(['mid' => $moduleId]);
+    $students = $stuStmt->fetchAll();
+
+    $logStmt = $db->prepare(
+        "SELECT cal.user_id, cal.session_id, cal.attendance_type, cal.status,
+                cal.verification_method, cal.checkin_time
          FROM class_attendance_logs cal
          JOIN class_sessions cs ON cs.session_id = cal.session_id
-         WHERE cs.module_id = :mid AND cal.attendance_type = 'Sign In'"
+         WHERE cs.module_id = :mid"
     );
-    $calAttStmt->execute(['mid' => $moduleId]);
-    foreach ($calAttStmt->fetchAll() as $att) {
-        $calAttMap[(int)$att['user_id']][(int)$att['session_id']] = $att['status'];
+    $logStmt->execute(['mid' => $moduleId]);
+    foreach ($logStmt->fetchAll() as $log) {
+        $sid = (int) $log['session_id'];
+        $uid = (int) $log['user_id'];
+        if (!isset($attMap[$sid][$uid])) {
+            $attMap[$sid][$uid] = ['in_time' => null, 'in_status' => null, 'out_time' => null, 'is_auto' => true];
+        }
+        if ($log['attendance_type'] === 'Sign In') {
+            $attMap[$sid][$uid]['in_status'] = $log['status'];
+            $isAuto = ($log['verification_method'] === 'Auto');
+            $attMap[$sid][$uid]['is_auto'] = $isAuto;
+            if (!$isAuto) {
+                $attMap[$sid][$uid]['in_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
+            }
+        } else {
+            $attMap[$sid][$uid]['out_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
+        }
     }
+}
+
+function lec_att_status(?array $e, string $date, string $today): string
+{
+    if (!$e || $e['is_auto'])                                return $date <= $today ? 'A' : '';
+    if ($e['in_status'] === 'Present' && $e['out_time'])     return 'P';
+    if ($e['in_status'] === 'Late'    && $e['out_time'])     return 'L';
+    return 'A';
 }
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
-<div class="d-flex justify-content-between align-items-start mb-3">
-  <h4 class="display-font mb-0">Class Attendance — <?= e($module['module_title']) ?></h4>
-  <a href="<?= APP_URL ?>/lecturer/modules.php" class="btn btn-sm btn-outline-dark">Back to Modules</a>
+
+<h4 class="display-font mb-3">Class Attendance Register</h4>
+
+<!-- Module selector -->
+<div class="semas-card p-3 mb-3">
+  <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
+    <label class="form-label small fw-semibold mb-0 text-nowrap">My Module:</label>
+    <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:420px;"
+            onchange="this.form.submit()">
+      <option value="">— Choose a module —</option>
+      <?php foreach ($allModules as $am): ?>
+        <option value="<?= (int) $am['module_id'] ?>"
+                <?= (int) $am['module_id'] === $moduleId ? 'selected' : '' ?>>
+          <?= e($am['module_title']) ?> &mdash; <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </form>
 </div>
 
-<?php if (!$activeWindow): ?>
-  <div class="semas-card p-4 text-center">
-    <i class="bi bi-clock-history" style="font-size:2rem;color:var(--semas-text-muted);"></i>
-    <h6 class="display-font mt-2">No Session Window Is Active Right Now</h6>
-  </div>
-<?php elseif (!$session): ?>
-  <div class="semas-card p-4 text-center">
-    <p class="small mb-2">It is currently <strong><?= e(ClassAttendance::describeWindow($activeWindow)) ?></strong>.</p>
-    <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="open_attendance">
-      <button class="btn btn-semas-gold"><i class="bi bi-unlock me-1"></i> Open Attendance for This Session</button></form>
+<?php if (!$module): ?>
+  <div class="semas-card p-5 text-center text-muted">
+    <i class="bi bi-calendar3" style="font-size:2.5rem;opacity:.35;"></i>
+    <p class="mt-3 mb-0">Select one of your modules above to view its attendance register.</p>
   </div>
 <?php else: ?>
-  <div class="alert alert-success small d-flex justify-content-between align-items-center">
-    <span>Attendance is open for <strong><?= e(ClassAttendance::describeWindow($activeWindow)) ?></strong>.</span>
-    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="close_session"><input type="hidden" name="session_id" value="<?= (int) $session['session_id'] ?>">
-      <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Close attendance for this session?');">Close</button></form>
-  </div>
 
-  <div class="row g-3">
-    <div class="col-md-6">
-      <div class="semas-card p-3">
-        <h6 class="display-font mb-2"><i class="bi bi-qr-code-scan me-1"></i> Scan Student's Personal QR</h6>
-        <p class="text-muted small">Scan the QR code from the student's own "My QR Code" page.</p>
-        <div id="reader" style="width:100%;"></div>
-        <button id="startScanBtn" class="btn btn-sm btn-semas-gold mt-2">Start Camera</button>
-      </div>
+<?php
+  $lTitle   = $module['lecturer_title'] ?? '';
+  $lName    = $module['lecturer_name']  ?? 'TBA';
+  $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName : $lName;
+  $slot     = $module['weekend_slot'] ?? '';
+  $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend – {$slot}" : $module['session_type'];
+?>
+
+<div class="semas-card p-3 mb-3">
+  <div class="row g-2" style="font-size:.85rem;">
+    <div class="col-sm-4">
+      <span class="text-muted small">Module</span><br>
+      <strong><?= e($module['module_title']) ?></strong>
     </div>
-    <div class="col-md-6">
-      <div class="semas-card p-3">
-        <h6 class="display-font mb-2"><i class="bi bi-search me-1"></i> Manual Search</h6>
-        <form id="searchForm" class="d-flex gap-2 mb-2" onsubmit="return false;">
-          <input id="searchBox" class="form-control form-control-sm" placeholder="Search registered students...">
-          <button id="searchBtn" class="btn btn-sm btn-semas text-nowrap">Search</button>
-        </form>
-        <div id="searchResults"></div>
-        <div id="foundBar" class="alert alert-success small d-none mt-2 d-flex justify-content-between align-items-center">
-          <span id="foundText"></span>
-          <button id="confirmFoundBtn" class="btn btn-sm btn-semas-gold">Confirm &amp; View Profile</button>
+    <div class="col-sm-4">
+      <span class="text-muted small">Lecturer &amp; Session</span><br>
+      <strong><?= e($lecLabel) ?></strong> &nbsp;
+      <span class="text-muted small"><?= e($sessLabel) ?></span>
+    </div>
+    <div class="col-sm-2">
+      <span class="text-muted small">Room</span><br>
+      <strong><?= e($module['room_name'] ?? '—') ?></strong>
+    </div>
+    <div class="col-sm-2">
+      <span class="text-muted small">Period</span><br>
+      <strong><?= e(date('d M Y', strtotime($module['start_date']))) ?></strong>
+      <span class="text-muted">→</span>
+      <strong><?= e(date('d M Y', strtotime($module['end_date']))) ?></strong>
+    </div>
+  </div>
+  <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+    <span class="badge <?= $module['status'] === 'Ongoing' ? 'badge-completed' : 'bg-secondary' ?>">
+      <?= e($module['status']) ?>
+    </span>
+    <span class="text-muted small"><?= count($students) ?> students &nbsp;·&nbsp; <?= count($sessions) ?> sessions</span>
+    <button type="button" class="btn btn-sm btn-outline-dark ms-auto"
+            data-bs-toggle="modal" data-bs-target="#addSessionModal">
+      <i class="bi bi-calendar-plus me-1"></i> Add Session Date
+    </button>
+  </div>
+</div>
+
+<?php if (!$students): ?>
+  <div class="semas-card p-4 text-center text-muted small">No students enrolled yet.</div>
+<?php elseif (!$sessions): ?>
+  <div class="semas-card p-4 text-center text-muted small">
+    No sessions recorded yet. Students scan the QR code to open the first session,
+    or use <strong>Add Session Date</strong> above.
+  </div>
+<?php else: ?>
+
+<div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.75rem;">
+  <span><span class="px-2 rounded fw-bold" style="background:#d4edda;color:#155724;">P ✓</span> Present</span>
+  <span><span class="px-2 rounded fw-bold" style="background:#fff3cd;color:#856404;">L</span> Late</span>
+  <span><span class="px-2 rounded fw-bold" style="background:#f8d7da;color:#721c24;">A</span> Absent / No sign-out</span>
+  <span><span class="px-2 rounded fw-bold" style="background:#fff3cd;color:#856404;">H</span> Holiday</span>
+  <span class="ms-auto text-muted">Eligibility: ≥ 75%</span>
+</div>
+
+<div class="semas-card p-0 mb-3">
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table class="table table-bordered table-sm mb-0 align-middle" style="white-space:nowrap;font-size:.77rem;">
+      <thead>
+        <tr class="table-dark" style="font-size:.71rem;">
+          <th class="text-center" style="min-width:30px;">#</th>
+          <th style="min-width:95px;">Reg No</th>
+          <th style="min-width:170px;position:sticky;left:0;z-index:3;background:#212529;">Student Name</th>
+          <?php foreach ($sessions as $s):
+            $isHol   = isset($holidayMap[$s['session_date']]);
+            $isToday = ($s['session_date'] === $today);
+            $thStyle = $isHol ? 'background:#fff3cd;color:#856404;' : ($isToday ? 'background:#1a4a8a;' : '');
+          ?>
+            <th class="text-center" style="min-width:62px;vertical-align:middle;<?= $thStyle ?>">
+              <div><?= date('d M', strtotime($s['session_date'])) ?></div>
+              <div style="font-weight:400;opacity:.8;"><?= date('D', strtotime($s['session_date'])) ?></div>
+              <?php if ($isHol): ?>
+                <div style="font-size:.58rem;color:#856404;">HoL</div>
+              <?php elseif (in_array($s['window_name'], ['WeekendMorning','UmugandaMorning'], true)): ?>
+                <div style="font-size:.58rem;opacity:.7;">Morn</div>
+              <?php elseif (in_array($s['window_name'], ['WeekendAfternoon','UmugandaAfternoon'], true)): ?>
+                <div style="font-size:.58rem;opacity:.7;">Aftn</div>
+              <?php endif; ?>
+            </th>
+          <?php endforeach; ?>
+          <th class="text-center" style="min-width:36px;background:#d4edda;color:#155724;">P</th>
+          <th class="text-center" style="min-width:36px;background:#fff3cd;color:#856404;">L</th>
+          <th class="text-center" style="min-width:36px;background:#f8d7da;color:#721c24;">A</th>
+          <th class="text-center" style="min-width:40px;">Tot</th>
+          <th class="text-center" style="min-width:72px;">Attend %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($students as $idx => $stu):
+          $uid  = (int) $stu['user_id'];
+          $pCnt = 0; $lCnt = 0; $aCnt = 0;
+          foreach ($sessions as $s) {
+              if (isset($holidayMap[$s['session_date']]) || $s['session_date'] > $today) continue;
+              $fs = lec_att_status($attMap[(int)$s['session_id']][$uid] ?? null, $s['session_date'], $today);
+              if ($fs === 'P') $pCnt++;
+              elseif ($fs === 'L') $lCnt++;
+              elseif ($fs === 'A') $aCnt++;
+          }
+          $total    = $pCnt + $lCnt + $aCnt;
+          $pct      = $total > 0 ? round(($pCnt + $lCnt) / $total * 100, 1) : 0;
+          $eligible = $pct >= 75;
+        ?>
+        <tr>
+          <td class="text-center text-muted"><?= $idx + 1 ?></td>
+          <td style="color:#666;"><?= e($stu['reg_number'] ?? '—') ?></td>
+          <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:600;min-width:170px;">
+            <?= e($stu['full_name']) ?>
+          </td>
+          <?php foreach ($sessions as $s):
+            $sid   = (int) $s['session_id'];
+            $isHol = isset($holidayMap[$s['session_date']]);
+            $entry = $attMap[$sid][$uid] ?? null;
+            $fs    = lec_att_status($entry, $s['session_date'], $today);
+          ?>
+          <?php if ($isHol): ?>
+            <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
+          <?php elseif ($fs === ''): ?>
+            <td class="text-center" style="color:#ddd;">—</td>
+          <?php elseif (!$entry || $entry['is_auto']): ?>
+            <td class="text-center" style="background:#f8d7da;padding:3px 2px;">
+              <div class="fw-bold" style="color:#721c24;">A</div>
+              <button type="button" class="btn btn-link p-0" style="font-size:.58rem;color:#aaa;line-height:1;"
+                      onclick="openMark(<?= $sid ?>,<?= $uid ?>,<?= $moduleId ?>,'<?= e(addslashes($stu['full_name'])) ?>')">
+                <i class="bi bi-pencil-fill"></i>
+              </button>
+            </td>
+          <?php else: ?>
+            <?php
+              $hasOut = !empty($entry['out_time']);
+              $inTime = $entry['in_time'] ?? '?';
+              if ($fs === 'P')     { $bg = '#d4edda'; $fc = '#155724'; $sym = '✓'; }
+              elseif ($fs === 'L') { $bg = '#fff3cd'; $fc = '#856404'; $sym = 'L'; }
+              else                 { $bg = '#f8d7da'; $fc = '#721c24'; $sym = 'A'; }
+            ?>
+            <td style="background:<?= $bg ?>;color:<?= $fc ?>;text-align:center;line-height:1.4;padding:3px 3px;">
+              <div style="font-size:.67rem;"><?= e($inTime) ?></div>
+              <div style="font-size:.67rem;">
+                <?= $hasOut ? e($entry['out_time']) : '<span style="color:#dc3545;font-size:.6rem;">No Out</span>' ?>
+              </div>
+              <div style="font-weight:700;font-size:.73rem;"><?= $sym ?></div>
+              <button type="button" class="btn btn-link p-0"
+                      style="font-size:.55rem;color:<?= $fc ?>;opacity:.7;line-height:1;"
+                      onclick="openMark(<?= $sid ?>,<?= $uid ?>,<?= $moduleId ?>,'<?= e(addslashes($stu['full_name'])) ?>')">
+                <i class="bi bi-pencil-fill"></i>
+              </button>
+            </td>
+          <?php endif; ?>
+          <?php endforeach; ?>
+          <td class="text-center fw-bold" style="background:#d4edda;color:#155724;"><?= $pCnt ?></td>
+          <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;"><?= $lCnt ?></td>
+          <td class="text-center fw-bold" style="background:#f8d7da;color:#721c24;"><?= $aCnt ?></td>
+          <td class="text-center fw-semibold"><?= $total ?></td>
+          <td class="text-center fw-bold">
+            <span style="color:<?= $eligible ? '#155724' : '#721c24' ?>;"><?= number_format($pct, 1) ?>%</span>
+            <?php if ($total > 0): ?>
+              <i class="bi <?= $eligible ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger' ?>"
+                 style="font-size:.65rem;vertical-align:middle;"
+                 title="<?= $eligible ? 'Eligible' : 'Below 75% — not eligible' ?>"></i>
+            <?php endif; ?>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<?php endif; // sessions + students ?>
+
+<!-- Add Session Modal -->
+<div class="modal fade" id="addSessionModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="create_session">
+        <input type="hidden" name="module_id" value="<?= $moduleId ?>">
+        <div class="modal-header py-2">
+          <h6 class="modal-title display-font small">Add Session Date</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mt-1">
-    <div class="col-md-6">
-      <div id="previewPanel" class="semas-card p-3" style="display:none;">
-        <h6 class="display-font mb-3">Student Profile</h6>
-        <div class="d-flex gap-3">
-          <img id="prevPhoto" src="" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
+        <div class="modal-body py-2">
+          <p class="text-muted small mb-3">Create a session for a class that was held but had no QR scans.</p>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
+            <input type="date" name="session_date" class="form-control form-control-sm" required
+                   max="<?= $today ?>"
+                   min="<?= e($module['start_date'] ?? $today) ?>">
+          </div>
           <div>
-            <div class="fw-semibold" id="prevName"></div>
-            <div class="text-muted small" id="prevReg"></div>
-            <div class="text-muted small" id="prevDept"></div>
+            <label class="form-label small fw-semibold">Session Window <span class="text-danger">*</span></label>
+            <select name="window_name" class="form-select form-select-sm" required>
+              <?php
+                $st    = $module['session_type'] ?? '';
+                $wslot = $module['weekend_slot'] ?? '';
+                if ($st === 'Day')     echo '<option value="Day">Day</option>';
+                if ($st === 'Evening') echo '<option value="Evening">Evening</option>';
+                if ($st === 'Weekend') {
+                    if ($wslot !== 'Afternoon') echo '<option value="WeekendMorning">Weekend Morning</option>';
+                    if ($wslot !== 'Morning')   echo '<option value="WeekendAfternoon">Weekend Afternoon</option>';
+                }
+              ?>
+            </select>
           </div>
         </div>
-        <div id="prevWarning" class="alert alert-warning small mt-3" style="display:none;"></div>
-        <div class="mt-3">
-          <button id="confirmBtn" class="btn btn-semas">Confirm Attendance</button>
-          <button id="cancelBtn" class="btn btn-outline-dark">Cancel</button>
+        <div class="modal-footer py-2">
+          <button class="btn btn-semas-gold btn-sm"><i class="bi bi-plus-circle me-1"></i> Add Session</button>
         </div>
-      </div>
-      <div id="resultMsg"></div>
-    </div>
-    <div class="col-md-6">
-      <div class="semas-card p-3">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="display-font mb-0">Live Roster</h6>
-          <span class="text-muted small">Auto-refreshing</span>
-        </div>
-        <div id="rosterList"><p class="text-muted small">Loading...</p></div>
-      </div>
+      </form>
     </div>
   </div>
-
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script>
-  const APP_URL = window.SEMAS_BASE_URL;
-  const CSRF = '<?= csrf_token() ?>';
-  const SESSION_ID = <?= (int) $session['session_id'] ?>;
-  let pendingPreview = null;
-  let foundUserId = null;
-  let html5QrCode = null;
-
-  function showPreview(data) {
-    if (!data.ok) { document.getElementById('resultMsg').innerHTML = '<div class="alert alert-danger small">' + data.message + '</div>'; return; }
-    pendingPreview = { user_id: data.student.user_id, method: data.__method || 'manual' };
-    document.getElementById('prevPhoto').src = data.student.photo_url;
-    document.getElementById('prevName').textContent = data.student.full_name;
-    document.getElementById('prevReg').textContent = 'Reg. No: ' + (data.student.reg_number || '—');
-    document.getElementById('prevDept').textContent = 'Department: ' + (data.student.department || '—');
-    const warn = document.getElementById('prevWarning');
-    if (data.already_marked) {
-      warn.style.display = '';
-      warn.textContent = 'Already marked ' + data.status + ' at ' + data.checkin_time + '. Confirming again will be blocked.';
-    } else { warn.style.display = 'none'; }
-    document.getElementById('foundBar').classList.add('d-none');
-    document.getElementById('previewPanel').style.display = '';
-  }
-
-  document.getElementById('startScanBtn').addEventListener('click', function () {
-    html5QrCode = new Html5Qrcode("reader");
-    html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 240 }, function (decodedText) {
-      html5QrCode.stop();
-      fetch(APP_URL + '/api/class-scan-preview.php?mode=qr&session_id=' + SESSION_ID + '&token=' + encodeURIComponent(decodedText))
-        .then(r => r.json()).then(function (data) { data.__method = 'qr'; showPreview(data); });
-    });
-  });
-
-  function doSearch() {
-    const q = document.getElementById('searchBox').value;
-    if (q.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
-    fetch(APP_URL + '/api/class-scan-preview.php?mode=search&session_id=' + SESSION_ID + '&q=' + encodeURIComponent(q))
-      .then(r => r.json()).then(function (data) {
-        document.getElementById('searchResults').innerHTML = (data.results || []).map(function (s) {
-          return '<div class="border-bottom py-1 small" style="cursor:pointer;" data-uid="' + s.user_id + '" data-name="' + s.full_name + '" data-reg="' + (s.reg_number || '') + '">' +
-                 s.full_name + ' <span class="text-muted">(' + (s.reg_number || '—') + ')</span></div>';
-        }).join('') || '<p class="text-muted small mb-0">No registered student matches.</p>';
-      });
-  }
-  document.getElementById('searchBtn').addEventListener('click', doSearch);
-  document.getElementById('searchBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
-
-  document.getElementById('searchResults').addEventListener('click', function (e) {
-    const row = e.target.closest('[data-uid]');
-    if (!row) return;
-    foundUserId = row.getAttribute('data-uid');
-    document.getElementById('foundText').textContent = 'Found: ' + row.getAttribute('data-name') + ' (Reg: ' + (row.getAttribute('data-reg') || '—') + ')';
-    document.getElementById('foundBar').classList.remove('d-none');
-    document.getElementById('previewPanel').style.display = 'none';
-  });
-
-  document.getElementById('confirmFoundBtn').addEventListener('click', function () {
-    if (!foundUserId) return;
-    fetch(APP_URL + '/api/class-scan-preview.php?mode=select&session_id=' + SESSION_ID + '&user_id=' + foundUserId)
-      .then(r => r.json()).then(function (data) { data.__method = 'manual'; showPreview(data); });
-  });
-
-  document.getElementById('cancelBtn').addEventListener('click', function () {
-    pendingPreview = null;
-    document.getElementById('previewPanel').style.display = 'none';
-  });
-
-  document.getElementById('confirmBtn').addEventListener('click', function () {
-    if (!pendingPreview) return;
-    fetch(APP_URL + '/api/class-scan-confirm.php', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'session_id=' + SESSION_ID + '&user_id=' + pendingPreview.user_id + '&method=' + pendingPreview.method + '&csrf_token=' + encodeURIComponent(CSRF)
-    }).then(r => r.json()).then(function (data) {
-      document.getElementById('resultMsg').innerHTML = '<div class="alert alert-' + (data.ok ? 'success' : 'danger') + ' small">' + data.message + '</div>';
-      if (data.ok) { document.getElementById('previewPanel').style.display = 'none'; pendingPreview = null; refreshRoster(); }
-    });
-  });
-
-  function refreshRoster() {
-    fetch(APP_URL + '/api/class-session-live.php?session_id=' + SESSION_ID)
-      .then(r => r.json()).then(function (data) {
-        if (!data.ok) return;
-        document.getElementById('rosterList').innerHTML = (data.roster || []).map(function (r) {
-          const badge = r.status === 'Present' ? 'badge-completed' : (r.status === 'Late' ? 'badge-urgent' : 'bg-secondary');
-          return '<div class="d-flex justify-content-between border-bottom py-1 small"><span>' + r.full_name + ' (' + (r.reg_number || '—') + ')</span><span class="badge ' + badge + '">' + r.status + '</span></div>';
-        }).join('') || '<p class="text-muted small mb-0">No check-ins yet.</p>';
-      });
-  }
-  refreshRoster();
-  setInterval(refreshRoster, 10000);
-  </script>
-<?php endif; ?>
-
-<div class="semas-card p-3 mt-3">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    <div>
-      <h6 class="display-font mb-0">Attendance Calendar</h6>
-      <p class="text-muted small mb-0">All sessions for this module — students as rows, dates as columns. <span style="background:#d4edda;padding:1px 5px;border-radius:3px;font-size:.75rem;">P</span> <span style="background:#fff3cd;padding:1px 5px;border-radius:3px;font-size:.75rem;">L</span> <span style="background:#f8d7da;padding:1px 5px;border-radius:3px;font-size:.75rem;">A</span></p>
-    </div>
-    <div class="d-flex gap-2">
-      <a href="?module_id=<?= $moduleId ?>&export=csv&range=monthly&date=<?= date('Y-m-d') ?>"
-         class="btn btn-sm btn-outline-dark"><i class="bi bi-filetype-csv me-1"></i>Export CSV</a>
-      <a href="<?= APP_URL ?>/lecturer/attendance-pdf.php?module_id=<?= $moduleId ?>&range=monthly&date=<?= date('Y-m-d') ?>"
-         target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-file-earmark-pdf me-1"></i>Export PDF</a>
-    </div>
-  </div>
-
-  <?php if (!$calendarSessions): ?>
-    <p class="text-muted small mb-0">No sessions recorded for this module yet.</p>
-  <?php elseif (!$calendarStudents): ?>
-    <p class="text-muted small mb-0">No students enrolled in this module.</p>
-  <?php else: ?>
-    <?php $todayDate = date('Y-m-d'); ?>
-    <div style="overflow-x:auto;">
-      <table class="table table-bordered table-sm mb-0" style="white-space:nowrap;font-size:.82rem;">
-        <thead>
-          <tr>
-            <th style="position:sticky;left:0;z-index:2;background:#f8f9fa;min-width:190px;vertical-align:middle;">Student</th>
-            <?php foreach ($calendarSessions as $cs): ?>
-              <th class="text-center <?= $cs['session_date'] === $todayDate ? 'table-primary' : '' ?>" style="min-width:54px;vertical-align:middle;">
-                <div><?= date('D', strtotime($cs['session_date'])) ?></div>
-                <div><?= date('d/m', strtotime($cs['session_date'])) ?></div>
-                <?php
-                  $wn = $cs['window_name'];
-                  if ($wn === 'WeekendMorning') echo '<div style="font-size:.6rem;">Morn</div>';
-                  elseif ($wn === 'WeekendAfternoon') echo '<div style="font-size:.6rem;">Aftn</div>';
-                  elseif (str_starts_with($wn, 'Umuganda')) echo '<div style="font-size:.6rem;">Umug</div>';
-                ?>
-              </th>
-            <?php endforeach; ?>
-            <th class="text-center" style="min-width:80px;vertical-align:middle;">Summary</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($calendarStudents as $student): ?>
-            <?php
-              $pC = 0; $lC = 0; $aC = 0;
-              foreach ($calendarSessions as $cs) {
-                  $st = $calAttMap[$student['user_id']][$cs['session_id']] ?? null;
-                  if ($st === 'Present') $pC++;
-                  elseif ($st === 'Late') $lC++;
-                  elseif ($st === 'Absent') $aC++;
-              }
-            ?>
-            <tr>
-              <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:500;vertical-align:middle;">
-                <?= e($student['full_name']) ?><br>
-                <span class="text-muted" style="font-size:.7rem;"><?= e($student['reg_number'] ?? '') ?></span>
-              </td>
-              <?php foreach ($calendarSessions as $cs): ?>
-                <?php $status = $calAttMap[$student['user_id']][$cs['session_id']] ?? null; ?>
-                <td class="text-center fw-bold" style="vertical-align:middle;<?php
-                  if ($status === 'Present') echo 'background:#d4edda;color:#155724;';
-                  elseif ($status === 'Late') echo 'background:#fff3cd;color:#856404;';
-                  elseif ($status === 'Absent') echo 'background:#f8d7da;color:#721c24;';
-                  else echo 'color:#ccc;';
-                ?>">
-                  <?= $status ? $status[0] : '·' ?>
-                </td>
-              <?php endforeach; ?>
-              <td class="text-center small" style="vertical-align:middle;">
-                <span class="text-success fw-semibold"><?= $pC ?>P</span>
-                <span class="text-warning fw-semibold ms-1"><?= $lC ?>L</span>
-                <span class="text-danger fw-semibold ms-1"><?= $aC ?>A</span>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-  <?php endif; ?>
 </div>
+
+<!-- Manual Mark Modal -->
+<div class="modal fade" id="markModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action"    value="manual_mark">
+        <input type="hidden" name="module_id" value="<?= $moduleId ?>">
+        <input type="hidden" name="session_id" id="markSid">
+        <input type="hidden" name="user_id"    id="markUid">
+        <div class="modal-header py-2">
+          <h6 class="modal-title display-font small">Mark Attendance</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body py-3">
+          <p class="small mb-3">Student: <strong id="markName"></strong></p>
+          <div class="d-grid gap-2">
+            <button type="submit" name="mark_status" value="Present" class="btn btn-sm btn-success">
+              <i class="bi bi-check-circle me-1"></i> Mark Present
+            </button>
+            <button type="submit" name="mark_status" value="Late" class="btn btn-sm btn-warning">
+              <i class="bi bi-clock-history me-1"></i> Mark Late
+            </button>
+            <button type="submit" name="mark_status" value="Absent" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-x-circle me-1"></i> Mark Absent
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<?php endif; // $module ?>
+
+<script>
+function openMark(sid, uid, mid, name) {
+    document.getElementById('markSid').value  = sid;
+    document.getElementById('markUid').value  = uid;
+    document.getElementById('markName').textContent = name;
+    new bootstrap.Modal(document.getElementById('markModal')).show();
+}
+</script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

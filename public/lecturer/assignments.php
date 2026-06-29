@@ -7,6 +7,7 @@ $pageTitle = 'Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
 $me = Auth::user();
+$defaultAssignmentInstructions = "Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
 
 $lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');
 $lecStmt->execute(['uid' => $me['user_id']]);
@@ -29,6 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'create') {
         $attachmentPath = null;
+        $instructions = trim($_POST['instructions'] ?? '');
+        if ($instructions === '') {
+            $instructions = $defaultAssignmentInstructions;
+        }
         if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime = finfo_file($finfo, $_FILES['attachment']['tmp_name']);
@@ -47,17 +52,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'INSERT INTO assignments (module_id, title, instructions, attachment_path, deadline, created_by)
              VALUES (:mid, :title, :instr, :att, :deadline, :uid)'
         )->execute([
-            'mid' => $moduleId, 'title' => trim($_POST['title']), 'instr' => trim($_POST['instructions']) ?: null,
+            'mid' => $moduleId, 'title' => trim($_POST['title']), 'instr' => $instructions,
             'att' => $attachmentPath, 'deadline' => $_POST['deadline'], 'uid' => $me['user_id'],
         ]);
         $assignmentId = (int) $db->lastInsertId();
         AuditLog::record(Auth::id(), 'ASSIGNMENT_CREATE', 'assignments', $assignmentId);
 
-        $enrolledStmt = $db->prepare("SELECT u.user_id, u.full_name FROM users u JOIN module_enrollments e ON e.user_id = u.user_id WHERE e.module_id = :mid");
+        $assignment = [
+            'assignment_id'   => $assignmentId,
+            'title'           => trim($_POST['title']),
+            'instructions'    => $instructions,
+            'attachment_path' => $attachmentPath,
+            'deadline'        => $_POST['deadline'],
+        ];
+        $lecNameStmt = $db->prepare('SELECT u.full_name FROM users u WHERE u.user_id = :uid');
+        $lecNameStmt->execute(['uid' => $me['user_id']]);
+        $lecName = (string) ($lecNameStmt->fetchColumn() ?: $me['full_name'] ?? 'Lecturer');
+
+        $enrolledStmt = $db->prepare("SELECT u.user_id, u.full_name, u.email FROM users u JOIN module_enrollments e ON e.user_id = u.user_id WHERE e.module_id = :mid AND u.status = 'Active'");
         $enrolledStmt->execute(['mid' => $moduleId]);
         foreach ($enrolledStmt->fetchAll() as $student) {
-            NotificationCenter::notify((int) $student['user_id'], 'New assignment: ' . $_POST['title'], 'Due ' . date('d M Y, h:i A', strtotime($_POST['deadline'])) . ' for ' . $module['module_title'] . '.', 'Assignment');
+            NotificationCenter::notify((int) $student['user_id'], 'New assignment: ' . $assignment['title'], 'Due ' . date('d M Y, h:i A', strtotime($assignment['deadline'])) . ' for ' . $module['module_title'] . '.', 'Assignment');
+            if (!empty($student['email'])) {
+                Mailer::enqueueAssignmentNotification($student, $assignment, $module, $lecName);
+            }
         }
+        Mailer::dispatch();
         flash('success', 'Assignment created and registered students notified.');
     } elseif ($action === 'extend') {
         $assignmentId = (int) $_POST['assignment_id'];
@@ -91,8 +111,9 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= strtotime($a['deadline']) < time() ? 'Closed' : 'Open' ?>
       </span>
     </div>
-    <p class="text-muted small mb-2"><?= e($a['instructions'] ?? '') ?></p>
-    <p class="small mb-2">Deadline: <?= e(date('d M Y, h:i A', strtotime($a['deadline']))) ?> &middot; <?= (int) $a['submission_count'] ?> submission(s)
+    <?php $assignmentInstructions = $a['instructions'] ?: $defaultAssignmentInstructions; ?>
+    <p class="text-muted small mb-2"><?= nl2br(e($assignmentInstructions)) ?></p>
+    <p class="small mb-2">Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?> &middot; <?= (int) $a['submission_count'] ?> submission(s)
       <?php if ($a['attachment_path']): ?> &middot; <a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank">Attachment</a><?php endif; ?>
     </p>
     <details>
@@ -105,7 +126,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php if (!$subs): ?><p class="text-muted small mt-2">No submissions yet.</p><?php endif; ?>
       <?php foreach ($subs as $s): ?>
         <div class="d-flex justify-content-between border-bottom py-1 small">
-          <span><?= e($s['full_name']) ?> (<?= e($s['reg_number'] ?? '—') ?>) &middot; <?= e(date('d M Y H:i', strtotime($s['submitted_at']))) ?></span>
+          <span><?= e($s['full_name']) ?> (<?= e($s['reg_number'] ?? '—') ?>) &middot; <?= e((string) date('d M Y H:i', strtotime((string) ($s['submitted_at'] ?? '')))) ?></span>
           <a href="<?= APP_URL . '/' . e($s['file_path']) ?>" target="_blank">Download</a>
         </div>
       <?php endforeach; ?>
@@ -128,7 +149,9 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-header"><h6 class="modal-title display-font">New Assignment</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Instructions</label><textarea name="instructions" class="form-control form-control-sm" rows="3"></textarea></div>
+          <div class="alert alert-light border small mb-2">
+            <i class="bi bi-info-circle me-1"></i> SEMAS will attach the standard submission instructions automatically for every assignment.
+          </div>
           <div class="mb-2"><label class="form-label small">Deadline</label><input type="datetime-local" name="deadline" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Attachment (PDF/ZIP, optional)</label><input type="file" name="attachment" accept=".pdf,.zip" class="form-control form-control-sm"></div>
         </div>

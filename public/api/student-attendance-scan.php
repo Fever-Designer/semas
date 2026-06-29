@@ -17,12 +17,43 @@ csrf_verify();
 
 $db       = Database::connection();
 $me       = Auth::user();
-$moduleId = (int) ($_POST['module_id'] ?? 0);
 $ip       = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-$qrToken  = trim($_POST['qr_token'] ?? '');
 
-// If a module QR token was supplied, validate it against modules.module_qr_secret
-if ($qrToken !== '') {
+// ── Detect QR format: dynamic "SEMAS:{module_id}:{session_id}:{token}" ────
+$qrData       = trim($_POST['qr_data'] ?? '');
+$forcedSessId = null;
+
+if ($qrData !== '') {
+    $parts = explode(':', $qrData);
+    if (count($parts) !== 4 || $parts[0] !== 'SEMAS') {
+        echo json_encode(['ok' => false, 'message' => 'Unrecognised QR format.']);
+        exit;
+    }
+    [, $qrModId, $qrSessId, $qrToken] = $parts;
+    $qrModId  = (int) $qrModId;
+    $qrSessId = (int) $qrSessId;
+
+    // Validate dynamic token
+    $dynCheck = $db->prepare(
+        "SELECT session_id FROM class_sessions
+         WHERE session_id = :sid AND module_id = :mid
+           AND qr_token = :tok AND qr_token_expires_at > NOW()"
+    );
+    $dynCheck->execute(['sid' => $qrSessId, 'mid' => $qrModId, 'tok' => $qrToken]);
+    if (!$dynCheck->fetch()) {
+        echo json_encode(['ok' => false, 'message' => 'QR code has expired or is invalid. Wait for the next rotation on the lecturer\'s screen.']);
+        exit;
+    }
+    // Pin the session; override module_id from POST
+    $_POST['module_id'] = $qrModId;
+    $forcedSessId       = $qrSessId;
+}
+
+$moduleId = (int) ($_POST['module_id'] ?? 0);
+$qrToken  = trim($_POST['qr_token'] ?? '');   // legacy static QR path
+
+// Legacy static module_qr_secret validation
+if ($qrData === '' && $qrToken !== '') {
     $tokenCheck = $db->prepare('SELECT module_id FROM modules WHERE module_id = :id AND module_qr_secret = :t');
     $tokenCheck->execute(['id' => $moduleId, 't' => $qrToken]);
     if (!$tokenCheck->fetch()) {
@@ -69,80 +100,98 @@ if ($module['session_type'] === 'Day') {
 } elseif ($module['session_type'] === 'Evening') {
     $sessionMatches = ($window && $window['name'] === 'Evening');
 } elseif ($module['session_type'] === 'Weekend') {
-    $sessionMatches = ($window && in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true));
+    $slot = $module['weekend_slot'] ?? '';
+    if ($slot === 'Morning')       $sessionMatches = ($window && in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true));
+    elseif ($slot === 'Afternoon') $sessionMatches = ($window && in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true));
+    else                           $sessionMatches = ($window && in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true));
 } else {
     $sessionMatches = (bool) $window;
 }
 
-// Find today's session for Sign Out grace-period calculation.
-$todayFind = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() ORDER BY start_time DESC LIMIT 1');
-$todayFind->execute(['mid' => $moduleId]);
-$todaySession = $todayFind->fetch();
-
+// ── Dynamic QR path: session already validated above, fetch directly ─────
 $allowSignOut = false;
-if ($todaySession) {
-    $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Kigali'));
-    $afterEnd = $now->getTimestamp() - $endDt->getTimestamp();
-    $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 600); // within 10 min after session end
-}
+if ($forcedSessId !== null) {
+    $forcedFetch = $db->prepare('SELECT * FROM class_sessions WHERE session_id = :sid AND module_id = :mid');
+    $forcedFetch->execute(['sid' => $forcedSessId, 'mid' => $moduleId]);
+    $session = $forcedFetch->fetch();
+    if (!$session) {
+        echo json_encode(['ok' => false, 'message' => 'Session not found.']);
+        exit;
+    }
+    if ($session['status'] !== 'Open') {
+        echo json_encode(['ok' => false, 'message' => 'Attendance is closed for this session.']);
+        exit;
+    }
+    $sessionAlreadyExisted = true;
+    $allowSignOut          = true;  // dynamic QR is valid both for sign-in and sign-out
+} else {
+    // ── Legacy / window-based path ────────────────────────────────────────
+    $todayFind = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() ORDER BY start_time DESC LIMIT 1');
+    $todayFind->execute(['mid' => $moduleId]);
+    $todaySession = $todayFind->fetch();
 
-if (!$window && !$allowSignOut) {
-    $holiday = ClassAttendance::holidayToday();
-    $msg     = $holiday && $holiday['holiday_type'] === 'Public Holiday'
-        ? 'Today is a public holiday — no attendance scanning is required.'
-        : 'There is no active class session window right now.';
-    echo json_encode(['ok' => false, 'message' => $msg]);
-    exit;
-}
+    if ($todaySession) {
+        $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Kigali'));
+        $afterEnd = $now->getTimestamp() - $endDt->getTimestamp();
+        $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 600);
+    }
 
-if (!$sessionMatches && !$allowSignOut) {
-    echo json_encode(['ok' => false, 'message' => 'This module\'s session (' . $module['session_type'] . ') does not match the currently active window (' . ($window ? ClassAttendance::describeWindow($window) : 'none') . ').']);
-    exit;
-}
+    if (!$window && !$allowSignOut) {
+        $holiday = ClassAttendance::holidayToday();
+        $msg     = $holiday && $holiday['holiday_type'] === 'Public Holiday'
+            ? 'Today is a public holiday — no attendance scanning is required.'
+            : 'There is no active class session window right now.';
+        echo json_encode(['ok' => false, 'message' => $msg]);
+        exit;
+    }
 
-// ── Find-or-create today's session row ───────────────────────────────────
-$find = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win');
-$windowName = $window ? $window['name'] : ($todaySession['window_name'] ?? null);
+    if (!$sessionMatches && !$allowSignOut) {
+        echo json_encode(['ok' => false, 'message' => 'This module\'s session (' . $module['session_type'] . ') does not match the currently active window (' . ($window ? ClassAttendance::describeWindow($window) : 'none') . ').']);
+        exit;
+    }
 
-if (!$windowName) {
-    echo json_encode(['ok' => false, 'message' => 'Could not determine session window.']);
-    exit;
-}
+    $find       = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win');
+    $windowName = $window ? $window['name'] : ($todaySession['window_name'] ?? null);
 
-$find->execute(['mid' => $moduleId, 'win' => $windowName]);
-$session = $find->fetch();
-$sessionAlreadyExisted = (bool) $session;
+    if (!$windowName) {
+        echo json_encode(['ok' => false, 'message' => 'Could not determine session window.']);
+        exit;
+    }
 
-if (!$session && $window) {
-    try {
-        $db->prepare(
-            'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, created_by)
-             VALUES (:mid, CURDATE(), :win, :start, :end, :secret, :uid)'
-        )->execute([
-            'mid'    => $moduleId,
-            'win'    => $window['name'],
-            'start'  => $window['start']->format('Y-m-d H:i:s'),
-            'end'    => $window['end']->format('Y-m-d H:i:s'),
-            'secret' => QrService::generateSecret(),
-            'uid'    => $me['user_id'],
-        ]);
-        $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
-        $session = $find->fetch();
-    } catch (PDOException $e) {
-        $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
-        $session = $find->fetch();
+    $find->execute(['mid' => $moduleId, 'win' => $windowName]);
+    $session = $find->fetch();
+    $sessionAlreadyExisted = (bool) $session;
+
+    if (!$session && $window) {
+        try {
+            $db->prepare(
+                'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, created_by)
+                 VALUES (:mid, CURDATE(), :win, :start, :end, :secret, :uid)'
+            )->execute([
+                'mid'    => $moduleId,
+                'win'    => $window['name'],
+                'start'  => $window['start']->format('Y-m-d H:i:s'),
+                'end'    => $window['end']->format('Y-m-d H:i:s'),
+                'secret' => QrService::generateSecret(),
+                'uid'    => $me['user_id'],
+            ]);
+            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $session = $find->fetch();
+        } catch (PDOException $e) {
+            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $session = $find->fetch();
+        }
+    }
+
+    if (!$session) {
+        echo json_encode(['ok' => false, 'message' => 'No session found. Has a class session been opened yet for this module today?']);
+        exit;
+    }
+    if ($session['status'] !== 'Open') {
+        echo json_encode(['ok' => false, 'message' => 'Attendance is closed for this session.']);
+        exit;
     }
 }
-
-if (!$session) {
-    echo json_encode(['ok' => false, 'message' => 'No session found. Has a class session been opened yet for this module today?']);
-    exit;
-}
-if ($session['status'] !== 'Open') {
-    echo json_encode(['ok' => false, 'message' => 'Attendance is closed for this session.']);
-    exit;
-}
-
 // Pre-populate all enrolled students when session is first created
 if (!$sessionAlreadyExisted) {
     $db->prepare(
@@ -209,8 +258,8 @@ try {
         }
     } else {
         $db->prepare(
-            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address)
-             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip)"
+            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, checkin_time)
+             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip, NOW())"
         )->execute(['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip]);
     }
 } catch (PDOException $e) {

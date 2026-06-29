@@ -55,30 +55,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/hod/holidays.php');
 }
 
-$holidays = $db->query('SELECT * FROM holidays ORDER BY holiday_date DESC')->fetchAll();
+$holidays = $isCoordinator
+    ? $db->query("SELECT * FROM holidays WHERE holiday_type = 'Umuganda' ORDER BY holiday_date DESC")->fetchAll()
+    : $db->query('SELECT * FROM holidays ORDER BY holiday_date DESC')->fetchAll();
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <div><h4 class="display-font mb-1">Holidays &amp; Umuganda</h4></div>
+  <div><h4 class="display-font mb-1"><?= $isCoordinator ? 'Umuganda Dates' : 'Holidays &amp; Umuganda' ?></h4></div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newHolidayModal"><i class="bi bi-plus-circle me-1"></i> Add</button>
 </div>
 
 <div class="semas-card p-3">
   <table class="table table-sm align-middle">
-    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Notes</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Title</th><?= $isCoordinator ? '' : '<th>Type</th>' ?><th>Notes</th><th></th></tr></thead>
     <tbody>
       <?php foreach ($holidays as $h): ?>
         <tr>
           <td><?= e($h['holiday_date']) ?></td>
           <td><?= e($h['title']) ?></td>
-          <td><span class="badge <?= $h['holiday_type'] === 'Umuganda' ? 'badge-urgent' : 'bg-secondary' ?>"><?= e($h['holiday_type']) ?></span></td>
+          <?php if (!$isCoordinator): ?>
+            <td><span class="badge <?= $h['holiday_type'] === 'Umuganda' ? 'badge-urgent' : 'bg-secondary' ?>"><?= e($h['holiday_type']) ?></span></td>
+          <?php endif; ?>
           <td class="small text-muted"><?= e($h['notes'] ?? '') ?></td>
           <td><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="holiday_id" value="<?= (int) $h['holiday_id'] ?>">
             <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this date?');">Remove</button></form></td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$holidays): ?><tr><td colspan="5" class="text-muted small text-center py-3">No holidays registered yet.</td></tr><?php endif; ?>
+      <?php if (!$holidays): ?><tr><td colspan="<?= $isCoordinator ? 4 : 5 ?>" class="text-muted small text-center py-3">No <?= $isCoordinator ? 'Umuganda dates' : 'holidays' ?> registered yet.</td></tr><?php endif; ?>
     </tbody>
   </table>
 </div>

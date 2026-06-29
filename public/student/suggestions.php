@@ -62,7 +62,6 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="col-lg-6">
     <div class="semas-card p-3">
       <h6 class="display-font mb-3">My Past Submissions</h6>
-      <p class="text-muted small">This list is visible only to you — it's how you see replies, since staff cannot identify or message you directly.</p>
       <?php if (!$mySubmissions): ?>
         <p class="text-muted small">You haven't submitted anything yet.</p>
       <?php else: foreach ($mySubmissions as $s): ?>

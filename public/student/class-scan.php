@@ -34,7 +34,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php
 // Load student's enrolled ongoing modules
 $enrolledStmt = $db->prepare(
-    "SELECT m.module_id, m.module_title, m.session_type, m.room, m.module_qr_secret, d.department_name,
+    "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, m.room, m.module_qr_secret, d.department_name,
             u.full_name AS lecturer_name
      FROM modules m
      JOIN module_enrollments e ON e.module_id = m.module_id AND e.user_id = :uid
@@ -62,8 +62,11 @@ if (!$enrolledModules): ?>
               $matchesWindow = true;
           } elseif ($m['session_type'] === 'Evening' && $window['name'] === 'Evening') {
               $matchesWindow = true;
-          } elseif ($m['session_type'] === 'Weekend' && in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true)) {
-              $matchesWindow = true;
+          } elseif ($m['session_type'] === 'Weekend') {
+              $slot = $m['weekend_slot'] ?? '';
+              if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+              elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+              else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
           }
       }
     ?>

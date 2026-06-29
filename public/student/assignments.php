@@ -7,6 +7,7 @@ $pageTitle = 'My Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
 $me = Auth::user();
+$defaultAssignmentInstructions = "📘 Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 
@@ -36,7 +37,7 @@ if (!$moduleId) {
           <div><h6 class="display-font mb-0"><?= e($a['title']) ?></h6><p class="text-muted small mb-0"><?= e($a['module_title']) ?></p></div>
           <span class="badge <?= $closed ? 'bg-secondary' : 'badge-completed' ?>"><?= $closed ? 'Closed' : 'Open' ?></span>
         </div>
-        <p class="small mt-2 mb-1">Deadline: <?= e(date('d M Y, h:i A', strtotime($a['deadline']))) ?></p>
+        <p class="small mt-2 mb-1">Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?></p>
         <?php if ($a['my_file']): ?><p class="small text-success mb-1"><i class="bi bi-check-circle-fill"></i> Submitted</p><?php endif; ?>
         <a href="<?= APP_URL ?>/student/assignments.php?module_id=<?= (int) $a['module_id'] ?>" class="small">Open module &rarr;</a>
       </div>
@@ -79,8 +80,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isset($allowed[$mime]) || $_FILES['file']['size'] > 10 * 1024 * 1024) {
             flash('error', 'Only PDF or ZIP files under 10MB are accepted.');
         } else {
-            $filename = 'sub' . $me['user_id'] . '_' . bin2hex(random_bytes(6)) . '.' . $allowed[$mime];
+            $studentName = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) ($me['full_name'] ?? 'student')));
+            $studentReg  = preg_replace('/[^A-Za-z0-9]+/', '', trim((string) ($me['reg_number'] ?? '')));
+            $baseName    = strtolower(trim($studentName . '_' . $studentReg, '_')) ?: 'submission';
+            $filename    = $baseName . '.' . $allowed[$mime];
+            $filename    = preg_replace('/_{2,}/', '_', $filename);
             $dest = __DIR__ . '/../uploads/assignments/' . $filename;
+            if (file_exists($dest)) {
+                $filename = $baseName . '_' . bin2hex(random_bytes(4)) . '.' . $allowed[$mime];
+                $dest = __DIR__ . '/../uploads/assignments/' . $filename;
+            }
             if (!is_dir(dirname($dest))) { mkdir(dirname($dest), 0755, true); }
             move_uploaded_file($_FILES['file']['tmp_name'], $dest);
             $relPath = 'uploads/assignments/' . $filename;
@@ -113,7 +122,7 @@ $assignments = $assignments->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Assignments — <?= e($module['module_title']) ?></h4>
-<p class="text-muted small mb-4">Submit PDF or ZIP files only. No submissions are accepted after the deadline.</p>
+<p class="text-muted small mb-4">Submit PDF or ZIP files only. Rename your file as Firstname_Lastname_RegNo.pdf or .zip before uploading. No submissions are accepted after the deadline.</p>
 
 <?php foreach ($assignments as $a): $closed = strtotime($a['deadline']) < time(); ?>
   <div class="semas-card p-3 mb-3">
@@ -121,12 +130,13 @@ require __DIR__ . '/../partials/layout_top.php';
       <h6 class="display-font mb-1"><?= e($a['title']) ?></h6>
       <span class="badge <?= $closed ? 'bg-secondary' : 'badge-completed' ?>"><?= $closed ? 'Closed' : 'Open' ?></span>
     </div>
-    <p class="text-muted small mb-2"><?= e($a['instructions'] ?? '') ?></p>
-    <p class="small mb-2">Deadline: <?= e(date('d M Y, h:i A', strtotime($a['deadline']))) ?>
+    <?php $assignmentInstructions = $a['instructions'] ?: $defaultAssignmentInstructions; ?>
+    <p class="text-muted small mb-2"><?= nl2br(e($assignmentInstructions)) ?></p>
+    <p class="small mb-2">Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?>
       <?php if ($a['attachment_path']): ?> &middot; <a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank">Lecturer's attachment</a><?php endif; ?>
     </p>
     <?php if ($a['my_file']): ?>
-      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e(date('d M Y, h:i A', strtotime($a['my_submitted_at']))) ?> — <a href="<?= APP_URL . '/' . e($a['my_file']) ?>" target="_blank">View your file</a></p>
+      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['my_submitted_at'] ?? '')))) ?> — <a href="<?= APP_URL . '/' . e($a['my_file']) ?>" target="_blank">View your file</a></p>
     <?php endif; ?>
     <?php if (!$closed): ?>
       <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">

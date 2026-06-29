@@ -14,7 +14,7 @@ $lecturer = $lecStmt->fetch();
 
 $modules = $db->prepare(
     "SELECT m.*, (SELECT COUNT(*) FROM module_enrollments e WHERE e.module_id = m.module_id) AS student_count
-     FROM modules m WHERE m.lecturer_id = :lec ORDER BY m.module_title"
+     FROM modules m WHERE m.lecturer_id = :lec AND m.status = 'Ongoing' ORDER BY m.module_title"
 );
 $modules->execute(['lec' => $lecturer['lecturer_id'] ?? 0]);
 $modules = $modules->fetchAll();
