@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD']);
+Auth::requireRole(['HOD', 'Coordinator']);
 Module::autoCompleteExpired();
+
+$isCoordinator = Auth::role() === 'Coordinator';
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -22,7 +24,27 @@ $hodDepts = $db->prepare('SELECT department_id FROM departments WHERE hod_user_i
 $hodDepts->execute(['uid' => $me['user_id']]);
 $deptIds = $hodDepts->fetchAll(PDO::FETCH_COLUMN);
 
-$submissionsStmt = $db->query(
+// Scheduled but not yet submitted
+$pendingWhere = $isCoordinator ? "AND m.session_type = 'Weekend'" : '';
+$pendingStmt = $db->query(
+    "SELECT cs.schedule_id, cs.exam_type, cs.scheduled_date, cs.start_time, cs.end_time, cs.room,
+            m.module_title, m.module_id,
+            u.full_name AS invigilator_name,
+            d.department_name
+     FROM cat_exam_schedules cs
+     JOIN modules m ON m.module_id = cs.module_id
+     JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
+     JOIN users u ON u.user_id = l.user_id
+     LEFT JOIN departments d ON d.department_id = m.department_id
+     LEFT JOIN cat_exam_submissions sub ON sub.schedule_id = cs.schedule_id
+     WHERE sub.submission_id IS NULL {$pendingWhere}
+     ORDER BY cs.scheduled_date ASC"
+);
+$pendingSchedules = $pendingStmt->fetchAll();
+
+// Submitted (history)
+$historyWhere = $isCoordinator ? "AND m.session_type = 'Weekend'" : '';
+$historyStmt = $db->query(
     "SELECT sub.*, cs.exam_type, cs.scheduled_date, cs.start_time, cs.end_time, cs.room,
             m.module_title, m.module_id,
             u.full_name AS invigilator_name,
@@ -33,16 +55,17 @@ $submissionsStmt = $db->query(
      JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
      JOIN users u ON u.user_id = l.user_id
      LEFT JOIN departments d ON d.department_id = m.department_id
+     WHERE 1=1 {$historyWhere}
      ORDER BY sub.submitted_at DESC"
 );
-$allSubmissions = $submissionsStmt->fetchAll();
+$historySubmissions = $historyStmt->fetchAll();
 
 // ── Roster for selected schedule ──────────────────────────────────────────
 $rosterData  = [];
 $schedDetail = null;
 if ($scheduleId) {
     $schedDetail = $db->prepare(
-        "SELECT cs.*, m.module_title, m.module_id, d.department_name,
+        "SELECT cs.*, m.module_title, m.module_id, m.session_type, d.department_name,
                 u.full_name AS invigilator_name, ul.full_name AS lecturer_name,
                 sub.submitted_at, sub.notes AS submission_notes
          FROM cat_exam_schedules cs
@@ -86,17 +109,17 @@ if ($scheduleId) {
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . strtolower($schedDetail['exam_type']) . '_attendance_' . date('Ymd') . '.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Student Name', 'Reg Number', 'Eligibility', 'Sign In Time', 'Sign Out Time', 'Sign Out Status', 'Missed Reason', 'Notes']);
+        fputcsv($out, ['NO', 'Student Name', 'Reg Number', 'Sign In Time', 'Sign Out Time', 'Status']);
+        $i = 1;
         foreach ($rosterData as $r) {
+            $status = $r['signin_time'] ? ($r['signout_time'] ? ($r['signout_status'] ?? 'Present') : 'No Sign-Out') : 'Absent';
             fputcsv($out, [
+                $i++,
                 $r['full_name'],
                 $r['reg_number'] ?? '',
-                $r['eligibility'] ?? 'Not generated',
                 $r['signin_time']  ? date('d/m/Y H:i', strtotime($r['signin_time']))  : 'Absent',
                 $r['signout_time'] ? date('d/m/Y H:i', strtotime($r['signout_time'])) : 'No sign-out',
-                $r['signout_status'] ?? '',
-                $r['missed_reason'] ?? '',
-                $r['missed_notes']  ?? '',
+                $status,
             ]);
         }
         fclose($out);
@@ -114,28 +137,25 @@ if ($scheduleId) {
 
         // Title rows
         $sheet->setCellValue('A1', $uniName);
-        $sheet->mergeCells('A1:H1');
+        $sheet->mergeCells('A1:F1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
         $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        $subTitle = ($schedDetail['exam_type'] ?? '') . ' Attendance — '
-            . ($schedDetail['module_title'] ?? '') . ' · ' . $examDate
-            . ' · Room ' . ($schedDetail['room'] ?? '');
+        $subTitle = ($schedDetail['exam_type'] ?? '') . ' Attendance - Module: '
+            . ($schedDetail['module_title'] ?? '') . ' | Room: ' . ($schedDetail['room'] ?? '')
+            . ' | Date: ' . $examDate . ' | Session: ' . ($schedDetail['session_type'] ?? '');
         $sheet->setCellValue('A2', $subTitle);
-        $sheet->mergeCells('A2:H2');
+        $sheet->mergeCells('A2:F2');
         $sheet->getStyle('A2')->getFont()->setItalic(true);
         $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        $sheet->setCellValue('A3',
-            'Invigilator: ' . ($schedDetail['invigilator_name'] ?? '')
-            . '  |  Submitted: '
-            . ($schedDetail['submitted_at'] ? date('d M Y H:i', strtotime($schedDetail['submitted_at'])) : '—'));
-        $sheet->mergeCells('A3:H3');
+        $sheet->setCellValue('A3', 'Invigilator: ' . ($schedDetail['invigilator_name'] ?? ''));
+        $sheet->mergeCells('A3:F3');
         $sheet->getStyle('A3')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         // Column headers
-        $sheet->fromArray(['#', 'Student Name', 'Reg Number', 'Eligibility', 'Sign In', 'Sign Out', 'Status', 'Reason / Notes'], null, 'A5');
-        $hStyle = $sheet->getStyle('A5:H5');
+        $sheet->fromArray(['NO', 'Student Name', 'Reg Number', 'Sign In', 'Sign Out', 'Status'], null, 'A5');
+        $hStyle = $sheet->getStyle('A5:F5');
         $hStyle->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $hStyle->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('1E2A52');
         $hStyle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -147,27 +167,16 @@ if ($scheduleId) {
             $sin    = $r['signin_time']  ? date('h:i A', strtotime($r['signin_time']))  : 'Absent';
             $sout   = $r['signout_time'] ? date('h:i A', strtotime($r['signout_time'])) : 'No sign-out';
             $status = $r['signin_time'] ? ($r['signout_time'] ? ($r['signout_status'] ?? 'Present') : 'No Sign-Out') : 'Absent';
-            $reason = $r['missed_reason']
-                ? $r['missed_reason'] . ($r['missed_notes'] ? ' — ' . $r['missed_notes'] : '')
-                : '';
-            $sheet->fromArray([$i++, $r['full_name'], $r['reg_number'] ?? '', $r['eligibility'] ?? '—', $sin, $sout, $status, $reason], null, 'A' . $rowNum);
+            $sheet->fromArray([$i++, $r['full_name'], $r['reg_number'] ?? '', $sin, $sout, $status], null, 'A' . $rowNum);
             if (!$r['signin_time']) {
-                $sheet->getStyle('A' . $rowNum . ':H' . $rowNum)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEE2E2');
+                $sheet->getStyle('A' . $rowNum . ':F' . $rowNum)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEE2E2');
             } elseif (!$r['signout_time']) {
-                $sheet->getStyle('A' . $rowNum . ':H' . $rowNum)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF9C3');
+                $sheet->getStyle('A' . $rowNum . ':F' . $rowNum)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF9C3');
             }
             $rowNum++;
         }
 
-        // Summary row
-        $presentCount = count(array_filter($rosterData, function ($r) {
-            return $r['signin_time'] && $r['signout_time'] && ($r['signout_status'] ?? '') === 'Present';
-        }));
-        $sheet->setCellValue('A' . $rowNum, 'Total Enrolled: ' . count($rosterData) . '  |  Present: ' . $presentCount);
-        $sheet->mergeCells('A' . $rowNum . ':H' . $rowNum);
-        $sheet->getStyle('A' . $rowNum)->getFont()->setItalic(true);
-
-        foreach (range('A', 'H') as $col) {
+        foreach (range('A', 'F') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -195,18 +204,25 @@ if ($scheduleId) {
           th, td { border: 1px solid #ccc; padding: 5px 8px; }
           th { background: #1E2A52; color: #fff; }
           .present { color: #2F9E68; } .absent { color: #DC2626; } .late { color: #D97706; }
-          .stamp { text-align: right; margin-top: 20px; font-size: 11px; color: #555; }
           @media print { .no-print { display: none; } }
         </style></head><body>
         <h1><?= e(Settings::get('university_name', 'University of Kigali')) ?></h1>
-        <div class="sub"><strong><?= e($schedDetail['exam_type']) ?> ATTENDANCE LIST</strong><br>
-          <?= e($schedDetail['module_title']) ?> · Room: <?= e($schedDetail['room']) ?> ·
-          Date: <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?> ·
-          Time: <?= e(date('h:i A', strtotime($schedDetail['start_time']))) ?>–<?= e(date('h:i A', strtotime($schedDetail['end_time']))) ?><br>
-          Invigilator: <?= e($schedDetail['invigilator_name']) ?>
-        </div>
+        <p style="text-align:center;font-weight:bold;margin-bottom:10px;"><?= e($schedDetail['exam_type']) ?> ATTENDANCE LIST</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+          <tr>
+            <td style="width:60%;vertical-align:top;">
+              <strong>Module:</strong> <?= e($schedDetail['module_title']) ?><br>
+              <strong>Date:</strong> <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?><br>
+              <strong>Invigilator:</strong> <?= e($schedDetail['invigilator_name']) ?>
+            </td>
+            <td style="width:40%;vertical-align:top;text-align:right;">
+              <strong>Room:</strong> <?= e($schedDetail['room']) ?><br>
+              <strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '—') ?>
+            </td>
+          </tr>
+        </table>
         <table>
-          <thead><tr><th>#</th><th>Student Name</th><th>Reg No.</th><th>Eligibility</th><th>Sign In</th><th>Sign Out</th><th>Status</th><th>Reason</th></tr></thead>
+          <thead><tr><th>NO</th><th>Student Name</th><th>Reg No.</th><th>Sign In</th><th>Sign Out</th><th>Status</th></tr></thead>
           <tbody>
           <?php $i = 1; foreach ($rosterData as $r):
             $sin   = $r['signin_time']  ? date('h:i A', strtotime($r['signin_time']))  : '—';
@@ -217,19 +233,13 @@ if ($scheduleId) {
               <td><?= $i++ ?></td>
               <td><?= e($r['full_name']) ?></td>
               <td><?= e($r['reg_number'] ?? '—') ?></td>
-              <td><?= e($r['eligibility'] ?? '—') ?></td>
               <td><?= e($sin) ?></td>
               <td><?= e($sout) ?></td>
               <td class="<?= $status === 'Present' ? 'present' : ($status === 'Absent' ? 'absent' : 'late') ?>"><?= e($status) ?></td>
-              <td><?= e($r['missed_reason'] ? $r['missed_reason'] . ($r['missed_notes'] ? ' — ' . $r['missed_notes'] : '') : '') ?></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
-        <div class="stamp">
-          Submitted by: <?= e($schedDetail['invigilator_name']) ?> on <?= $schedDetail['submitted_at'] ? e(date('d M Y H:i', strtotime($schedDetail['submitted_at']))) : '—' ?><br>
-          Total Enrolled: <?= count($rosterData) ?>
-        </div>
         <div class="no-print" style="margin-top:16px;"><button onclick="window.print()">Print / Save PDF</button></div>
         </body></html>
         <?php
@@ -240,25 +250,24 @@ if ($scheduleId) {
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Submissions</h4>
-<p class="text-muted small mb-3">Invigilators submit their attendance lists here after each assessment. Review sign-in/sign-out records, missed entries, and export reports.</p>
 
 <div class="row g-3">
   <div class="col-md-4">
     <div class="semas-card p-3">
-      <h6 class="display-font mb-2">Submissions</h6>
-      <?php if (!$allSubmissions): ?>
-        <p class="text-muted small mb-0">No submissions yet.</p>
+      <h6 class="display-font mb-2">Scheduled</h6>
+      <?php if (!$pendingSchedules): ?>
+        <p class="text-muted small mb-0">No pending CAT / Exam schedules.</p>
       <?php else: ?>
         <div class="list-group list-group-flush">
-          <?php foreach ($allSubmissions as $sub): ?>
-            <a href="?schedule_id=<?= (int) $sub['schedule_id'] ?>"
-               class="list-group-item list-group-item-action py-2 px-0 small <?= $scheduleId === (int) $sub['schedule_id'] ? 'active' : '' ?>">
-              <div class="fw-semibold"><?= e($sub['module_title']) ?></div>
+          <?php foreach ($pendingSchedules as $ps): ?>
+            <a href="?schedule_id=<?= (int) $ps['schedule_id'] ?>"
+               class="list-group-item list-group-item-action py-2 px-0 small <?= $scheduleId === (int) $ps['schedule_id'] ? 'active' : '' ?>">
+              <div class="fw-semibold"><?= e($ps['module_title']) ?></div>
               <div class="text-muted" style="font-size:.75rem;">
-                <?= e($sub['exam_type']) ?> · <?= e(date('d M Y', strtotime($sub['scheduled_date']))) ?> · <?= e($sub['department_name'] ?? '') ?>
+                <?= e($ps['exam_type']) ?> · <?= e(date('d M Y', strtotime($ps['scheduled_date']))) ?> · <?= e($ps['department_name'] ?? '') ?>
               </div>
-              <div style="font-size:.73rem;" class="<?= $scheduleId === (int) $sub['schedule_id'] ? '' : 'text-muted' ?>">
-                Invigilator: <?= e($sub['invigilator_name']) ?> · Submitted <?= e(date('d M H:i', strtotime($sub['submitted_at']))) ?>
+              <div style="font-size:.73rem;" class="<?= $scheduleId === (int) $ps['schedule_id'] ? '' : 'text-muted' ?>">
+                Invigilator: <?= e($ps['invigilator_name']) ?>
               </div>
             </a>
           <?php endforeach; ?>
@@ -271,17 +280,22 @@ require __DIR__ . '/../partials/layout_top.php';
     <?php if ($schedDetail && $rosterData !== null): ?>
       <div class="semas-card p-3 mb-2">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-          <div>
-            <h6 class="display-font mb-0"><?= e($schedDetail['module_title']) ?> — <?= e($schedDetail['exam_type']) ?></h6>
-            <p class="text-muted small mb-0">
-              Room: <strong><?= e($schedDetail['room']) ?></strong> ·
-              <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?>,
-              <?= e(date('h:i A', strtotime($schedDetail['start_time']))) ?>–<?= e(date('h:i A', strtotime($schedDetail['end_time']))) ?><br>
-              Invigilator: <strong><?= e($schedDetail['invigilator_name']) ?></strong>
-              <?php if ($schedDetail['submitted_at']): ?>
-                · Submitted: <strong><?= e(date('d M Y H:i', strtotime($schedDetail['submitted_at']))) ?></strong>
-              <?php endif; ?>
-            </p>
+          <div style="flex:1;">
+            <!-- Left: Module / Date / Invigilator — Right: Room / Session -->
+            <div class="d-flex justify-content-between flex-wrap gap-2 mb-1">
+              <div>
+                <div class="small"><strong>Module:</strong> <?= e($schedDetail['module_title']) ?> <span class="badge bg-secondary ms-1"><?= e($schedDetail['exam_type']) ?></span></div>
+                <div class="small"><strong>Date:</strong> <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?> &middot; <?= e(date('h:i A', strtotime($schedDetail['start_time']))) ?>–<?= e(date('h:i A', strtotime($schedDetail['end_time']))) ?></div>
+                <div class="small"><strong>Invigilator:</strong> <?= e($schedDetail['invigilator_name']) ?></div>
+                <?php if ($schedDetail['submitted_at']): ?>
+                  <div class="small text-muted">Submitted: <?= e(date('d M Y H:i', strtotime($schedDetail['submitted_at']))) ?></div>
+                <?php endif; ?>
+              </div>
+              <div class="text-end text-md-end">
+                <div class="small"><strong>Room:</strong> <?= e($schedDetail['room']) ?></div>
+                <div class="small"><strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '—') ?></div>
+              </div>
+            </div>
             <?php if ($schedDetail['submission_notes']): ?>
               <p class="text-muted small mb-0 mt-1"><em>Notes: <?= e($schedDetail['submission_notes']) ?></em></p>
             <?php endif; ?>
@@ -300,9 +314,9 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
 
         <?php
-          $missedExam   = array_filter($rosterData, fn($r) => !$r['signin_time']);
-          $missedSignout= array_filter($rosterData, fn($r) => $r['signin_time'] && !$r['signout_time']);
-          $present      = array_filter($rosterData, fn($r) => $r['signin_time'] && $r['signout_time'] && ($r['signout_status'] === 'Present'));
+          $missedExam   = array_filter($rosterData, function ($r) { return !$r['signin_time']; });
+          $missedSignout= array_filter($rosterData, function ($r) { return $r['signin_time'] && !$r['signout_time']; });
+          $present      = array_filter($rosterData, function ($r) { return $r['signin_time'] && $r['signout_time'] && ($r['signout_status'] === 'Present'); });
         ?>
         <div class="row g-2 mb-2 text-center" style="font-size:.8rem;">
           <div class="col-4"><div class="border rounded py-1"><span class="badge badge-completed"><?= count($present) ?></span><br>Present</div></div>
@@ -314,8 +328,8 @@ require __DIR__ . '/../partials/layout_top.php';
           <table class="table table-sm align-middle" style="font-size:.83rem;">
             <thead>
               <tr>
-                <th>#</th><th>Student</th><th>Reg No.</th><th>Eligibility</th>
-                <th>Sign In</th><th>Sign Out</th><th>Status</th><th>Reason</th>
+                <th>NO</th><th>Student</th><th>Reg No.</th>
+                <th>Sign In</th><th>Sign Out</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -329,28 +343,19 @@ require __DIR__ . '/../partials/layout_top.php';
                   <td><?= $i++ ?></td>
                   <td class="fw-semibold"><?= e($r['full_name']) ?></td>
                   <td class="text-muted small"><?= e($r['reg_number'] ?? '—') ?></td>
-                  <td>
-                    <?php if ($r['eligibility'] === 'Allowed'): ?>
-                      <span class="badge badge-completed">Allowed</span>
-                    <?php elseif ($r['eligibility']): ?>
-                      <span class="badge badge-cancelled"><?= e($r['eligibility']) ?></span>
-                    <?php else: ?>
-                      <span class="badge bg-secondary">—</span>
-                    <?php endif; ?>
-                  </td>
                   <td><?= $sin ? '<span class="badge badge-completed">' . e($sin) . '</span>' : '<span class="badge bg-secondary">—</span>' ?></td>
                   <td><?= $sout ? '<span class="badge bg-primary">' . e($sout) . '</span>' : '<span class="badge bg-secondary">—</span>' ?></td>
                   <td>
                     <?php
-                      $cls = match($status) { 'Present' => 'badge-completed', 'Absent' => 'bg-secondary', default => 'badge-urgent' };
+                      if ($status === 'Present') {
+                          $cls = 'badge-completed';
+                      } elseif ($status === 'Absent') {
+                          $cls = 'bg-secondary';
+                      } else {
+                          $cls = 'badge-urgent';
+                      }
                     ?>
                     <span class="badge <?= $cls ?>"><?= e($status) ?></span>
-                  </td>
-                  <td class="small">
-                    <?php if ($r['missed_reason']): ?>
-                      <span class="badge bg-warning text-dark"><?= e($r['missed_reason']) ?></span>
-                      <?= $r['missed_notes'] ? '<br><span class="text-muted">' . e($r['missed_notes']) . '</span>' : '' ?>
-                    <?php else: ?>—<?php endif; ?>
                   </td>
                 </tr>
               <?php endforeach; ?>
@@ -359,9 +364,70 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
       </div>
     <?php elseif (!$scheduleId): ?>
-      <div class="semas-card p-4 text-center text-muted small">Select a submission on the left to view the attendance roster.</div>
+      <div class="semas-card p-4 text-center text-muted small">Select a scheduled item on the left to view the attendance roster.</div>
     <?php endif; ?>
   </div>
 </div>
 
+<!-- History: submitted submissions, split by type -->
+<?php
+$catHistory  = array_values(array_filter($historySubmissions, function ($h) { return $h['exam_type'] === 'CAT'; }));
+$examHistory = array_values(array_filter($historySubmissions, function ($h) { return $h['exam_type'] === 'Exam'; }));
+
+function renderHistoryTable(array $rows, string $label): void { ?>
+<?php if ($rows): ?>
+<div class="semas-card mt-4">
+  <button class="btn w-100 text-start p-3 d-flex justify-content-between align-items-center hist-toggle"
+          type="button" data-bs-toggle="collapse" data-bs-target="#hist-<?= $label ?>" aria-expanded="false">
+    <span class="display-font" style="font-size:1rem;">
+      <?= htmlspecialchars($label) ?> History <span class="badge bg-secondary ms-2"><?= count($rows) ?></span>
+    </span>
+    <i class="bi bi-chevron-down"></i>
+  </button>
+  <div class="collapse" id="hist-<?= $label ?>">
+    <div class="p-3 pt-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0" style="font-size:.84rem;">
+          <thead class="table-light">
+            <tr><th>Module</th><th>Date</th><th>Room</th><th>Invigilator</th><th>Submitted</th><th></th></tr>
+          </thead>
+          <tbody>
+            <?php foreach ($rows as $hs): ?>
+              <tr>
+                <td class="fw-semibold"><?= htmlspecialchars($hs['module_title']) ?></td>
+                <td><?= htmlspecialchars(date('d M Y', strtotime($hs['scheduled_date']))) ?></td>
+                <td><?= htmlspecialchars($hs['room']) ?></td>
+                <td><?= htmlspecialchars($hs['invigilator_name']) ?></td>
+                <td class="text-muted small"><?= htmlspecialchars(date('d M Y H:i', strtotime($hs['submitted_at']))) ?></td>
+                <td>
+                  <a href="?schedule_id=<?= (int) $hs['schedule_id'] ?>" class="btn btn-sm btn-outline-dark">
+                    <i class="bi bi-eye me-1"></i>View
+                  </a>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+<?php }
+
+renderHistoryTable($catHistory,  'CAT');
+renderHistoryTable($examHistory, 'Exam');
+?>
+<script>
+document.querySelectorAll('.hist-toggle').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var icon = this.querySelector('.bi-chevron-down, .bi-chevron-up');
+    if (icon) icon.className = icon.className.includes('chevron-down') ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+  });
+});
+</script>
+
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>
+
+
+

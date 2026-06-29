@@ -40,7 +40,6 @@ function perm_cell($v): string
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Roles &amp; Permissions</h4>
-<p class="text-muted small mb-4">This is a reference of how access is actually enforced in the code (via role checks on every page) — it documents the rules rather than letting you edit them live, since permissions aren't stored as data anyone can change here.</p>
 
 <div class="semas-card p-3">
   <div class="table-responsive">

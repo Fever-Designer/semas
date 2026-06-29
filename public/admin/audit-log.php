@@ -54,7 +54,6 @@ function audit_badge(string $action): string
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Audit Log</h4>
-<p class="text-muted small mb-4">Every create, update, activate/deactivate, password reset, login, and announcement action is recorded here for accountability.</p>
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">

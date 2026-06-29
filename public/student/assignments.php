@@ -18,6 +18,7 @@ if (!$moduleId) {
          JOIN modules m ON m.module_id = a.module_id AND m.status = 'Ongoing'
          JOIN module_enrollments e ON e.module_id = m.module_id AND e.user_id = :uid
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.assignment_id AND s.user_id = :uid2
+         WHERE a.deadline > NOW()
          ORDER BY a.deadline ASC"
     );
     $allStmt->execute(['uid' => $me['user_id'], 'uid2' => $me['user_id']]);
@@ -104,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $assignments = $db->prepare(
     "SELECT a.*, s.file_path AS my_file, s.submitted_at AS my_submitted_at
      FROM assignments a LEFT JOIN assignment_submissions s ON s.assignment_id = a.assignment_id AND s.user_id = :uid
-     WHERE a.module_id = :mid ORDER BY a.deadline ASC"
+     WHERE a.module_id = :mid AND a.deadline > NOW() ORDER BY a.deadline ASC"
 );
 $assignments->execute(['uid' => $me['user_id'], 'mid' => $moduleId]);
 $assignments = $assignments->fetchAll();

@@ -16,8 +16,11 @@ declare(strict_types=1);
  * The system's decision is only a recommendation: HOD must explicitly
  * generate the list (writing system_decision), and every row starts
  * hod_decision='Pending' until the HOD Approves (final = system) or
- * Overrides (final = HOD's explicit choice, with a reason) it. Slips are
- * only ever issued for rows where final_decision = 'Allowed'.
+ * Overrides (final = HOD's explicit choice, with a reason) it.
+ *
+ * The system marks students Allowed when attendance is at least 70%
+ * of the relevant sessions; otherwise Not Allowed.
+ * Slips are only ever issued for rows where final_decision = 'Allowed'.
  */
 final class Eligibility
 {
@@ -64,7 +67,8 @@ final class Eligibility
             $missedStmt->execute(array_merge(['uid' => $userId, 'mid' => $moduleId], $params));
             $missed = (int) $missedStmt->fetchColumn();
 
-            $systemDecision = $missed >= 2 ? 'Not Allowed' : 'Allowed';
+            $attendancePct = $totalSessions === 0 ? 100 : (int) round((($totalSessions - $missed) / max(1, $totalSessions)) * 100);
+            $systemDecision = $attendancePct >= 70 ? 'Allowed' : 'Not Allowed';
 
             $existing = $db->prepare('SELECT hod_decision, final_decision FROM cat_exam_eligibility WHERE module_id = :mid AND user_id = :uid AND exam_type = :type');
             $existing->execute(['mid' => $moduleId, 'uid' => $userId, 'type' => $examType]);

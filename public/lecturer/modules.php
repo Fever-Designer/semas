@@ -31,6 +31,22 @@ $modules = $modules->fetchAll();
 $ongoing   = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Ongoing'; }));
 $completed = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Completed'; }));
 
+$activeWindow = ClassAttendance::currentWindow();
+
+function lec_module_matches_window(array $module, ?array $window): bool
+{
+    if (!$window) return true;
+    if (!$module['session_type']) return true;
+    if ($module['session_type'] === 'Day')     return $window['name'] === 'Day';
+    if ($module['session_type'] === 'Evening') return $window['name'] === 'Evening';
+    if ($module['session_type'] === 'Weekend') return in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+    return true;
+}
+
+$ongoingFiltered = $activeWindow
+  ? array_values(array_filter($ongoing, function ($m) use ($activeWindow) { return lec_module_matches_window($m, $activeWindow); }))
+  : $ongoing;
+
 // Today's CAT/Exam schedules where this lecturer is invigilator — keyed by module_id.
 $todaySchedules = [];
 $todayStmt = $db->prepare(
@@ -102,18 +118,37 @@ function module_card(array $m, ?array $todaySchedule = null): void {
 }
 ?>
 <h4 class="display-font mb-1">My Modules</h4>
-<p class="text-muted small mb-4">Modules are created and assigned to you by the Head of Department. Use the actions on each module to take attendance, send announcements, or manage assignments.</p>
 
 <h6 class="display-font mb-2">Ongoing Modules</h6>
+<?php if ($activeWindow && count($ongoingFiltered) < count($ongoing)): ?>
+  <p class="text-muted small mb-2">Showing modules for current session: <strong><?= e(ClassAttendance::describeWindow($activeWindow)) ?></strong></p>
+<?php endif; ?>
 <div class="row g-3 mb-4">
-  <?php foreach ($ongoing as $m): module_card($m, $todaySchedules[(int) $m['module_id']] ?? null); endforeach; ?>
-  <?php if (!$ongoing): ?><div class="col-12"><div class="semas-card p-4 text-center text-muted small">No ongoing modules assigned to you yet.</div></div><?php endif; ?>
+  <?php foreach ($ongoingFiltered as $m): module_card($m, $todaySchedules[(int) $m['module_id']] ?? null); endforeach; ?>
+  <?php if (!$ongoingFiltered && !$activeWindow): ?>
+    <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No ongoing modules assigned to you yet.</div></div>
+  <?php elseif (!$ongoingFiltered && $activeWindow): ?>
+    <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No modules assigned to you for the current <?= e(ClassAttendance::describeWindow($activeWindow)) ?> session.</div></div>
+  <?php endif; ?>
 </div>
 
 <h6 class="display-font mb-2">Completed Modules</h6>
-<div class="row g-3">
-  <?php foreach ($completed as $m): module_card($m, $todaySchedules[(int) $m['module_id']] ?? null); endforeach; ?>
-  <?php if (!$completed): ?><div class="col-12"><div class="semas-card p-4 text-center text-muted small">No completed modules yet.</div></div><?php endif; ?>
-</div>
+<?php if (!$completed): ?>
+  <div class="semas-card p-4 text-center text-muted small">No completed modules yet.</div>
+<?php else: ?>
+  <div class="semas-card">
+    <?php foreach ($completed as $i => $m): ?>
+      <div class="d-flex justify-content-between align-items-center p-3 <?= $i < count($completed) - 1 ? 'border-bottom' : '' ?>">
+        <div>
+          <div class="fw-semibold small"><?= e($m['module_title']) ?></div>
+          <div class="text-muted" style="font-size:.75rem"><?= e($m['department_name'] ?? '—') ?> &middot; <?= e($m['session_type'] ?? 'Any') ?> &middot; <?= (int) $m['student_count'] ?> student(s)</div>
+        </div>
+        <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark text-nowrap">
+          <i class="bi bi-clock-history me-1"></i>View Attendance
+        </a>
+      </div>
+    <?php endforeach; ?>
+  </div>
+<?php endif; ?>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

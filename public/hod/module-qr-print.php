@@ -16,7 +16,7 @@ $stmt     = $db->prepare(
 $stmt->execute(['id' => $moduleId]);
 $module = $stmt->fetch();
 
-if (!$module || !$module['module_qr_secret']) {
+if (!$module || !$module['module_qr_secret'] || (Auth::role() === 'Coordinator' && $module['session_type'] !== 'Weekend')) {
     http_response_code(404);
     die('Module not found or QR not generated.');
 }

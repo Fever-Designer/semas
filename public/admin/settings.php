@@ -10,7 +10,7 @@ $me = Auth::user();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    foreach (['university_name', 'theme_gold', 'theme_ink', 'academic_year', 'current_semester'] as $field) {
+    foreach (['university_name', 'theme_gold', 'theme_ink'] as $field) {
         Settings::set($field, trim($_POST[$field] ?? ''), $me['user_id']);
     }
 
@@ -39,7 +39,6 @@ $settings = Settings::all();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">System Settings</h4>
-<p class="text-muted small mb-4">University branding and general academic settings. Email/SMS credentials are configured via the server's <code>.env</code> file, not here, so a typo can never silently break a working integration.</p>
 
 <form method="post" enctype="multipart/form-data">
   <?= csrf_field() ?>
@@ -74,17 +73,8 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 
   <div class="semas-card p-3 mb-3">
-    <h6 class="display-font mb-3">Academic Settings</h6>
-    <div class="row g-3">
-      <div class="col-md-6"><label class="form-label small">Academic Year</label><input name="academic_year" class="form-control" placeholder="e.g. 2025/2026" value="<?= e($settings['academic_year'] ?? '') ?>"></div>
-      <div class="col-md-6"><label class="form-label small">Current Semester/Session</label><input name="current_semester" class="form-control" placeholder="e.g. Semester 1" value="<?= e($settings['current_semester'] ?? '') ?>"></div>
-    </div>
-    <p class="text-muted small mt-2 mb-0">Time zone for Class Attendance windows is fixed to Africa/Kigali system-wide (see <code>includes/ClassAttendance.php</code>) and isn't user-configurable here, to avoid accidentally breaking the attendance rules.</p>
-  </div>
-
-  <div class="semas-card p-3 mb-3">
     <h6 class="display-font mb-3">Email &amp; SMS</h6>
-    <p class="text-muted small mb-2">Configured via <code>.env</code> (not editable here):</p>
+    <p class="text-muted small mb-2">Configured via <code>.env</code>:</p>
     <ul class="small text-muted">
       <li>Mail host: <?= e(defined('MAIL_HOST') ? MAIL_HOST : '—') ?>, From: <?= e(defined('MAIL_FROM_ADDRESS') ? MAIL_FROM_ADDRESS : '—') ?></li>
       <li>SMS provider: <?= e(defined('SMS_PROVIDER') ? SMS_PROVIDER : '—') ?></li>
@@ -93,7 +83,6 @@ require __DIR__ . '/../partials/layout_top.php';
 
   <div class="semas-card p-3 mb-3">
     <h6 class="display-font mb-3">Backup</h6>
-    <p class="text-muted small mb-2">Download a SQL export of every table. For large databases, prefer a server-side <code>mysqldump</code> instead.</p>
     <a href="<?= APP_URL ?>/admin/backup-download.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-download me-1"></i> Download SQL Backup</a>
   </div>
 
@@ -101,8 +90,7 @@ require __DIR__ . '/../partials/layout_top.php';
 </form>
 
 <div class="semas-card p-3 mt-4">
-  <h6 class="display-font mb-1">Roles &amp; Permissions (reference)</h6>
-  <p class="text-muted small mb-3">This is a reference of how access is actually enforced in the code (via role checks on every page) — not a live editor, since permissions aren't stored as data anyone can change here.</p>
+  <h6 class="display-font mb-3">Roles &amp; Permissions</h6>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead><tr><th>Feature</th><th class="text-center">Principal</th><th class="text-center">HOD</th><th class="text-center">Dean</th><th class="text-center">Lecturer</th><th class="text-center">Student</th></tr></thead>

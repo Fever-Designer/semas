@@ -60,7 +60,6 @@ if ($eventId) {
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Event Participants</h4>
-<p class="text-muted small mb-4">View, search, export, or remove registrants. You can also mark attendance manually here.</p>
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">

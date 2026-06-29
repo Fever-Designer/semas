@@ -32,9 +32,15 @@ final class Suggestion
     {
         $db = Database::connection();
         $sql = "SELECT s.suggestion_id, s.category, s.message, s.status, s.admin_reply,
-                       s.replied_at, s.created_at, d.department_name
+                       s.replied_at, s.created_at, s.resolved_at, d.department_name,
+                       ru.full_name AS replied_by_name, rr.role_name AS replied_by_role,
+                       resv.full_name AS resolved_by_name, resr.role_name AS resolved_by_role
                 FROM suggestions s
-                LEFT JOIN departments d ON d.department_id = s.department_id";
+                LEFT JOIN departments d    ON d.department_id    = s.department_id
+                LEFT JOIN users ru         ON ru.user_id         = s.replied_by
+                LEFT JOIN roles rr         ON rr.role_id         = ru.role_id
+                LEFT JOIN users resv       ON resv.user_id       = s.resolved_by
+                LEFT JOIN roles resr       ON resr.role_id       = resv.role_id";
         $params = [];
         if ($scopeDepartmentId) {
             $sql .= ' WHERE s.department_id = :dept';
@@ -69,10 +75,17 @@ final class Suggestion
         )->execute(['reply' => $reply, 'uid' => $repliedByUserId, 'id' => $suggestionId]);
     }
 
-    public static function setStatus(int $suggestionId, string $status): void
+    public static function setStatus(int $suggestionId, string $status, ?int $byUserId = null): void
     {
-        Database::connection()->prepare('UPDATE suggestions SET status = :status WHERE suggestion_id = :id')
-            ->execute(['status' => $status, 'id' => $suggestionId]);
+        $db = Database::connection();
+        if ($status === 'Resolved' && $byUserId) {
+            $db->prepare(
+                'UPDATE suggestions SET status=:status, resolved_by=:uid, resolved_at=NOW() WHERE suggestion_id=:id'
+            )->execute(['status' => $status, 'uid' => $byUserId, 'id' => $suggestionId]);
+        } else {
+            $db->prepare('UPDATE suggestions SET status=:status WHERE suggestion_id=:id')
+               ->execute(['status' => $status, 'id' => $suggestionId]);
+        }
     }
 
     public static function delete(int $suggestionId): void

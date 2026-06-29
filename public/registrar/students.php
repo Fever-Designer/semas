@@ -122,7 +122,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Mailer::send($email, 'Your SEMAS Login Credentials', 'student_credentials', [
                     'full_name'  => $fullName,
                     'reg_number' => $regNumber,
-                    'username'   => $regNumber,
                     'password'   => $regNumber,
                     'login_url'  => APP_URL . '/auth/login.php',
                 ], $newUserId);
@@ -177,11 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $data = $sheet->toArray(null, true, true, false);
                 $headers = null;
                 foreach ($data as $row) {
-                    $row = array_map(fn($v) => trim((string) $v), $row);
-                    if (!array_filter($row)) continue;
-                    if ($headers === null) { $headers = $row; continue; }
-                    $map = @array_combine($headers, $row);
-                    if ($map) $rows[] = $map;
+                  $row = array_map(function ($v) { return trim((string) $v); }, $row);
+                  if (!array_filter($row)) continue;
+                  if ($headers === null) { $headers = $row; continue; }
+                  $map = @array_combine($headers, $row);
+                  if ($map) $rows[] = $map;
                 }
             } catch (Exception $e) {
                 $parseError = 'Could not read Excel file: ' . $e->getMessage();
@@ -269,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         Mailer::send($email, 'Your SEMAS Login Credentials', 'student_credentials', [
                             'full_name' => $name, 'reg_number' => $regNum,
-                            'username'  => $regNum, 'password' => $regNum,
+                            'password'  => $regNum,
                             'login_url' => APP_URL . '/auth/login.php',
                         ], $newId);
                     } catch (Exception $ignore) {}
@@ -351,7 +350,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
     <table class="table table-sm table-hover align-middle">
       <thead class="table-light sticky-top"><tr>
-        <th>#</th><th>Reg Number</th><th>Full Name</th><th>Email</th><th>Dept Code</th><th>Session</th><th>Intake</th><th>Year</th>
+        <th>NO</th><th>Reg Number</th><th>Full Name</th><th>Email</th><th>Dept Code</th><th>Session</th><th>Intake</th><th>Year</th>
       </tr></thead>
       <tbody>
       <?php foreach ($importRows as $i => $row): ?>
@@ -512,7 +511,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
               <input type="text" name="reg_number" id="fieldRegNumber" class="form-control" required placeholder="e.g. 2401001192">
-              <div class="form-text">Used as username and default password.</div>
+              <div class="form-text">Used as default password.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Full Name <span class="text-danger">*</span></label>

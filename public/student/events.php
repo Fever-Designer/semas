@@ -96,7 +96,6 @@ $events = $stmt->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Events</h4>
-<p class="text-muted small mb-4">Register for upcoming events. If an event is full and waitlisting is enabled, you'll be added to the waiting list and notified if a spot opens up.</p>
 
 <div class="row g-3">
   <?php foreach ($events as $ev):

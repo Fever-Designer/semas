@@ -90,10 +90,8 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/dean/announcements.php"><i class="bi bi-megaphone-fill"></i> Student Announcements</a>
         <div class="nav-section-label">Event Management</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/events.php"><i class="bi bi-calendar-event-fill"></i> Events</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'ai' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/ai_generator.php"><i class="bi bi-robot"></i> AI Notification Generator</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/event-participants.php"><i class="bi bi-people-fill"></i> Participants</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/qr.php"><i class="bi bi-qr-code-scan"></i> Event QR Codes</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/scan-student.php"><i class="bi bi-person-check-fill"></i> Scan / Mark Attendance</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/event-participants.php"><i class="bi bi-people-fill"></i> Participants</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'reports' ? 'active' : '' ?>" href="<?= APP_URL ?>/reports/index.php"><i class="bi bi-clipboard-check-fill"></i> Compliance Reports</a>
         <div class="nav-section-label">Lost &amp; Found</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Items Board</a>
@@ -125,8 +123,11 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <?php if ($roleLabel === 'Coordinator'): ?>
         <div class="nav-section-label">Weekend Academic</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Weekend Modules</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'holidays' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/holidays.php"><i class="bi bi-calendar-x-fill"></i> Umuganda</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
@@ -140,8 +141,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link" href="<?= APP_URL ?>/student/cat-exam-slips.php"><i class="bi bi-printer-fill"></i> CAT / Exam Slips</a>
         <div class="nav-section-label">Events</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/events.php"><i class="bi bi-calendar-event-fill"></i> Events</a>
-        <a class="nav-link" href="<?= APP_URL ?>/student/my-qr.php"><i class="bi bi-qr-code"></i> Event QR Code</a>
-        <a class="nav-link" href="<?= APP_URL ?>/student/scan.php"><i class="bi bi-camera-fill"></i> Event Check-in</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/my-qr.php"><i class="bi bi-qr-code"></i> Event QR &amp; Check-in</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
@@ -167,9 +167,8 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
             <span id="notifCount" class="notif-count" style="<?= $unread > 0 ? '' : 'display:none;' ?>"><?= $unread > 99 ? '99+' : $unread ?></span>
           </div>
           <div id="notifPanel" class="notif-panel">
-            <div class="p-2 border-bottom d-flex justify-content-between align-items-center">
+            <div class="p-2 border-bottom">
               <span class="fw-semibold small">Notifications</span>
-              <button id="notifMarkAllRead" class="btn btn-link btn-sm p-0" style="font-size:0.72rem;">Mark all read</button>
             </div>
             <div id="notifList"><div class="p-3 text-muted small text-center">Loading...</div></div>
           </div>

@@ -56,7 +56,7 @@ $key     = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
 $iv      = random_bytes(16);
 $cipher  = openssl_encrypt($payload, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
 $hmac    = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
-$b64u    = fn(string $b) => rtrim(strtr(base64_encode($b), '+/', '-_'), '=');
+$b64u    = function (string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); };
 $verifyToken = $b64u($iv) . '.' . $b64u($cipher) . '.' . $b64u($hmac);
 $verifyUrl   = APP_URL . '/public/verify-slip.php?t=' . $verifyToken;
 
@@ -65,7 +65,7 @@ $sinTime   = date('h:i A', strtotime($sinRecord['recorded_at']));
 $soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
 $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
 $timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' – ' . date('h:i A', strtotime($schedule['end_time']));
-$issuedAt  = date('d F Y, h:i A');
+$issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
 $uniName   = Settings::get('university_name', 'University of Kigali');
 ?>
 <!DOCTYPE html>
@@ -171,12 +171,6 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 
     <!-- Invigilator Signature Block -->
     <div class="sig-section">
-      <?php
-        $photoSrc = $schedule['invigilator_photo']
-            ? APP_URL . '/' . $schedule['invigilator_photo']
-            : 'https://ui-avatars.com/api/?name=' . urlencode($schedule['invigilator_name'] ?? 'I') . '&background=1E2A52&color=fff&size=70';
-      ?>
-      <img class="sig-photo" src="<?= e($photoSrc) ?>" alt="Invigilator Photo">
       <div class="sig-info">
         <div class="name"><?= e($schedule['invigilator_name'] ?? '—') ?></div>
         <div style="color:#6B7280;margin-top:2px;">Invigilator · <?= e($uniName) ?></div>

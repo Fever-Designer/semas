@@ -14,6 +14,8 @@ use PHPMailer\PHPMailer\Exception as PHPMailerException;
  */
 final class Mailer
 {
+    private static bool $shutdownRegistered = false;
+
     private static function client(): PHPMailer
     {
         $mail = new PHPMailer(true);
@@ -69,6 +71,211 @@ final class Mailer
             error_log('[Mailer] send failed: ' . $e->getMessage());
             return false;
         }
+    }
+
+    // --- Async queue helpers ---
+
+    /** Insert an email into the send queue; the background worker delivers it. */
+    public static function enqueue(string $toEmail, string $subject, string $template, array $vars, ?int $userId = null): void
+    {
+        $db = Database::connection();
+        self::ensureEmailQueueTable($db);
+
+        try {
+            $db->prepare(
+                'INSERT INTO email_queue (to_email, user_id, subject, template_name, vars_json)
+                 VALUES (:email, :uid, :subj, :tpl, :vars)'
+            )->execute([
+                'email' => $toEmail,
+                'uid'   => $userId,
+                'subj'  => $subject,
+                'tpl'   => $template,
+                'vars'  => json_encode($vars),
+            ]);
+        } catch (PDOException $e) {
+            $errorCode = $e->errorInfo[1] ?? null;
+            if ($errorCode === 1146 || stripos($e->getMessage(), 'email_queue') !== false) {
+                // If the queue table is missing, fallback to direct send so email delivery does not fail catastrophically.
+                self::send($toEmail, $subject, $template, $vars, $userId);
+                return;
+            }
+            throw $e;
+        }
+    }
+
+    private static function ensureEmailQueueTable(PDO $db): void
+    {
+        $db->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS email_queue (
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    to_email       VARCHAR(255)  NOT NULL,
+    user_id        INT           NULL,
+    subject        VARCHAR(500)  NOT NULL,
+    template_name  VARCHAR(100)  NOT NULL,
+    vars_json      MEDIUMTEXT    NOT NULL,
+    status         ENUM('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
+    attempts       TINYINT       NOT NULL DEFAULT 0,
+    created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at   DATETIME      NULL,
+    INDEX idx_status_attempts (status, attempts)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SQL
+        );
+    }
+
+    public static function processQueue(int $limit = 200): void
+    {
+        $db = Database::connection();
+        $rows = $db->prepare(
+            'SELECT * FROM email_queue WHERE status = :status AND attempts < :max_att ORDER BY id ASC LIMIT :row_limit'
+        );
+        $rows->bindValue('status', 'pending', PDO::PARAM_STR);
+        $rows->bindValue('max_att', 5, PDO::PARAM_INT);
+        $rows->bindValue('row_limit', $limit, PDO::PARAM_INT);
+        $rows->execute();
+
+        foreach ($rows->fetchAll() as $row) {
+            $db->prepare(
+                'UPDATE email_queue SET status = :status, attempts = attempts + 1 WHERE id = :id AND status = :pending'
+            )->execute(['status' => 'processing', 'id' => $row['id'], 'pending' => 'pending']);
+
+            $vars = (array) json_decode((string) $row['vars_json'], true);
+            $userId = $row['user_id'] !== null ? (int) $row['user_id'] : null;
+
+            $ok = self::send(
+                (string) $row['to_email'],
+                (string) $row['subject'],
+                (string) $row['template_name'],
+                $vars,
+                $userId
+            );
+
+            $db->prepare(
+                'UPDATE email_queue SET status = :s, processed_at = NOW() WHERE id = :id'
+            )->execute(['s' => $ok ? 'sent' : 'failed', 'id' => $row['id']]);
+        }
+    }
+
+    /** Schedule queue processing after the response is sent (register_shutdown_function). */
+    public static function dispatch(): void
+    {
+        if (self::$shutdownRegistered) return;
+        self::$shutdownRegistered = true;
+        register_shutdown_function(function () {
+            // Flush output to client first if possible (Apache + mod_php)
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            try {
+                self::processQueue();
+            } catch (Throwable $e) {
+                error_log('[Mailer] dispatch/processQueue failed: ' . $e->getMessage());
+            }
+        });
+    }
+
+    // --- Enqueue convenience wrappers (bulk sends — response returns before delivery) ---
+
+    public static function enqueueAnnouncementNotification(array $user, array $announcement): void
+    {
+        self::enqueue(
+            $user['email'],
+            '[' . ($announcement['category'] ?? 'Announcement') . '] ' . $announcement['title'],
+            'announcement_notification',
+            ['full_name' => $user['full_name'], 'announcement' => $announcement],
+            isset($user['user_id']) ? (int) $user['user_id'] : null
+        );
+    }
+
+    public static function enqueueSemesterCalendar(array $user, array $calendar): void
+    {
+        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' — Starts ' . date('d M Y', strtotime($calendar['start_date']));
+        self::enqueue($user['email'], $subject, 'semester_calendar', [
+            'full_name'     => $user['full_name'],
+            'academic_year' => $calendar['academic_year'],
+            'intake'        => $calendar['intake'],
+            'semester_name' => $calendar['semester_name'],
+            'start_date'    => $calendar['start_date'],
+            'end_date'      => $calendar['end_date'],
+            'notes'         => $calendar['notes'] ?? '',
+            'login_url'     => APP_URL . '/auth/login.php',
+        ], isset($user['user_id']) ? (int) $user['user_id'] : null);
+    }
+
+    public static function enqueueCatExamSchedule(array $user, array $schedule): void
+    {
+        $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
+        $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        $userId    = isset($user['user_id']) ? (int) $user['user_id'] : null;
+        self::enqueue($user['email'], 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' — ' . $schedule['module_title'], 'cat_exam_schedule', [
+            'full_name'        => $user['full_name'],
+            'exam_type'        => $schedule['exam_type'],
+            'module_title'     => $schedule['module_title'],
+            'scheduled_date'   => $schedule['scheduled_date'],
+            'start_time'       => $schedule['start_time'],
+            'end_time'         => $schedule['end_time'],
+            'room'             => $schedule['room'],
+            'invigilator_name' => $schedule['invigilator_name'],
+            'day_of_week'      => $dayOfWeek,
+        ], $userId);
+
+        $phone = $user['phone_number'] ?? $user['phone'] ?? '';
+        if ($phone) {
+            $smsDate = date('d M Y', strtotime($schedule['scheduled_date']));
+            $smsTime = date('h:i A', strtotime($schedule['start_time'])) . '-' . date('h:i A', strtotime($schedule['end_time']));
+            $sms = "Hi {$user['full_name']}, your $typeWord for {$schedule['module_title']} is on $dayOfWeek, $smsDate at $smsTime. Room: {$schedule['room']}. Invigilator: {$schedule['invigilator_name']}. - SEMAS";
+            Sms::send($phone, mb_substr($sms, 0, 160), $userId);
+        }
+    }
+
+    public static function enqueueEligibilityDecision(array $user, array $schedule, string $finalDecision): void
+    {
+        $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
+        $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        $userId    = isset($user['user_id']) ? (int) $user['user_id'] : null;
+        $subject   = $finalDecision === 'Allowed'
+            ? 'Your ' . $typeWord . ' eligibility is approved — Entry Card ready'
+            : 'Your ' . $typeWord . ' eligibility decision has been made';
+
+        self::enqueue($user['email'], $subject, 'cat_exam_eligibility_decision', [
+            'full_name'        => $user['full_name'],
+            'exam_type'        => $schedule['exam_type'],
+            'module_title'     => $schedule['module_title'],
+            'scheduled_date'   => $schedule['scheduled_date'],
+            'start_time'       => $schedule['start_time'],
+            'end_time'         => $schedule['end_time'],
+            'room'             => $schedule['room'],
+            'invigilator_name' => $schedule['invigilator_name'],
+            'day_of_week'      => $dayOfWeek,
+            'final_decision'   => $finalDecision,
+        ], $userId);
+
+        $phone = $user['phone_number'] ?? $user['phone'] ?? '';
+        if ($phone) {
+            $smsDate = date('d M Y', strtotime($schedule['scheduled_date']));
+            if ($finalDecision === 'Allowed') {
+                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is APPROVED. Log in to SEMAS to print your Entry Card. Good luck! - SEMAS";
+            } else {
+                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is NOT ALLOWED. Please visit your HoD office before $typeWord day ($smsDate). - SEMAS";
+            }
+            Sms::send($phone, mb_substr($sms, 0, 160), $userId);
+        }
+    }
+
+    public static function enqueueInvigilatorAssigned(array $invigilator, array $schedule): void
+    {
+        $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
+        $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        self::enqueue($invigilator['email'], 'Invigilator Assignment: ' . $typeWord . ' — ' . $schedule['module_title'] . ' on ' . $dayOfWeek, 'invigilator_assigned', [
+            'full_name'      => $invigilator['full_name'],
+            'exam_type'      => $schedule['exam_type'],
+            'module_title'   => $schedule['module_title'],
+            'scheduled_date' => $schedule['scheduled_date'],
+            'start_time'     => $schedule['start_time'],
+            'end_time'       => $schedule['end_time'],
+            'room'           => $schedule['room'],
+            'day_of_week'    => $dayOfWeek,
+        ], isset($invigilator['user_id']) ? (int) $invigilator['user_id'] : null);
     }
 
     // --- Convenience wrappers for every email type listed in the spec ---

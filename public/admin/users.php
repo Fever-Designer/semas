@@ -176,10 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => trim($_POST['full_name']),
                     'email' => trim($_POST['email']),
                     'phone_number' => trim($_POST['phone_number']) ?: null,
-                    'session_type' => $_POST['session_type'] ?: null,
-                    'year_of_study' => $_POST['year_of_study'] ?: null,
                 ];
-                $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number, session_type=:session_type, year_of_study=:year_of_study';
+                $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number';
                 if ($myRole === 'Principal') {
                     $fields['department_id'] = $_POST['department_id'] ?: null;
                     $fields['role_id'] = (int) $_POST['role_id'];
@@ -286,11 +284,6 @@ require __DIR__ . '/../partials/layout_top.php';
     </button>
   <?php endif; ?>
 </div>
-<p class="text-muted small mb-4">
-  <?php if ($myRole === 'Principal'): ?>Full management of every account.
-  <?php elseif ($myRole === 'Dean'): ?>University-wide: every student account, regardless of department or faculty.
-  <?php else: ?>Scoped to students in your department, plus all Dean accounts.<?php endif; ?>
-</p>
 
 <?php if ($myRole === 'Principal' || $myRole === 'HOD'): ?>
 <div class="modal fade" id="createStaffModal" tabindex="-1">
@@ -420,20 +413,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" value="<?= e($u['full_name']) ?>" required></div>
                     <div class="mb-2"><label class="form-label small">Email</label><input type="email" name="email" class="form-control form-control-sm" value="<?= e($u['email']) ?>" required></div>
                     <div class="mb-2"><label class="form-label small">Phone</label><input name="phone_number" class="form-control form-control-sm" value="<?= e($u['phone_number'] ?? '') ?>"></div>
-                    <div class="mb-2">
-                      <label class="form-label small">Session</label>
-                      <select name="session_type" class="form-select form-select-sm">
-                        <option value="">Not set</option>
-                        <?php foreach (['Day', 'Evening', 'Weekend'] as $s): ?><option <?= $u['session_type'] === $s ? 'selected' : '' ?>><?= $s ?></option><?php endforeach; ?>
-                      </select>
-                    </div>
-                    <div class="mb-2">
-                      <label class="form-label small">Year of Study</label>
-                      <select name="year_of_study" class="form-select form-select-sm">
-                        <option value="">Not set</option>
-                        <?php for ($y = 1; $y <= 6; $y++): ?><option value="<?= $y ?>" <?= (int) $u['year_of_study'] === $y ? 'selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
-                      </select>
-                    </div>
                     <?php if ($myRole === 'Principal'): ?>
                       <div class="mb-2">
                         <label class="form-label small">Department</label>

@@ -1,18 +1,20 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD']);
+Auth::requireRole(['HOD', 'Coordinator']);
 
 $pageTitle = 'Holidays & Umuganda';
 $activeNav = 'holidays';
 $db = Database::connection();
 $me = Auth::user();
+$isCoordinator = Auth::role() === 'Coordinator';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action = $_POST['action'] ?? '';
     if ($action === 'create') {
-        $type = $_POST['holiday_type'] === 'Umuganda' ? 'Umuganda' : 'Public Holiday';
+        // Coordinators can only add Umuganda (no Public Holidays in Weekend)
+        $type = $isCoordinator ? 'Umuganda' : ($_POST['holiday_type'] === 'Umuganda' ? 'Umuganda' : 'Public Holiday');
         try {
             $db->prepare(
                 'INSERT INTO holidays (holiday_date, title, holiday_type, override_morning_start, override_morning_end, override_afternoon_start, override_afternoon_end, notes, created_by)
@@ -58,7 +60,7 @@ $holidays = $db->query('SELECT * FROM holidays ORDER BY holiday_date DESC')->fet
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <div><h4 class="display-font mb-1">Holidays &amp; Umuganda</h4><p class="text-muted small mb-0">Public holidays disable attendance scanning entirely for the day. Umuganda (last Saturday of the month) reschedules weekend classes and notifies weekend students automatically.</p></div>
+  <div><h4 class="display-font mb-1">Holidays &amp; Umuganda</h4></div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newHolidayModal"><i class="bi bi-plus-circle me-1"></i> Add</button>
 </div>
 
@@ -86,10 +88,13 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="modal-content">
       <form method="post">
         <?= csrf_field() ?><input type="hidden" name="action" value="create">
-        <div class="modal-header"><h6 class="modal-title display-font">Add Holiday / Umuganda</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-header"><h6 class="modal-title display-font"><?= $isCoordinator ? 'Add Umuganda Date' : 'Add Holiday / Umuganda' ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="e.g. Liberation Day / Umuganda"></div>
+          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="<?= $isCoordinator ? 'e.g. Umuganda' : 'e.g. Liberation Day / Umuganda' ?>"></div>
+          <?php if ($isCoordinator): ?>
+            <input type="hidden" name="holiday_type" value="Umuganda">
+          <?php else: ?>
           <div class="mb-2">
             <label class="form-label small">Type</label>
             <select name="holiday_type" id="holidayType" class="form-select form-select-sm" onchange="toggleUmuganda()">
@@ -97,7 +102,8 @@ require __DIR__ . '/../partials/layout_top.php';
               <option value="Umuganda">Umuganda (reschedules weekend sessions)</option>
             </select>
           </div>
-          <div id="umugandaFields" style="display:none;">
+          <?php endif; ?>
+          <div id="umugandaFields" style="<?= $isCoordinator ? '' : 'display:none;' ?>">
             <div class="row g-2">
               <div class="col-6"><label class="form-label small">Morning Start</label><input type="time" name="override_morning_start" class="form-control form-control-sm" value="13:30"></div>
               <div class="col-6"><label class="form-label small">Morning End</label><input type="time" name="override_morning_end" class="form-control form-control-sm" value="16:30"></div>

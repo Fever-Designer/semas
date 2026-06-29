@@ -142,7 +142,6 @@ $activeNav = 'dashboard';
 require __DIR__ . '/partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">My Profile</h4>
-<p class="text-muted small mb-4">You can  view and edit your own information.</p>
 
 <?php foreach ($errors as $err): ?><div class="alert alert-danger small"><?= e($err) ?></div><?php endforeach; ?>
 
@@ -164,9 +163,13 @@ require __DIR__ . '/partials/layout_top.php';
     <div class="semas-card p-3 mt-3">
       <h6 class="display-font mb-3">Account Info</h6>
       <table class="table table-sm">
+        <?php if (!in_array($me['role_name'], ['Principal', 'Dean', 'Registrar'], true)): ?>
         <tr><td class="text-muted small">Department</td><td class="small text-end"><?= e($me['department_name'] ?? '—') ?></td></tr>
         <tr><td class="text-muted small">Faculty</td><td class="small text-end"><?= e($me['faculty_name'] ?? '—') ?></td></tr>
+        <?php endif; ?>
+        <?php if ($me['role_name'] === 'Student'): ?>
         <tr><td class="text-muted small">Reg. Number</td><td class="small text-end"><?= e($me['reg_number'] ?? '—') ?></td></tr>
+        <?php endif; ?>
         <tr><td class="text-muted small">Status</td><td class="text-end"><span class="badge badge-<?= $me['status'] === 'Active' ? 'completed' : 'cancelled' ?>"><?= e($me['status']) ?></span></td></tr>
         <tr><td class="text-muted small">Last Login</td><td class="small text-end"><?= e($me['last_login_at'] ?? 'Never') ?></td></tr>
       </table>

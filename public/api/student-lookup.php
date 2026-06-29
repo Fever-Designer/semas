@@ -9,7 +9,8 @@ if (!Auth::check() || !in_array(Auth::role(), ['HOD', 'Coordinator', 'Principal'
     exit;
 }
 
-$regNum = trim($_GET['reg_number'] ?? '');
+$regNum   = trim($_GET['reg_number'] ?? '');
+$moduleId = (int) ($_GET['module_id'] ?? 0);
 if (!$regNum) {
     echo json_encode(['ok' => false, 'message' => 'reg_number required']);
     exit;
@@ -42,9 +43,17 @@ $photoUrl = $student['photo_path']
     ? APP_URL . '/' . $student['photo_path']
     : 'https://ui-avatars.com/api/?name=' . urlencode($student['full_name']) . '&background=1E2A52&color=fff&size=80';
 
+$enrolled = false;
+if ($moduleId && isset($student['user_id'])) {
+    $enrollStmt = $db->prepare('SELECT 1 FROM module_enrollments WHERE module_id=:mid AND user_id=:uid');
+    $enrollStmt->execute(['mid' => $moduleId, 'uid' => $student['user_id']]);
+    $enrolled = (bool) $enrollStmt->fetchColumn();
+}
+
 echo json_encode([
-    'ok'      => true,
-    'student' => [
+    'ok'       => true,
+    'enrolled' => $enrolled,
+    'student'  => [
         'user_id'         => (int) $student['user_id'],
         'full_name'       => $student['full_name'],
         'reg_number'      => $student['reg_number'],

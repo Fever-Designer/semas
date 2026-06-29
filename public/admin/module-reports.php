@@ -53,7 +53,6 @@ $overallRate = $overallTotal > 0 ? round($overallAttended / $overallTotal * 100)
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module &amp; Attendance Reports</h4>
-<p class="text-muted small mb-4">Read-only oversight across every module, university-wide. Editing modules, taking attendance, and academic decisions stay with the HOD and Lecturers.</p>
 
 <div class="row g-3 mb-4">
   <div class="col-md-4"><div class="stat-card"><div class="stat-label">Modules Shown</div><div class="stat-value"><?= count($modules) ?></div></div></div>

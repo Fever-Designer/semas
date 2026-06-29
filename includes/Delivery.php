@@ -32,7 +32,7 @@ final class Delivery
                 'Announcement',
                 $announcement['announcement_id'] ?? null
             );
-            Mailer::sendAnnouncementNotification($user, $announcement);
+            Mailer::enqueueAnnouncementNotification($user, $announcement);
 
             if (!empty($user['phone_number'])) {
                 // WhatsApp — sent to every user who has a phone number
@@ -50,6 +50,7 @@ final class Delivery
                 }
             }
         }
+        Mailer::dispatch();
         return $recipients;
     }
 }

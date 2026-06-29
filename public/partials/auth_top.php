@@ -19,5 +19,5 @@
   <div class="auth-card">
     <div class="text-center mb-4">
       <div class="brand-mark">SEM<span>AS</span></div>
-      <p class="text-muted small mt-1">Student Event Management &amp; Announcement System<br>University of Kigali</p>
+      <p class="text-muted small mt-1">Smart Education Management and Announcement System<br>University of Kigali</p>
     </div>

@@ -75,7 +75,7 @@ header('Content-Type: text/html; charset=utf-8');
 
 <table>
   <thead>
-    <tr><th>#</th><th>Student Name</th><th>Reg No.</th><th>Date</th><th>Session</th><th>Status</th><th>Check-in</th></tr>
+    <tr><th>NO</th><th>Student Name</th><th>Reg No.</th><th>Date</th><th>Session</th><th>Status</th><th>Check-in</th></tr>
   </thead>
   <tbody>
     <?php $i = 0; foreach ($records as $r): $i++; ?>

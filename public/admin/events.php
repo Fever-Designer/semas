@@ -75,7 +75,7 @@ function badge_for_status(string $status): string
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
-  <div><h4 class="display-font mb-1">Manage Events &amp; Announcements</h4><p class="text-muted small mb-0">Create events, schedule venues, and broadcast announcements to students.</p></div>
+  <div><h4 class="display-font mb-1">Manage Events &amp; Announcements</h4></div>
 </div>
 
 <div class="semas-card p-3 mb-4">

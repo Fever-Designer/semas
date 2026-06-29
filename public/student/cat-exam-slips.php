@@ -62,11 +62,6 @@ function cat_attendance_status(PDO $db, int $moduleId, int $userId, string $exam
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Slips</h4>
-<p class="text-muted small mb-3">
-  Eligibility is generated and reviewed by the HOD based on your attendance.
-  An <strong>Entry Slip</strong> can be printed once your status shows <strong>Allowed</strong>.
-  An <strong>Evidence Slip</strong> is available after the invigilator records both your Sign In and Sign Out.
-</p>
 
 <!-- Summary cards -->
 <div class="row g-3 mb-4">
@@ -118,7 +113,7 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
           <p class="text-muted small mb-2">Date: <?= e($m['cat_date']) ?></p>
           <div class="d-flex flex-wrap gap-2">
-            <?php if ($cat && $cat['hod_decision'] !== 'Pending' && $cat['final_decision'] === 'Allowed'): ?>
+            <?php if ($cat && $cat['hod_decision'] !== 'Pending' && $cat['final_decision'] === 'Allowed' && (!$catAtt || !$catAtt['signed_out'])): ?>
               <a href="<?= APP_URL ?>/student/slip-print.php?module_id=<?= (int) $m['module_id'] ?>&type=CAT"
                  target="_blank" class="btn btn-sm btn-semas-gold">
                 <i class="bi bi-printer me-1"></i> Entry Slip
@@ -146,7 +141,7 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
           <p class="text-muted small mb-2">Date: <?= e($m['exam_date']) ?></p>
           <div class="d-flex flex-wrap gap-2">
-            <?php if ($exam && $exam['hod_decision'] !== 'Pending' && $exam['final_decision'] === 'Allowed'): ?>
+            <?php if ($exam && $exam['hod_decision'] !== 'Pending' && $exam['final_decision'] === 'Allowed' && (!$examAtt || !$examAtt['signed_out'])): ?>
               <a href="<?= APP_URL ?>/student/slip-print.php?module_id=<?= (int) $m['module_id'] ?>&type=Exam"
                  target="_blank" class="btn btn-sm btn-semas-gold">
                 <i class="bi bi-printer me-1"></i> Entry Slip

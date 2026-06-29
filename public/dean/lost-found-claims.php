@@ -54,7 +54,6 @@ $claims = $stmt->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Lost &amp; Found — Ownership Claims</h4>
-<p class="text-muted small mb-4">Review claims, verify the claimant, and record who actually collected the item. This creates an audit trail of every handover.</p>
 
 <div class="semas-card p-3 mb-3">
   <div class="d-flex gap-2">

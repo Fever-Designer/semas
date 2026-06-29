@@ -58,7 +58,7 @@ $totalPages = max(1, (int) ceil($total / $perPage));
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <div><h4 class="display-font mb-1">Announcement Board</h4><p class="text-muted small mb-0">Announcements addressed to you, newest first.</p></div>
+  <div><h4 class="display-font mb-1">Announcement Board</h4></div>
 </div>
 
 <div class="semas-card p-3 mb-3">

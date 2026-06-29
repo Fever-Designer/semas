@@ -1,18 +1,27 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD']);
+Auth::requireRole(['HOD', 'Coordinator']);
 Module::autoCompleteExpired();
 
 $pageTitle = 'CAT / Exam Eligibility';
 $activeNav = 'eligibility';
 $db = Database::connection();
 $me = Auth::user();
+$isCoordinator = Auth::role() === 'Coordinator';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action = $_POST['action'] ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
+    if ($isCoordinator && $moduleId) {
+        $modType = $db->prepare('SELECT session_type FROM modules WHERE module_id = :id');
+        $modType->execute(['id' => $moduleId]);
+        if (($modType->fetchColumn() ?? '') !== 'Weekend') {
+            flash('error', 'Selected module is not available for Weekend coordinator review.');
+            redirect('/hod/eligibility.php');
+        }
+    }
 
     if ($action === 'save_schedule') {
         $examType   = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
@@ -83,13 +92,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $enrolledStudents = $enrolledStmt->fetchAll();
                 foreach ($enrolledStudents as $student) {
                     NotificationCenter::notify((int) $student['user_id'], $notifTitle, $notifBody, 'Attendance');
-                    Mailer::sendCatExamSchedule($student, $schedPayload);
+                    Mailer::enqueueCatExamSchedule($student, $schedPayload);
                 }
-
-                // Notify the invigilator
                 if (!empty($invUser['email'])) {
-                    Mailer::sendInvigilatorAssigned($invUser, $schedPayload);
+                    Mailer::enqueueInvigilatorAssigned($invUser, $schedPayload);
                 }
+                Mailer::dispatch();
 
                 flash('success', "$examType schedule saved. " . count($enrolledStudents) . " student(s) notified by email and in-app notification.");
             }
@@ -101,23 +109,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         AuditLog::record(Auth::id(), 'ELIGIBILITY_GENERATE', 'modules', $moduleId, "exam_type=$examType;count=$count");
         flash('success', "Generated/refreshed $examType eligibility for $count student(s).");
-    } elseif ($action === 'decide') {
-        $eligibilityId = (int) $_POST['eligibility_id'];
-        $decision = $_POST['decision']; // approve | override_allow | override_deny
-        $row = $db->prepare('SELECT * FROM cat_exam_eligibility WHERE eligibility_id = :id');
-        $row->execute(['id' => $eligibilityId]);
-        $elig = $row->fetch();
-        if ($elig) {
-            if ($decision === 'approve') {
-                $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Approved', final_decision = system_decision, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
-                   ->execute(['uid' => $me['user_id'], 'id' => $eligibilityId]);
-            } else {
-                $finalDecision = $decision === 'override_allow' ? 'Allowed' : 'Not Allowed';
-                $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Overridden', final_decision=:final, override_reason=:reason, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
-                   ->execute(['final' => $finalDecision, 'reason' => trim($_POST['override_reason'] ?? ''), 'uid' => $me['user_id'], 'id' => $eligibilityId]);
+    } elseif ($action === 'decide' || $action === 'bulk_approve_all') {
+        $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+
+        $scheduleStmt = $db->prepare(
+            "SELECT cs.*, u.full_name AS invigilator_name, m.module_title
+             FROM cat_exam_schedules cs
+             JOIN modules m ON m.module_id = cs.module_id
+             JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
+             JOIN users u ON u.user_id = l.user_id
+             WHERE cs.module_id = :mid AND cs.exam_type = :type"
+        );
+        $scheduleStmt->execute(['mid' => $moduleId, 'type' => $examType]);
+        $schedule = $scheduleStmt->fetch();
+
+        if ($action === 'decide') {
+            $eligibilityId = (int) $_POST['eligibility_id'];
+            $decision = $_POST['decision']; // approve | override_allow | override_deny
+            $row = $db->prepare('SELECT * FROM cat_exam_eligibility WHERE eligibility_id = :id');
+            $row->execute(['id' => $eligibilityId]);
+            $elig = $row->fetch();
+            if ($elig) {
+                if ($decision === 'approve') {
+                    $finalDecision = $elig['system_decision'];
+                    $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Approved', final_decision = system_decision, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
+                       ->execute(['uid' => $me['user_id'], 'id' => $eligibilityId]);
+                } else {
+                    $finalDecision = $decision === 'override_allow' ? 'Allowed' : 'Not Allowed';
+                    $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Overridden', final_decision=:final, override_reason=:reason, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
+                       ->execute(['final' => $finalDecision, 'reason' => trim($_POST['override_reason'] ?? ''), 'uid' => $me['user_id'], 'id' => $eligibilityId]);
+                }
+
+                if ($schedule) {
+                    $studentStmt = $db->prepare('SELECT user_id, full_name, email FROM users WHERE user_id = :id');
+                    $studentStmt->execute(['id' => $elig['user_id']]);
+                    $student = $studentStmt->fetch();
+                    if ($student && !empty($student['email'])) {
+                        Mailer::enqueueEligibilityDecision($student, $schedule, $finalDecision);
+                        Mailer::dispatch();
+                    }
+                }
+
+                AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE', 'cat_exam_eligibility', $eligibilityId, "decision=$decision");
+                flash('success', 'Decision recorded.');
             }
-            AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE', 'cat_exam_eligibility', $eligibilityId, "decision=$decision");
-            flash('success', 'Decision recorded.');
+        } else {
+            $pendingStmt = $db->prepare(
+                "SELECT ce.*, u.full_name, u.email
+                 FROM cat_exam_eligibility ce
+                 JOIN users u ON u.user_id = ce.user_id
+                 WHERE ce.module_id = :mid AND ce.exam_type = :type AND ce.hod_decision = 'Pending'"
+            );
+            $pendingStmt->execute(['mid' => $moduleId, 'type' => $examType]);
+            $pendingRows = $pendingStmt->fetchAll();
+
+            if ($pendingRows) {
+                $db->prepare(
+                    "UPDATE cat_exam_eligibility
+                     SET hod_decision='Approved', final_decision=system_decision, decided_by=:uid, decided_at=NOW()
+                     WHERE module_id = :mid AND exam_type = :type AND hod_decision = 'Pending'"
+                )->execute(['uid' => $me['user_id'], 'mid' => $moduleId, 'type' => $examType]);
+
+                if ($schedule) {
+                    foreach ($pendingRows as $studentRow) {
+                        if (!empty($studentRow['email'])) {
+                            Mailer::enqueueEligibilityDecision($studentRow, $schedule, $studentRow['system_decision']);
+                        }
+                    }
+                    Mailer::dispatch();
+                }
+            }
+
+            AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE_BULK', 'modules', $moduleId, "exam_type=$examType;count=" . count($pendingRows));
+            flash('success', "Approved " . count($pendingRows) . " pending student(s) and queued eligibility emails.");
         }
     }
     redirect('/hod/eligibility.php?module_id=' . $moduleId . '&exam_type=' . ($_POST['exam_type'] ?? $_GET['exam_type'] ?? 'CAT'));
@@ -127,15 +191,16 @@ $moduleId  = (int) ($_GET['module_id'] ?? 0);
 $examType  = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
 $viewMode  = ($_GET['view'] ?? 'active') === 'history' ? 'history' : 'active';
 
+$ongoingFilter = $isCoordinator ? "AND m.session_type = 'Weekend'" : '';
 $modules = $db->query(
     "SELECT m.*, d.department_name FROM modules m LEFT JOIN departments d ON d.department_id = m.department_id
-     WHERE m.status = 'Ongoing' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL)
+     WHERE m.status = 'Ongoing' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL) {$ongoingFilter}
      ORDER BY m.module_title"
 )->fetchAll();
 
 $completedModules = $db->query(
     "SELECT m.*, d.department_name FROM modules m LEFT JOIN departments d ON d.department_id = m.department_id
-     WHERE m.status = 'Completed' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL)
+     WHERE m.status = 'Completed' AND (m.cat_date IS NOT NULL OR m.exam_date IS NOT NULL) {$ongoingFilter}
      ORDER BY m.module_title"
 )->fetchAll();
 
@@ -168,10 +233,12 @@ $lecturers = $db->query(
     "SELECT l.lecturer_id, u.full_name FROM lecturers l JOIN users u ON u.user_id = l.user_id ORDER BY u.full_name"
 )->fetchAll();
 
+// Load all rooms for the schedule room dropdown
+$rooms = $db->query('SELECT room_id, room_name FROM rooms ORDER BY room_name')->fetchAll();
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Eligibility</h4>
-<p class="text-muted small mb-3">Manage eligibility and schedules. Students who missed 2+ classes are recommended "Not Allowed" — you can Approve or Override with a reason.</p>
 
 <ul class="nav nav-tabs mb-3">
   <li class="nav-item"><a class="nav-link <?= $viewMode === 'active' ? 'active' : '' ?>" href="?view=active">Ongoing Modules</a></li>
@@ -204,8 +271,12 @@ require __DIR__ . '/../partials/layout_top.php';
         <h6 class="display-font mb-0"><?= e($selectedModule['module_title']) ?> — <?= e($examType) ?> Eligibility</h6>
         <p class="text-muted small mb-0">Date from module: <strong><?= e($examType === 'CAT' ? ($selectedModule['cat_date'] ?? 'Not set') : ($selectedModule['exam_date'] ?? 'Not set')) ?></strong></p>
       </div>
-      <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="generate"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
-        <button class="btn btn-semas-gold btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Generate / Refresh Eligibility List</button></form>
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="generate"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
+          <button class="btn btn-semas-gold btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Generate / Refresh Eligibility List</button></form>
+        <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="bulk_approve_all"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
+          <button class="btn btn-outline-success btn-sm"><i class="bi bi-check2-all me-1"></i> Approve Pending All</button></form>
+      </div>
     </div>
     <!-- Schedule: room + invigilator + date -->
     <?php if ($currentSchedule): ?>
@@ -236,7 +307,12 @@ require __DIR__ . '/../partials/layout_top.php';
         <input type="hidden" name="scheduled_date" value="<?= e($moduleDate) ?>">
         <div class="col-md-4">
           <label class="form-label small mb-1">Room</label>
-          <input name="room" class="form-control form-control-sm" placeholder="e.g. Hall A, Room 201" value="<?= e($currentSchedule['room'] ?? '') ?>" required>
+          <select name="room" class="form-select form-select-sm" required>
+            <option value="">Select room</option>
+            <?php foreach ($rooms as $rm): ?>
+              <option value="<?= e($rm['room_name']) ?>" <?= ($currentSchedule['room'] ?? '') === $rm['room_name'] ? 'selected' : '' ?>><?= e($rm['room_name']) ?></option>
+            <?php endforeach; ?>
+          </select>
         </div>
         <div class="col-md-4">
           <label class="form-label small mb-1">Invigilator (Lecturer)</label>

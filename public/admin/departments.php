@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'Department created.');
     } elseif ($action === 'update') {
         $deptId = (int) $_POST['department_id'];
-        $db->prepare('UPDATE departments SET department_name=:name, faculty_id=:fac WHERE department_id=:id')
-           ->execute(['name' => trim($_POST['department_name']), 'fac' => (int) $_POST['faculty_id'], 'id' => $deptId]);
+        $db->prepare('UPDATE departments SET department_name=:name, department_code=:code, faculty_id=:fac WHERE department_id=:id')
+           ->execute(['name' => trim($_POST['department_name']), 'code' => trim($_POST['department_code']), 'fac' => (int) $_POST['faculty_id'], 'id' => $deptId]);
         AuditLog::record(Auth::id(), 'DEPARTMENT_UPDATE', 'departments', $deptId);
         flash('success', 'Department updated.');
     }
@@ -45,7 +45,7 @@ $faculties = $db->query('SELECT faculty_id, faculty_name FROM faculties ORDER BY
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-  <div><h4 class="display-font mb-1">Manage Departments</h4><p class="text-muted small mb-0">As Principal, you manage the full department structure. HOD can view but not edit departments.</p></div>
+  <div><h4 class="display-font mb-1">Manage Departments</h4></div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newDeptModal"><i class="bi bi-plus-circle me-1"></i> New Department</button>
 </div>
 
@@ -72,6 +72,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="modal-header"><h6 class="modal-title display-font">Edit Department</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
               <div class="mb-2"><label class="form-label small">Department Name</label><input name="department_name" class="form-control form-control-sm" value="<?= e($d['department_name']) ?>" required></div>
+              <div class="mb-2"><label class="form-label small">Department Code</label><input name="department_code" class="form-control form-control-sm" value="<?= e($d['department_code']) ?>" required placeholder="e.g. IT"></div>
               <div class="mb-2"><label class="form-label small">Faculty</label>
                 <select name="faculty_id" class="form-select form-select-sm">
                   <?php foreach ($faculties as $f): ?><option value="<?= (int) $f['faculty_id'] ?>" <?= $d['faculty_id'] == $f['faculty_id'] ? 'selected' : '' ?>><?= e($f['faculty_name']) ?></option><?php endforeach; ?>

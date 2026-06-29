@@ -1,12 +1,13 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD']);
+Auth::requireRole(['HOD', 'Coordinator']);
 
 $pageTitle = 'Academic Announcements';
 $activeNav = 'announcements';
 $db = Database::connection();
 $me = Auth::user();
+$isCoordinator = Auth::role() === 'Coordinator';
 $tab = $_GET['tab'] ?? 'announcements';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,8 +42,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $scope      = $_POST['scope'] ?? 'all';
             $filters    = $deptId ? ['department_id' => $deptId] : [];
-            $audienceLabel = ($deptName ?? 'All Departments') . ' — Students';
-            if ($scope === 'session' && !empty($_POST['session_type'])) {
+            if ($isCoordinator) {
+                $filters['session_type'] = 'Weekend';
+                $audienceLabel = ($deptName ?? 'All Departments') . ' — Weekend Students';
+            } else {
+                $audienceLabel = ($deptName ?? 'All Departments') . ' — Students';
+            }
+            if ($scope === 'session' && !empty($_POST['session_type']) && !$isCoordinator) {
                 $filters['session_type'] = $_POST['session_type'];
                 $audienceLabel .= ' (' . $_POST['session_type'] . ' session)';
             } elseif ($scope === 'year' && !empty($_POST['year_of_study'])) {
@@ -50,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $audienceLabel .= ' (Year ' . (int) $_POST['year_of_study'] . ')';
             }
             $recipients     = AudienceResolver::resolveStudentsScoped($filters);
-            $targetAudience = $deptId ? 'Specific Department' : 'All Students';
+            $targetAudience = $deptId ? 'Specific Department' : ($isCoordinator ? 'Weekend Students' : 'All Students');
         }
 
         $result = Announcement::create([
@@ -112,41 +118,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status'          => 'Published',
                     'recipients'      => $affected,
                 ], $me, 'Head of Department', 'University-wide (Weekend students)', false);
-                foreach ($affected as $u) {
-                    Mailer::sendAnnouncementNotification($u, [
-                        'title'    => $annTitle,
-                        'message'  => $annMsg,
-                        'category' => 'General Notice',
-                        'priority' => 'High',
-                    ]);
-                }
                 flash('success', 'Umuganda added. ' . count($affected) . ' weekend student(s) notified via email and announcement board.');
             } else {
-                // Public Holiday → notify ALL active students
+                // Public Holiday → notify all active students or weekend students only for coordinators
+                $studentCondition = $isCoordinator ? "AND u.session_type = 'Weekend'" : '';
                 $allStudents = $db->query(
                     "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
-                     WHERE r.role_name = 'Student' AND u.status = 'Active'"
+                     WHERE r.role_name = 'Student' AND u.status = 'Active' {$studentCondition}"
                 )->fetchAll();
                 $annTitle = 'Public Holiday — ' . trim($_POST['title']) . ' (' . $_POST['holiday_date'] . ')';
-                $annMsg   = trim($_POST['title']) . " on {$_POST['holiday_date']} is a Public Holiday. All classes and attendance scanning are suspended for the day." . (trim($_POST['notes'] ?? '') ? ' Note: ' . trim($_POST['notes']) : '');
+                $annMsg   = trim($_POST['title']) . " on {$_POST['holiday_date']} is a Public Holiday. " . ($isCoordinator ? 'Weekend classes are affected and only weekend students are notified.' : 'All classes and attendance scanning are suspended for the day.') . (trim($_POST['notes'] ?? '') ? ' Note: ' . trim($_POST['notes']) : '');
                 Announcement::create([
                     'title'           => $annTitle,
                     'category'        => 'General Notice',
                     'priority'        => 'High',
-                    'target_audience' => 'All Students',
+                    'target_audience' => $isCoordinator ? 'Weekend Students' : 'All Students',
                     'message'         => $annMsg,
                     'status'          => 'Published',
                     'recipients'      => $allStudents,
-                ], $me, 'Head of Department', 'University-wide (All students)', false);
-                foreach ($allStudents as $u) {
-                    Mailer::sendAnnouncementNotification($u, [
-                        'title'    => $annTitle,
-                        'message'  => $annMsg,
-                        'category' => 'General Notice',
-                        'priority' => 'High',
-                    ]);
-                }
-                flash('success', 'Public holiday added. ' . count($allStudents) . ' student(s) notified via email and announcement board.');
+                ], $me, 'Head of Department', $isCoordinator ? 'University-wide (Weekend students)' : 'University-wide (All students)', false);
+                flash('success', ($isCoordinator ? 'Public holiday added. ' : 'Public holiday added. ') . count($allStudents) . ' student(s) notified via email and announcement board.');
             }
         } catch (PDOException $e) {
             flash('error', $e->getCode() === '23000' ? 'A holiday is already registered for that date.' : 'Could not save.');
@@ -173,7 +164,6 @@ $holidays         = $db->query('SELECT * FROM holidays ORDER BY holiday_date DES
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Academic Announcements</h4>
-<p class="text-muted small mb-3">Announce to students or lecturers, and manage public holidays &amp; Umuganda dates.</p>
 
 <ul class="nav nav-pills mb-3">
   <li class="nav-item"><a class="nav-link <?= $tab === 'announcements' ? 'active' : '' ?>" href="?tab=announcements">Announcements</a></li>

@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $semName      = trim($_POST['semester_name'] ?? '');
         $startDate    = trim($_POST['start_date'] ?? '');
         $endDate      = trim($_POST['end_date'] ?? '');
-        $notes        = trim($_POST['notes'] ?? '') ?: null;
+        $notes        = null;
 
         // Derive intake code from semester + year of start_date (e.g. SEMESTER I + 2026 → JAN26)
         $semPrefixMap = ['SEMESTER I' => 'JAN', 'SEMESTER II' => 'MAY', 'SEMESTER III' => 'SEPT'];
@@ -39,6 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$academicYear || !$intakePrefix || !$startDate || !$endDate) {
             flash('error', 'All fields except Notes are required.');
+            redirect('/registrar/semester-calendar.php');
+        }
+        // Validate that start date year belongs to the selected academic year (e.g. 2026/2027 → 2026 or 2027)
+        $startYear = (int) date('Y', strtotime($startDate));
+        [$ayFirst, $ayLast] = array_map('intval', explode('/', $academicYear));
+        if ($startYear < $ayFirst || $startYear > $ayLast) {
+            flash('error', "Start date year ($startYear) does not match the selected academic year ($academicYear). The start date must fall within $ayFirst–$ayLast.");
             redirect('/registrar/semester-calendar.php');
         }
         if ($startDate >= $endDate) {
@@ -68,13 +75,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         AuditLog::record(Auth::id(), 'SEMESTER_CALENDAR_SAVE', 'semester_calendars', 0, "year=$academicYear;intake=$intake");
 
-        // Notify all active students whose intake matches
-        $studentsStmt = $db->prepare(
+        // Notify ALL active students
+        $studentsStmt = $db->query(
             "SELECT u.user_id, u.full_name, u.email FROM users u
              JOIN roles r ON r.role_id = u.role_id
-             WHERE r.role_name = 'Student' AND u.status = 'Active' AND u.intake = :intake"
+             WHERE r.role_name = 'Student' AND u.status = 'Active'"
         );
-        $studentsStmt->execute(['intake' => $intake]);
         $students = $studentsStmt->fetchAll();
 
         $calendarData = [
@@ -83,28 +89,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'semester_name' => $semName,
             'start_date'    => $startDate,
             'end_date'      => $endDate,
-            'notes'         => $notes ?? '',
+            'notes'         => '',
         ];
 
-        $notified = 0;
+        $notifMsg = 'Semester ' . $semName . ' starts on ' . date('d M Y', strtotime($startDate)) . ' and ends on ' . date('d M Y', strtotime($endDate)) . '. Log in to register for your modules.';
         foreach ($students as $student) {
-            // In-app notification
-            NotificationCenter::notify(
-                (int) $student['user_id'],
-                'Semester Calendar Published: ' . $semName,
-                'Your semester starts on ' . date('d M Y', strtotime($startDate)) . ' and ends on ' . date('d M Y', strtotime($endDate)) . '. Log in to register for your modules.',
-                'System'
-            );
-            // Email
-            try {
-                Mailer::sendSemesterCalendar($student, $calendarData);
-                $notified++;
-            } catch (Exception $e) {
-                // Email failure is non-fatal
-            }
+            NotificationCenter::notify((int) $student['user_id'], 'Semester Calendar Published: ' . $semName, $notifMsg, 'System');
+            Mailer::enqueueSemesterCalendar($student, $calendarData);
         }
+        Mailer::dispatch();
 
-        flash('success', "Semester calendar saved. {$notified} student(s) from the {$intake} intake notified by email.");
+        flash('success', 'Semester calendar saved. ' . count($students) . ' student(s) notified by email.');
         redirect('/registrar/semester-calendar.php');
     }
 
@@ -143,9 +138,6 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
   <div>
     <h4 class="display-font mb-1">Semester Calendar</h4>
-    <p class="text-muted small mb-0">
-      Set start &amp; end dates per intake cohort. Students are <strong>automatically notified by email and in-app notification</strong> as soon as you save.
-    </p>
   </div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#addCalendarModal">
     <i class="bi bi-calendar-plus me-1"></i> Add / Update Calendar
@@ -305,11 +297,6 @@ function calendarFormFields(array $c): string
         <input type="date" name="end_date" class="form-control form-control-sm" required
           min="<?= $minDate ?>" value="<?= e($c['end_date'] ?? '') ?>">
       </div>
-      <div class="col-12">
-        <label class="form-label small fw-semibold">Notes <span class="text-muted">(optional)</span></label>
-        <textarea name="notes" class="form-control form-control-sm" rows="2"
-          placeholder="Additional information for students…"><?= e($c['notes'] ?? '') ?></textarea>
-      </div>
     </div>
     <?php
     return (string) ob_get_clean();
@@ -318,9 +305,20 @@ function calendarFormFields(array $c): string
 
 <script>
 function disableAndSubmit(btn) {
+    const form = btn.closest('form');
+    const ay = form.querySelector('[name="academic_year"]').value;
+    const sd = form.querySelector('[name="start_date"]').value;
+    if (ay && sd) {
+        const parts = ay.split('/');
+        const startYear = new Date(sd).getFullYear();
+        if (parts.length === 2 && (startYear < parseInt(parts[0]) || startYear > parseInt(parts[1]))) {
+            alert('Start date year (' + startYear + ') does not match the selected academic year (' + ay + ').\n\nThe start date must fall within ' + parts[0] + '–' + parts[1] + '.');
+            return;
+        }
+    }
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving & Notifying…';
-    btn.closest('form').submit();
+    form.submit();
 }
 </script>
 

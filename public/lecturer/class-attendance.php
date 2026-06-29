@@ -115,24 +115,42 @@ $countStmt = $db->prepare('SELECT COUNT(*) FROM module_enrollments WHERE module_
 $countStmt->execute(['mid' => $moduleId]);
 $enrolledCount = (int) $countStmt->fetchColumn();
 
-$pastSessions = $db->prepare(
-    "SELECT cs.*,
-            SUM(CASE WHEN cal.status = 'Present' THEN 1 ELSE 0 END) AS present_count,
-            SUM(CASE WHEN cal.status = 'Late'    THEN 1 ELSE 0 END) AS late_count,
-            SUM(CASE WHEN cal.status = 'Absent'  THEN 1 ELSE 0 END) AS absent_count
-     FROM class_sessions cs
-     LEFT JOIN class_attendance_logs cal ON cal.session_id = cs.session_id AND cal.attendance_type = 'Sign In'
-     WHERE cs.module_id = :mid AND cs.session_date BETWEEN :from AND :to
-     GROUP BY cs.session_id
-     ORDER BY cs.session_date DESC, cs.window_name"
+// Calendar: all sessions for this module
+$calStmt = $db->prepare(
+    "SELECT session_id, session_date, window_name FROM class_sessions
+     WHERE module_id = :mid ORDER BY session_date ASC, window_name ASC"
 );
-$pastSessions->execute(['mid' => $moduleId, 'from' => $dateFrom, 'to' => $dateTo]);
+$calStmt->execute(['mid' => $moduleId]);
+$calendarSessions = $calStmt->fetchAll();
+
+// All enrolled students
+$calStudentsStmt = $db->prepare(
+    "SELECT u.user_id, u.full_name, u.reg_number
+     FROM module_enrollments me JOIN users u ON u.user_id = me.user_id
+     WHERE me.module_id = :mid ORDER BY u.full_name"
+);
+$calStudentsStmt->execute(['mid' => $moduleId]);
+$calendarStudents = $calStudentsStmt->fetchAll();
+
+// Attendance pivot
+$calAttMap = [];
+if ($calendarSessions) {
+    $calAttStmt = $db->prepare(
+        "SELECT cal.user_id, cal.session_id, cal.status
+         FROM class_attendance_logs cal
+         JOIN class_sessions cs ON cs.session_id = cal.session_id
+         WHERE cs.module_id = :mid AND cal.attendance_type = 'Sign In'"
+    );
+    $calAttStmt->execute(['mid' => $moduleId]);
+    foreach ($calAttStmt->fetchAll() as $att) {
+        $calAttMap[(int)$att['user_id']][(int)$att['session_id']] = $att['status'];
+    }
+}
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <div><h4 class="display-font mb-1">Class Attendance — <?= e($module['module_title']) ?></h4>
-  <p class="text-muted small mb-0"><?= $enrolledCount ?> student(s) registered. First 10 minutes of a session: Present. 10–20 minutes: Late. Outside the fixed session windows, attendance cannot be taken at all.</p></div>
+  <h4 class="display-font mb-0">Class Attendance — <?= e($module['module_title']) ?></h4>
   <a href="<?= APP_URL ?>/lecturer/modules.php" class="btn btn-sm btn-outline-dark">Back to Modules</a>
 </div>
 
@@ -140,8 +158,6 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-4 text-center">
     <i class="bi bi-clock-history" style="font-size:2rem;color:var(--semas-text-muted);"></i>
     <h6 class="display-font mt-2">No Session Window Is Active Right Now</h6>
-    <p class="text-muted small mb-0">Attendance can only be taken during a fixed session window (Cairo time):</p>
-    <p class="text-muted small mb-0">Day 08:00–11:30 &middot; Evening 18:00–20:00 &middot; Weekend Morning 08:30–14:00 &middot; Weekend Afternoon 14:30–20:30</p>
   </div>
 <?php elseif (!$session): ?>
   <div class="semas-card p-4 text-center">
@@ -308,82 +324,81 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mt-3">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    <h6 class="display-font mb-0">Attendance History</h6>
+    <div>
+      <h6 class="display-font mb-0">Attendance Calendar</h6>
+      <p class="text-muted small mb-0">All sessions for this module — students as rows, dates as columns. <span style="background:#d4edda;padding:1px 5px;border-radius:3px;font-size:.75rem;">P</span> <span style="background:#fff3cd;padding:1px 5px;border-radius:3px;font-size:.75rem;">L</span> <span style="background:#f8d7da;padding:1px 5px;border-radius:3px;font-size:.75rem;">A</span></p>
+    </div>
     <div class="d-flex gap-2">
-      <a href="?module_id=<?= $moduleId ?>&export=csv&range=<?= e($rangeType) ?>&date=<?= e($rangeDate) ?>"
+      <a href="?module_id=<?= $moduleId ?>&export=csv&range=monthly&date=<?= date('Y-m-d') ?>"
          class="btn btn-sm btn-outline-dark"><i class="bi bi-filetype-csv me-1"></i>Export CSV</a>
-      <a href="<?= APP_URL ?>/lecturer/attendance-pdf.php?module_id=<?= $moduleId ?>&range=<?= e($rangeType) ?>&date=<?= e($rangeDate) ?>"
+      <a href="<?= APP_URL ?>/lecturer/attendance-pdf.php?module_id=<?= $moduleId ?>&range=monthly&date=<?= date('Y-m-d') ?>"
          target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-file-earmark-pdf me-1"></i>Export PDF</a>
     </div>
   </div>
-  <form method="get" class="row g-2 mb-3">
-    <input type="hidden" name="module_id" value="<?= $moduleId ?>">
-    <input type="hidden" name="tab" value="history">
-    <div class="col-auto">
-      <select name="range" class="form-select form-select-sm" onchange="this.form.submit()">
-        <option value="daily"   <?= $rangeType === 'daily'   ? 'selected' : '' ?>>Daily</option>
-        <option value="weekly"  <?= $rangeType === 'weekly'  ? 'selected' : '' ?>>Weekly</option>
-        <option value="monthly" <?= $rangeType === 'monthly' ? 'selected' : '' ?>>Monthly</option>
-      </select>
-    </div>
-    <div class="col-auto">
-      <input type="date" name="date" class="form-control form-control-sm" value="<?= e($rangeDate) ?>" onchange="this.form.submit()">
-    </div>
-    <div class="col-auto"><button class="btn btn-sm btn-semas"><i class="bi bi-funnel"></i></button></div>
-  </form>
-  <p class="text-muted small mb-2">Showing: <strong><?= date('d M Y', strtotime($dateFrom)) ?></strong><?= $dateFrom !== $dateTo ? ' — <strong>' . date('d M Y', strtotime($dateTo)) . '</strong>' : '' ?></p>
-  <?php if ($pastSessions): ?>
-    <table class="table table-sm align-middle">
-      <thead><tr><th>Date</th><th>Window</th><th class="text-success">Present</th><th class="text-warning">Late</th><th class="text-danger">Absent</th><th>Roster</th></tr></thead>
-      <tbody>
-        <?php foreach ($pastSessions as $ps): ?>
-          <tr>
-            <td><?= e($ps['session_date']) ?></td>
-            <td><?= e($ps['window_name']) ?></td>
-            <td class="text-success fw-semibold"><?= (int) $ps['present_count'] ?></td>
-            <td class="text-warning fw-semibold"><?= (int) $ps['late_count'] ?></td>
-            <td class="text-danger fw-semibold"><?= (int) $ps['absent_count'] ?></td>
-            <td>
-              <button class="btn btn-sm btn-outline-dark" data-bs-toggle="collapse" data-bs-target="#roster-<?= (int) $ps['session_id'] ?>">
-                <i class="bi bi-people"></i>
-              </button>
-            </td>
-          </tr>
-          <tr class="collapse" id="roster-<?= (int) $ps['session_id'] ?>">
-            <td colspan="6">
-              <?php
-                $rStmt = $db->prepare(
-                    "SELECT u.full_name, u.reg_number, cal.status, cal.checkin_time, cal.verification_method
-                     FROM class_attendance_logs cal JOIN users u ON u.user_id = cal.user_id
-                     WHERE cal.session_id = :sid AND cal.attendance_type = 'Sign In'
-                     ORDER BY (cal.status = 'Absent'), cal.checkin_time"
-                );
-                $rStmt->execute(['sid' => $ps['session_id']]);
-                $roster = $rStmt->fetchAll();
-              ?>
-              <div class="p-2">
-                <table class="table table-sm mb-0">
-                  <thead><tr><th>Student</th><th>Reg No.</th><th>Status</th><th>Check-in</th></tr></thead>
-                  <tbody>
-                    <?php foreach ($roster as $r): ?>
-                      <tr>
-                        <td><?= e($r['full_name']) ?></td>
-                        <td><?= e($r['reg_number'] ?? '—') ?></td>
-                        <td><span class="badge <?= $r['status'] === 'Present' ? 'badge-completed' : ($r['status'] === 'Late' ? 'badge-urgent' : 'bg-secondary') ?>"><?= e($r['status']) ?></span></td>
-                        <td class="small"><?= ($r['checkin_time'] && $r['verification_method'] !== 'Auto') ? e(date('H:i', strtotime($r['checkin_time']))) : '—' ?></td>
-                      </tr>
-                    <?php endforeach; ?>
-                    <?php if (!$roster): ?><tr><td colspan="4" class="text-muted small text-center">No records.</td></tr><?php endif; ?>
-                  </tbody>
-                </table>
-              </div>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
+
+  <?php if (!$calendarSessions): ?>
+    <p class="text-muted small mb-0">No sessions recorded for this module yet.</p>
+  <?php elseif (!$calendarStudents): ?>
+    <p class="text-muted small mb-0">No students enrolled in this module.</p>
   <?php else: ?>
-    <p class="text-muted small mb-0">No sessions recorded in this period.</p>
+    <?php $todayDate = date('Y-m-d'); ?>
+    <div style="overflow-x:auto;">
+      <table class="table table-bordered table-sm mb-0" style="white-space:nowrap;font-size:.82rem;">
+        <thead>
+          <tr>
+            <th style="position:sticky;left:0;z-index:2;background:#f8f9fa;min-width:190px;vertical-align:middle;">Student</th>
+            <?php foreach ($calendarSessions as $cs): ?>
+              <th class="text-center <?= $cs['session_date'] === $todayDate ? 'table-primary' : '' ?>" style="min-width:54px;vertical-align:middle;">
+                <div><?= date('D', strtotime($cs['session_date'])) ?></div>
+                <div><?= date('d/m', strtotime($cs['session_date'])) ?></div>
+                <?php
+                  $wn = $cs['window_name'];
+                  if ($wn === 'WeekendMorning') echo '<div style="font-size:.6rem;">Morn</div>';
+                  elseif ($wn === 'WeekendAfternoon') echo '<div style="font-size:.6rem;">Aftn</div>';
+                  elseif (str_starts_with($wn, 'Umuganda')) echo '<div style="font-size:.6rem;">Umug</div>';
+                ?>
+              </th>
+            <?php endforeach; ?>
+            <th class="text-center" style="min-width:80px;vertical-align:middle;">Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($calendarStudents as $student): ?>
+            <?php
+              $pC = 0; $lC = 0; $aC = 0;
+              foreach ($calendarSessions as $cs) {
+                  $st = $calAttMap[$student['user_id']][$cs['session_id']] ?? null;
+                  if ($st === 'Present') $pC++;
+                  elseif ($st === 'Late') $lC++;
+                  elseif ($st === 'Absent') $aC++;
+              }
+            ?>
+            <tr>
+              <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:500;vertical-align:middle;">
+                <?= e($student['full_name']) ?><br>
+                <span class="text-muted" style="font-size:.7rem;"><?= e($student['reg_number'] ?? '') ?></span>
+              </td>
+              <?php foreach ($calendarSessions as $cs): ?>
+                <?php $status = $calAttMap[$student['user_id']][$cs['session_id']] ?? null; ?>
+                <td class="text-center fw-bold" style="vertical-align:middle;<?php
+                  if ($status === 'Present') echo 'background:#d4edda;color:#155724;';
+                  elseif ($status === 'Late') echo 'background:#fff3cd;color:#856404;';
+                  elseif ($status === 'Absent') echo 'background:#f8d7da;color:#721c24;';
+                  else echo 'color:#ccc;';
+                ?>">
+                  <?= $status ? $status[0] : '·' ?>
+                </td>
+              <?php endforeach; ?>
+              <td class="text-center small" style="vertical-align:middle;">
+                <span class="text-success fw-semibold"><?= $pC ?>P</span>
+                <span class="text-warning fw-semibold ms-1"><?= $lC ?>L</span>
+                <span class="text-danger fw-semibold ms-1"><?= $aC ?>A</span>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
   <?php endif; ?>
 </div>
 

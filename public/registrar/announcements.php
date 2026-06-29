@@ -81,7 +81,6 @@ $departments = $db->query('SELECT d.*, f.faculty_name FROM departments d JOIN fa
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Send Announcement to Students</h4>
-<p class="text-muted small mb-4">Registrar announcements are sent to students only. Choose your audience scope below.</p>
 
 <div class="row g-4">
   <div class="col-lg-7">

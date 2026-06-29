@@ -114,13 +114,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/coordinator/modules.php');
     }
 
-    if ($action === 'mark_completed') {
-        $modId = (int) $_POST['module_id'];
-        $db->prepare("UPDATE modules SET status='Completed' WHERE module_id=:id")->execute(['id' => $modId]);
-        flash('success', 'Module marked Completed.');
-        redirect('/coordinator/modules.php');
-    }
-
     if ($action === 'reopen') {
         $modId = (int) $_POST['module_id'];
         $db->prepare("UPDATE modules SET status='Ongoing' WHERE module_id=:id")->execute(['id' => $modId]);
@@ -144,6 +137,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('error', $e->getCode() === '23000' ? 'Student already enrolled.' : 'Enrollment failed.');
             }
         }
+        redirect('/coordinator/modules.php');
+    }
+
+    if ($action === 'de_register') {
+        $modId  = (int) $_POST['module_id'];
+        $userId = (int) $_POST['user_id'];
+        $db->prepare('DELETE FROM module_enrollments WHERE module_id=:m AND user_id=:u')
+           ->execute(['m' => $modId, 'u' => $userId]);
+        AuditLog::record(Auth::id(), 'MODULE_UNENROLL', 'modules', $modId, "user_id=$userId");
+        flash('success', 'Student unenrolled.');
         redirect('/coordinator/modules.php');
     }
 
@@ -183,7 +186,6 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
   <div>
     <h4 class="display-font mb-1">Weekend Modules</h4>
-    <p class="text-muted small mb-0">Rooms conflict-checked per session. Lecturer can only hold one Ongoing Weekend module at a time.</p>
   </div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newModuleModal">
     <i class="bi bi-plus-circle me-1"></i> New Weekend Module
@@ -239,14 +241,12 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($m['module_qr_secret']): ?>
               <a href="<?= APP_URL ?>/hod/module-qr-print.php?module_id=<?= $mId ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-qr-code"></i></a>
             <?php endif; ?>
+            <?php if ($m['status'] !== 'Ongoing'): ?>
             <form method="POST" class="d-inline"><?= csrf_field() ?>
               <input type="hidden" name="module_id" value="<?= $mId ?>">
-              <?php if ($m['status']==='Ongoing'): ?>
-                <button name="action" value="mark_completed" class="btn btn-sm btn-outline-dark" onclick="return confirm('Mark Completed?')">Complete</button>
-              <?php else: ?>
-                <button name="action" value="reopen" class="btn btn-sm btn-outline-dark">Reopen</button>
-              <?php endif; ?>
+              <button name="action" value="reopen" class="btn btn-sm btn-outline-dark">Reopen</button>
             </form>
+            <?php endif; ?>
           </td>
         </tr>
 
@@ -275,14 +275,13 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
         </div>
 
-        <!-- Enroll Modal (2-step: search → preview → confirm) -->
+        <!-- Enroll Modal (search → confirm OR already-enrolled unroll) -->
         <div class="modal fade" id="enroll-<?= $mId ?>" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
               <div id="enrollSearch-<?= $mId ?>">
                 <div class="modal-header"><h6 class="modal-title display-font">Enroll Student — <?= e($m['module_title']) ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                  <p class="text-muted small mb-3">Manual enrollment bypasses intake/session restrictions.</p>
                   <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <input type="text" id="enrollReg-<?= $mId ?>" class="form-control" placeholder="e.g. 2601001192" autocomplete="off">
@@ -305,6 +304,23 @@ require __DIR__ . '/../partials/layout_top.php';
                     <input type="hidden" name="module_id" value="<?= $mId ?>">
                     <input type="hidden" name="search_reg_number" id="enrollConfirmReg-<?= $mId ?>">
                     <button type="submit" class="btn btn-semas-gold btn-sm"><i class="bi bi-person-check me-1"></i> Confirm Enroll</button>
+                  </form>
+                </div>
+              </div>
+              <div id="enrollAlready-<?= $mId ?>" style="display:none;">
+                <div class="modal-header"><h6 class="modal-title display-font">Already Enrolled</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                  <div id="enrollAlreadyCard-<?= $mId ?>" class="d-flex align-items-center gap-3 p-2 border rounded mb-2"></div>
+                  <div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle me-1"></i> This student is already enrolled in <strong><?= e($m['module_title']) ?></strong>.</div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetEnroll(<?= $mId ?>)"><i class="bi bi-arrow-left me-1"></i> Back</button>
+                  <form method="POST" class="d-inline" onsubmit="return confirm('Unenroll this student?')">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="de_register">
+                    <input type="hidden" name="module_id" value="<?= $mId ?>">
+                    <input type="hidden" id="unrollUserId-<?= $mId ?>" name="user_id" value="">
+                    <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-person-dash me-1"></i> Unroll</button>
                   </form>
                 </div>
               </div>
@@ -423,15 +439,6 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
             </div>
           <?php endforeach; ?>
         </div>
-        <?php if (!empty($mod['module_id'])): ?>
-          <script>
-          // Pre-check saved intakes for edit modal
-          (function(){
-            var saved = <?= json_encode($savedIntakes) ?>;
-            // Use data from PHP-rendered attribute instead
-          })();
-          </script>
-        <?php endif; ?>
       </div>
 
       <!-- Dates -->
@@ -562,7 +569,7 @@ function lookupStudent(modId) {
     errEl.style.display = 'none';
     if (!regNum) { errEl.textContent = 'Please enter a registration number.'; errEl.style.display = ''; return; }
 
-    fetch(window.SEMAS_BASE_URL + '/api/student-lookup.php?reg_number=' + encodeURIComponent(regNum))
+    fetch(window.SEMAS_BASE_URL + '/api/student-lookup.php?reg_number=' + encodeURIComponent(regNum) + '&module_id=' + modId)
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.ok) {
@@ -571,14 +578,20 @@ function lookupStudent(modId) {
                 return;
             }
             var s = data.student;
-            document.getElementById('enrollCard-' + modId).innerHTML =
-                '<img src="' + s.photo_url + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
+            var cardHtml = '<img src="' + s.photo_url + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
                 + '<div><div class="fw-semibold">' + escHtml(s.full_name) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.reg_number) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '—' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
-            document.getElementById('enrollConfirmReg-' + modId).value = s.reg_number;
             document.getElementById('enrollSearch-' + modId).style.display = 'none';
-            document.getElementById('enrollPreview-' + modId).style.display = '';
+            if (data.enrolled) {
+                document.getElementById('enrollAlreadyCard-' + modId).innerHTML = cardHtml;
+                document.getElementById('unrollUserId-' + modId).value = s.user_id;
+                document.getElementById('enrollAlready-' + modId).style.display = '';
+            } else {
+                document.getElementById('enrollCard-' + modId).innerHTML = cardHtml;
+                document.getElementById('enrollConfirmReg-' + modId).value = s.reg_number;
+                document.getElementById('enrollPreview-' + modId).style.display = '';
+            }
         })
         .catch(function() { errEl.textContent = 'Lookup failed. Please try again.'; errEl.style.display = ''; });
 }
@@ -586,6 +599,7 @@ function lookupStudent(modId) {
 function resetEnroll(modId) {
     document.getElementById('enrollSearch-' + modId).style.display = '';
     document.getElementById('enrollPreview-' + modId).style.display = 'none';
+    document.getElementById('enrollAlready-' + modId).style.display = 'none';
     document.getElementById('enrollError-' + modId).style.display = 'none';
 }
 

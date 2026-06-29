@@ -67,7 +67,6 @@ $recentAnnouncements = $sent->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Weekend Announcements</h4>
-<p class="text-muted small mb-4">Send announcements to Weekend-session students and lecturers.</p>
 
 <div class="row g-4">
   <div class="col-lg-7">

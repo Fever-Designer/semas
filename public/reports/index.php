@@ -13,7 +13,6 @@ $departments = $db->query('SELECT department_id, department_name FROM department
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Attendance &amp; Compliance Reports</h4>
-<p class="text-muted small mb-4">Filter by event, department, or date range, then export to PDF or Excel.</p>
 
 <div class="semas-card p-3">
   <form method="get" action="<?= APP_URL ?>/reports/export-pdf.php" target="_blank">

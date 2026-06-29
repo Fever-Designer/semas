@@ -139,7 +139,6 @@ $myAnnouncements = $myAnnouncements->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">System Announcements</h4>
-<p class="text-muted small mb-4">Send system notices to any combination of recipients — choose the exact audience before publishing.</p>
 
 <div class="semas-card p-3 mb-4">
   <form method="post">

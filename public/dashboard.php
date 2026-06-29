@@ -54,11 +54,11 @@ if ($role === 'Principal') {
 
 } elseif ($role === 'HOD') {
     Module::autoCompleteExpired();
-    // Central academic authority across EVERY department — totals are university-wide.
+    $thisMonthCond = "YEAR(COALESCE(start_date, created_at)) = YEAR(CURDATE()) AND MONTH(COALESCE(start_date, created_at)) = MONTH(CURDATE())";
     $stats = [
-        'total_modules'     => (int) $db->query('SELECT COUNT(*) FROM modules')->fetchColumn(),
-        'ongoing_modules'   => (int) $db->query("SELECT COUNT(*) FROM modules WHERE status = 'Ongoing'")->fetchColumn(),
-        'completed_modules' => (int) $db->query("SELECT COUNT(*) FROM modules WHERE status = 'Completed'")->fetchColumn(),
+        'total_modules'     => (int) $db->query("SELECT COUNT(*) FROM modules WHERE $thisMonthCond")->fetchColumn(),
+        'ongoing_modules'   => (int) $db->query("SELECT COUNT(*) FROM modules WHERE status='Ongoing' AND $thisMonthCond")->fetchColumn(),
+        'completed_modules' => (int) $db->query("SELECT COUNT(*) FROM modules WHERE status='Completed' AND $thisMonthCond")->fetchColumn(),
         'total_departments' => (int) $db->query('SELECT COUNT(*) FROM departments')->fetchColumn(),
         'total_lecturers'   => (int) $db->query('SELECT COUNT(*) FROM lecturers')->fetchColumn(),
     ];
@@ -97,8 +97,6 @@ if ($role === 'Principal') {
          GROUP BY l.lecturer_id ORDER BY sessions_run DESC LIMIT 8"
     )->fetchAll();
 
-    // Academic Alerts — pending eligibility decisions awaiting HOD review.
-    $pendingEligibility = (int) $db->query("SELECT COUNT(*) FROM cat_exam_eligibility WHERE hod_decision = 'Pending'")->fetchColumn();
     $modulesWithoutLecturer = 0; // schema requires lecturer_id NOT NULL, kept for symmetry with the alerts card
 
 } elseif ($role === 'Lecturer') {
@@ -153,7 +151,6 @@ require __DIR__ . '/partials/layout_top.php';
 
 <?php if ($role === 'Principal'): ?>
   <h4 class="display-font mb-1">Analytics Dashboard</h4>
-  <p class="text-muted small mb-3">Your scope is user management and system configuration. Academic and event operations are managed by the HOD and Dean.</p>
   <div class="row g-3 mb-3">
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-mortarboard-fill stat-icon"></i><div class="stat-label">Total Students</div><div class="stat-value"><?= $stats['total_students'] ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-workspace stat-icon"></i><div class="stat-label">Total Lecturers</div><div class="stat-value"><?= $stats['total_lecturers'] ?></div></div></div>
@@ -237,7 +234,6 @@ require __DIR__ . '/partials/layout_top.php';
 
 <?php elseif ($role === 'Dean'): ?>
   <h4 class="display-font mb-1">Dashboard</h4>
-  <p class="text-muted small mb-3">University-wide: every student, plus Event Management alongside the HOD.</p>
   <div class="row g-3 mb-4">
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-mortarboard-fill stat-icon"></i><div class="stat-label">Total Students</div><div class="stat-value"><?= $stats['total_students'] ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-check-fill stat-icon"></i><div class="stat-label">Active Students</div><div class="stat-value"><?= $stats['active_students'] ?></div></div></div>
@@ -268,20 +264,13 @@ require __DIR__ . '/partials/layout_top.php';
 
 <?php elseif ($role === 'HOD'): ?>
   <h4 class="display-font mb-1">Dashboard</h4>
-  <p class="text-muted small mb-3">Central academic authority across every department: modules, lecturers, attendance, and CAT/Exam eligibility.</p>
   <div class="row g-3 mb-4">
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i><div class="stat-label">Total Modules</div><div class="stat-value"><?= $stats['total_modules'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-play-circle-fill stat-icon"></i><div class="stat-label">Ongoing Modules</div><div class="stat-value"><?= $stats['ongoing_modules'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-check-circle-fill stat-icon"></i><div class="stat-label">Completed Modules</div><div class="stat-value"><?= $stats['completed_modules'] ?></div></div></div>
+    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i><div class="stat-label">Total Modules <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['total_modules'] ?></div></div></div>
+    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-play-circle-fill stat-icon"></i><div class="stat-label">Ongoing Modules <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['ongoing_modules'] ?></div></div></div>
+    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-check-circle-fill stat-icon"></i><div class="stat-label">Completed Modules <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['completed_modules'] ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-building stat-icon"></i><div class="stat-label">Departments / Lecturers</div><div class="stat-value"><?= $stats['total_departments'] ?> / <?= $stats['total_lecturers'] ?></div></div></div>
   </div>
 
-  <?php if ($pendingEligibility > 0): ?>
-    <div class="alert alert-warning small d-flex justify-content-between align-items-center">
-      <span><i class="bi bi-exclamation-triangle-fill me-1"></i> <strong><?= $pendingEligibility ?></strong> CAT/Exam eligibility decision(s) awaiting your review.</span>
-      <a href="<?= APP_URL ?>/hod/eligibility.php" class="btn btn-sm btn-semas-gold">Review Now</a>
-    </div>
-  <?php endif; ?>
 
   <div class="semas-card p-3 mb-4">
     <div class="d-flex gap-2 flex-wrap">
@@ -358,7 +347,6 @@ require __DIR__ . '/partials/layout_top.php';
 
 <?php elseif ($role === 'Lecturer'): ?>
   <h4 class="display-font mb-1">Dashboard</h4>
-  <p class="text-muted small mb-3">Modules are assigned to you by the HOD. Manage attendance, announcements, and assignments for your ongoing modules below.</p>
   <div class="row g-3 mb-4">
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-play-circle-fill stat-icon"></i><div class="stat-label">Ongoing Modules</div><div class="stat-value"><?= count($ongoingModules) ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-check-circle-fill stat-icon"></i><div class="stat-label">Completed Modules</div><div class="stat-value"><?= count($completedModules) ?></div></div></div>

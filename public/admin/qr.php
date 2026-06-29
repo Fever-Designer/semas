@@ -22,7 +22,6 @@ $scanUrl = $event ? APP_URL . '/student/scan.php?event_id=' . $event['event_id']
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Event QR Code</h4>
-<p class="text-muted small mb-4">Display this code at the venue entrance for students to scan on arrival.</p>
 
 <?php if (!$event): ?>
   <div class="semas-card p-3">

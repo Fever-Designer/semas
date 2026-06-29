@@ -15,9 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'register') {
         $moduleId = (int) $_POST['module_id'];
 
-        // Verify module is accessible to this student (department + intake match)
-        $studentDeptId  = (int) ($me['department_id'] ?? 0);
-        $studentIntake  = $me['intake'] ?? null;
+        // Verify module is accessible to this student (department + intake + session match)
+        $studentDeptId     = (int) ($me['department_id'] ?? 0);
+        $studentIntake     = $me['intake'] ?? null;
+        $studentSessionType = trim($me['session_type'] ?? '');
 
         $modStmt = $db->prepare(
             "SELECT m.* FROM modules m
@@ -29,13 +30,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                AND (
                  NOT EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id)
                  OR EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id AND mi.intake = :intake)
-               )"
+               )
+               AND (:session = '' OR m.session_type = :session2)"
         );
         $modStmt->execute([
-            'id'     => $moduleId,
-            'dept'   => $studentDeptId,
-            'dept2'  => $studentDeptId,
-            'intake' => $studentIntake,
+            'id'      => $moduleId,
+            'dept'    => $studentDeptId,
+            'dept2'   => $studentDeptId,
+            'intake'  => $studentIntake,
+            'session' => $studentSessionType,
+            'session2' => $studentSessionType,
         ]);
         $module = $modStmt->fetch();
 
@@ -80,13 +84,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $tab = $_GET['tab'] ?? 'browse';
 
 // Browse: Ongoing modules scoped to student's department + intake.
-$studentDeptId = (int) ($me['department_id'] ?? 0);
-$studentIntake = $me['intake'] ?? null;
+$studentDeptId      = (int) ($me['department_id'] ?? 0);
+$studentIntake      = $me['intake'] ?? null;
+$studentSessionType = trim($me['session_type'] ?? '');
 
 $browseParams = [
-    'dept'   => $studentDeptId,
-    'dept2'  => $studentDeptId,
-    'intake' => $studentIntake,
+    'dept'    => $studentDeptId,
+    'dept2'   => $studentDeptId,
+    'intake'  => $studentIntake,
+    'session' => $studentSessionType,
 ];
 
 $browseStmt = $db->prepare(
@@ -104,8 +110,10 @@ $browseStmt = $db->prepare(
          NOT EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id)
          OR EXISTS (SELECT 1 FROM module_intakes mi WHERE mi.module_id = m.module_id AND mi.intake = :intake)
        )
+       AND (:session = '' OR m.session_type = :session2)
      ORDER BY d.department_name, m.module_title"
 );
+$browseParams['session2'] = $browseParams['session'];
 $browseStmt->execute($browseParams);
 $browseModules = $browseStmt->fetchAll();
 
@@ -113,8 +121,20 @@ $myEnrolledIds = $db->prepare('SELECT module_id FROM module_enrollments WHERE us
 $myEnrolledIds->execute(['uid' => $me['user_id']]);
 $myEnrolledIds = array_map('intval', $myEnrolledIds->fetchAll(PDO::FETCH_COLUMN));
 
+// Session types the student is already enrolled in (for ongoing modules)
+$enrolledSessionsStmt = $db->prepare(
+    "SELECT DISTINCT m.session_type FROM modules m
+     JOIN module_enrollments e ON e.module_id = m.module_id
+     WHERE e.user_id = :uid AND m.status = 'Ongoing' AND m.session_type IS NOT NULL"
+);
+$enrolledSessionsStmt->execute(['uid' => $me['user_id']]);
+$enrolledSessionTypes = $enrolledSessionsStmt->fetchAll(PDO::FETCH_COLUMN);
+
 $grouped = [];
 foreach ($browseModules as $m) {
+    $alreadyEnrolled = in_array((int) $m['module_id'], $myEnrolledIds, true);
+    $sessionTaken    = $m['session_type'] && in_array($m['session_type'], $enrolledSessionTypes, true) && !$alreadyEnrolled;
+    if ($sessionTaken) continue; // student already has a module in this session
     $grouped[$m['department_name'] ?? 'Unassigned'][] = $m;
 }
 
@@ -147,7 +167,6 @@ $myCompleted = $completedStmt->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module Registration</h4>
-<p class="text-muted small mb-3">Browse available modules for your department and intake, then register. To cancel a registration, contact your HoD.</p>
 
 <ul class="nav nav-pills mb-3">
   <li class="nav-item"><a class="nav-link <?= $tab === 'browse' ? 'active' : '' ?>" href="?tab=browse">Browse &amp; Register</a></li>

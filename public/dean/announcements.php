@@ -94,7 +94,6 @@ $myAnnouncements = $myAnnouncements->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Announcements</h4>
-<p class="text-muted small mb-4">As Dean you have university-wide reach — target any recipient group before publishing.</p>
 
 <div class="semas-card p-3 mb-4">
   <form method="post">

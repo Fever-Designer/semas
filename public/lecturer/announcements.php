@@ -66,7 +66,6 @@ $myAnnouncements = $myAnnouncements->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module Announcements</h4>
-<p class="text-muted small mb-4">Announcements are automatically sent to every student registered in the module you select — no separate audience targeting needed.</p>
 
 <?php if (!$modules): ?>
   <div class="semas-card p-4 text-center text-muted small">You have no modules assigned yet. Ask the HOD to assign one to you.</div>

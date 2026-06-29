@@ -31,16 +31,11 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     }
     list.innerHTML = items.map(function (n) {
       const icon = categoryIcon[n.category] || 'bi-bell-fill';
-      const unreadClass = n.is_read == 0 ? 'unread' : '';
-      return '<div class="notif-item ' + unreadClass + '" data-id="' + n.notification_id + '">' +
-        '<div class="d-flex justify-content-between"><div class="fw-semibold"><i class="bi ' + icon + ' me-1"></i>' +
-        escapeHtml(n.title) + '</div>' +
-        '<div class="d-flex gap-2">' +
-        (n.is_read == 0
-          ? '<a href="#" class="notif-read-btn" title="Mark read"><i class="bi bi-check2"></i></a>'
-          : '<a href="#" class="notif-unread-btn" title="Mark unread"><i class="bi bi-envelope"></i></a>') +
-        '<a href="#" class="notif-del-btn text-danger" title="Delete"><i class="bi bi-trash"></i></a>' +
-        '</div></div>' +
+      return '<div class="notif-item" data-id="' + n.notification_id + '">' +
+        '<div class="d-flex justify-content-between align-items-start">' +
+        '<div class="fw-semibold"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(n.title) + '</div>' +
+        '<a href="#" class="notif-del-btn text-danger ms-2 flex-shrink-0" title="Delete"><i class="bi bi-trash"></i></a>' +
+        '</div>' +
         '<div class="text-muted" style="font-size:0.78rem;">' + escapeHtml(n.body || '') + '</div>' +
         '<div class="text-muted" style="font-size:0.68rem;">' + n.created_at + '</div>' +
         '</div>';
@@ -73,8 +68,13 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
 
   bell.addEventListener('click', function (e) {
     e.stopPropagation();
+    const wasHidden = !panel.classList.contains('show');
     panel.classList.toggle('show');
-    if (panel.classList.contains('show')) loadNotifications();
+    if (wasHidden) {
+      loadNotifications();
+      // Mark all as read silently when panel opens
+      postAction('mark_all_read').then(function (d) { renderCount(d.unread_count); });
+    }
   });
   document.addEventListener('click', function (e) {
     if (!panel.contains(e.target) && e.target !== bell) panel.classList.remove('show');
@@ -84,18 +84,14 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     const item = e.target.closest('.notif-item');
     if (!item) return;
     const id = item.getAttribute('data-id');
-    if (e.target.closest('.notif-read-btn')) { e.preventDefault(); postAction('mark_read', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); }); }
-    if (e.target.closest('.notif-unread-btn')) { e.preventDefault(); postAction('mark_unread', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); }); }
-    if (e.target.closest('.notif-del-btn')) { e.preventDefault(); postAction('delete', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); }); }
-  });
-
-  document.getElementById('notifMarkAllRead')?.addEventListener('click', function (e) {
-    e.preventDefault();
-    postAction('mark_all_read').then(function (d) { renderCount(d.unread_count); loadNotifications(); });
+    if (e.target.closest('.notif-del-btn')) {
+      e.preventDefault();
+      postAction('delete', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); });
+    }
   });
 
   loadNotifications();
-  setInterval(loadNotifications, 20000); // AJAX auto-refresh every 20s
+  setInterval(loadNotifications, 20000);
 })();
 
 // Navigation progress bar

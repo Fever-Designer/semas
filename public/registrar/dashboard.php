@@ -45,7 +45,6 @@ $totalDepartments = (int) $db->query('SELECT COUNT(*) FROM departments')->fetchC
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Registrar Dashboard</h4>
-<p class="text-muted small mb-3">Manage student accounts and registrations for the University of Kigali.</p>
 
 <div class="row g-3 mb-3">
   <div class="col-md-6 col-lg-3">

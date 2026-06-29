@@ -45,7 +45,7 @@ $faculties = $db->query('SELECT faculty_id, faculty_name FROM faculties ORDER BY
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-  <div><h4 class="display-font mb-1">Manage Departments</h4><p class="text-muted small mb-0">As Head of Department, you manage the full department structure across the university.</p></div>
+  <div><h4 class="display-font mb-1">Manage Departments</h4></div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newDeptModal"><i class="bi bi-plus-circle me-1"></i> New Department</button>
 </div>
 

@@ -37,7 +37,6 @@ $recent = $db->query('SELECT * FROM ai_notifications ORDER BY notification_id DE
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Generate an Announcement &amp; Email</h4>
-<p class="text-muted small mb-4">Fill in a short request; the generator returns database-ready content following the official SEMAS notification rules.</p>
 
 <div class="semas-card p-3 mb-4">
   <h6 class="display-font mb-3">Request</h6>

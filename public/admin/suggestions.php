@@ -7,6 +7,11 @@ $pageTitle = 'Suggestion Box';
 $activeNav = 'suggestions';
 $db = Database::connection();
 $user = Auth::user();
+$isPrincipal = Auth::role() === 'Principal';
+
+// One-time migration: add resolved_by / resolved_at columns if missing
+try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_by INT NULL'); } catch (PDOException $e) {}
+try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_at DATETIME NULL'); } catch (PDOException $e) {}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -15,11 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
         case 'reply':
+            if (!$isPrincipal) { flash('error', 'Only the Principal can reply to suggestions.'); break; }
             Suggestion::reply($id, trim($_POST['reply'] ?? ''), Auth::id());
             AuditLog::record(Auth::id(), 'SUGGESTION_REPLIED', 'suggestions', $id);
-            // The submitter's identity is never read by this admin page, but the
-            // system itself still knows it (suggestions.submitted_by_user_id) and
-            // can deliver the reply to the right inbox without exposing who it was.
             $submitterStmt = $db->prepare('SELECT submitted_by_user_id FROM suggestions WHERE suggestion_id = :id');
             $submitterStmt->execute(['id' => $id]);
             $submitterId = $submitterStmt->fetchColumn();
@@ -28,38 +31,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('success', 'Reply saved.');
             break;
-        case 'resolve':
-            Suggestion::setStatus($id, 'Resolved');
-            AuditLog::record(Auth::id(), 'SUGGESTION_RESOLVED', 'suggestions', $id);
-            flash('success', 'Marked as resolved.');
-            break;
+
         case 'archive':
+            if (!$isPrincipal) { flash('error', 'Only the Principal can archive suggestions.'); break; }
             Suggestion::setStatus($id, 'Archived');
             AuditLog::record(Auth::id(), 'SUGGESTION_ARCHIVED', 'suggestions', $id);
             flash('success', 'Archived.');
             break;
-        case 'delete':
-            Suggestion::delete($id);
-            AuditLog::record(Auth::id(), 'SUGGESTION_DELETED', 'suggestions', $id);
-            flash('success', 'Deleted.');
+
+        case 'unarchive':
+            if (!$isPrincipal) { flash('error', 'Only the Principal can unarchive suggestions.'); break; }
+            Suggestion::setStatus($id, 'New');
+            AuditLog::record(Auth::id(), 'SUGGESTION_UNARCHIVED', 'suggestions', $id);
+            flash('success', 'Removed from archive.');
             break;
     }
     redirect('/admin/suggestions.php');
 }
 
-// HOD only sees suggestions from their own department; Principal and Dean see all
-// (Dean scoping to faculty would require joining departments — kept simple here since
-// suggestions are meant to surface broadly; tighten to faculty scope if you prefer).
 $scopeDept = Auth::role() === 'HOD' ? $user['department_id'] : null;
 $suggestions = Suggestion::adminList($scopeDept);
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Suggestion Box</h4>
-<p class="text-muted small mb-4">
-  Messages are shown anonymously by design — category, department, and content only. No name, email, or
-  account is ever displayed here, even though the system can trace abuse internally if legally required.
-</p>
 
 <?php if (!$suggestions): ?>
   <div class="semas-card p-4 text-center text-muted small">No suggestions submitted yet.</div>
@@ -72,31 +67,49 @@ require __DIR__ . '/../partials/layout_top.php';
         <span class="badge badge-upcoming me-2"><?= e($s['category']) ?></span>
         <span class="badge badge-<?= $s['status'] === 'Resolved' ? 'completed' : ($s['status'] === 'Archived' ? 'cancelled' : 'urgent') ?>"><?= e($s['status']) ?></span>
       </div>
-      <div class="text-muted" style="font-size:0.72rem;"><?= e($s['department_name'] ?? 'University-wide')  ?> &middot; <?= e($s['created_at']) ?></div>
+      <div class="text-muted" style="font-size:0.72rem;"><?= e($s['department_name'] ?? 'University-wide') ?> &middot; <?= e($s['created_at']) ?></div>
     </div>
     <p class="mb-2"><?= nl2br(e($s['message'])) ?></p>
 
     <?php if ($s['admin_reply']): ?>
       <div class="border-start ps-3 mb-2" style="border-color:var(--semas-gold) !important;border-left-width:3px;">
-        <div class="text-muted small fw-semibold">Staff reply (<?= e($s['replied_at']) ?>)</div>
+        <div class="text-muted small fw-semibold">
+          Staff reply
+          <?php if ($s['replied_by_name']): ?>
+            — <strong><?= e($s['replied_by_name']) ?></strong> <span class="text-muted">(<?= e($s['replied_by_role'] ?? '') ?>)</span>
+          <?php endif; ?>
+          <?php if ($s['replied_at']): ?>
+            &middot; <?= e($s['replied_at']) ?>
+          <?php endif; ?>
+        </div>
         <div class="small"><?= nl2br(e($s['admin_reply'])) ?></div>
       </div>
     <?php endif; ?>
 
+    <?php if ($s['status'] === 'Resolved' && $s['resolved_by_name']): ?>
+      <div class="text-muted small mb-2">
+        <i class="bi bi-check-circle-fill text-success me-1"></i>
+        Resolved by <strong><?= e($s['resolved_by_name']) ?></strong>
+        <span class="text-muted">(<?= e($s['resolved_by_role'] ?? '') ?>)</span>
+        <?php if ($s['resolved_at']): ?>&middot; <?= e($s['resolved_at']) ?><?php endif; ?>
+      </div>
+    <?php endif; ?>
+
+    <?php if ($isPrincipal): ?>
     <div class="d-flex gap-2 flex-wrap mt-2">
       <button class="btn btn-sm btn-outline-dark" data-bs-toggle="collapse" data-bs-target="#reply-<?= (int) $s['suggestion_id'] ?>">Reply</button>
-      <form method="post" class="d-inline">
-        <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
-        <button class="btn btn-sm btn-outline-dark" name="action" value="resolve">Mark Resolved</button>
-      </form>
-      <form method="post" class="d-inline">
-        <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
-        <button class="btn btn-sm btn-outline-dark" name="action" value="archive">Archive</button>
-      </form>
-      <form method="post" class="d-inline" onsubmit="return confirm('Delete this submission permanently?');">
-        <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
-        <button class="btn btn-sm btn-outline-danger" name="action" value="delete">Delete</button>
-      </form>
+
+      <?php if ($s['status'] === 'Archived'): ?>
+        <form method="post" class="d-inline">
+          <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
+          <button class="btn btn-sm btn-outline-secondary" name="action" value="unarchive">Remove Archive</button>
+        </form>
+      <?php else: ?>
+        <form method="post" class="d-inline">
+          <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
+          <button class="btn btn-sm btn-outline-dark" name="action" value="archive">Archive</button>
+        </form>
+      <?php endif; ?>
     </div>
 
     <div class="collapse mt-2" id="reply-<?= (int) $s['suggestion_id'] ?>">
@@ -108,6 +121,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <button class="btn btn-sm btn-semas">Save Reply</button>
       </form>
     </div>
+    <?php endif; ?>
   </div>
 <?php endforeach; ?>
 

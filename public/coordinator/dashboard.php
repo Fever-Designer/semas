@@ -9,13 +9,14 @@ $activeNav = 'dashboard';
 $db = Database::connection();
 $user = Auth::user();
 
+$thisMonthCond = "YEAR(COALESCE(start_date, created_at)) = YEAR(CURDATE()) AND MONTH(COALESCE(start_date, created_at)) = MONTH(CURDATE())";
 $stats = [
-    'weekend_modules'    => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend'")->fetchColumn(),
-    'ongoing_weekend'    => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend' AND status='Ongoing'")->fetchColumn(),
-    'completed_weekend'  => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend' AND status='Completed'")->fetchColumn(),
+    'weekend_modules'    => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend' AND $thisMonthCond")->fetchColumn(),
+    'ongoing_weekend'    => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend' AND status='Ongoing' AND $thisMonthCond")->fetchColumn(),
+    'completed_weekend'  => (int) $db->query("SELECT COUNT(*) FROM modules WHERE session_type='Weekend' AND status='Completed' AND $thisMonthCond")->fetchColumn(),
     'weekend_students'   => (int) $db->query(
         "SELECT COUNT(DISTINCT me.user_id) FROM module_enrollments me
-         JOIN modules m ON m.module_id=me.module_id WHERE m.session_type='Weekend'")->fetchColumn(),
+         JOIN modules m ON m.module_id=me.module_id WHERE m.session_type='Weekend' AND $thisMonthCond")->fetchColumn(),
 ];
 
 $recentModules = $db->query(
@@ -28,46 +29,32 @@ $recentModules = $db->query(
      ORDER BY m.created_at DESC LIMIT 8"
 )->fetchAll();
 
-$pendingEligibility = (int) $db->query(
-    "SELECT COUNT(*) FROM cat_exam_eligibility ce
-     JOIN modules m ON m.module_id=ce.module_id
-     WHERE ce.hod_decision='Pending' AND m.session_type='Weekend'"
-)->fetchColumn();
-
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Coordinator Dashboard</h4>
-<p class="text-muted small mb-3">You manage Weekend session modules, attendance, and academic operations for Weekend students.</p>
 
 <div class="row g-3 mb-4">
   <div class="col-md-6 col-lg-3">
     <div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i>
-      <div class="stat-label">Weekend Modules</div><div class="stat-value"><?= $stats['weekend_modules'] ?></div>
+      <div class="stat-label">Weekend Modules <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['weekend_modules'] ?></div>
     </div>
   </div>
   <div class="col-md-6 col-lg-3">
     <div class="stat-card"><i class="bi bi-play-circle-fill stat-icon"></i>
-      <div class="stat-label">Ongoing</div><div class="stat-value"><?= $stats['ongoing_weekend'] ?></div>
+      <div class="stat-label">Ongoing <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['ongoing_weekend'] ?></div>
     </div>
   </div>
   <div class="col-md-6 col-lg-3">
     <div class="stat-card"><i class="bi bi-check-circle-fill stat-icon"></i>
-      <div class="stat-label">Completed</div><div class="stat-value"><?= $stats['completed_weekend'] ?></div>
+      <div class="stat-label">Completed <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['completed_weekend'] ?></div>
     </div>
   </div>
   <div class="col-md-6 col-lg-3">
     <div class="stat-card"><i class="bi bi-mortarboard-fill stat-icon"></i>
-      <div class="stat-label">Weekend Students</div><div class="stat-value"><?= $stats['weekend_students'] ?></div>
+      <div class="stat-label">Weekend Students <small class="text-muted d-block" style="font-size:.7rem;">This Month</small></div><div class="stat-value"><?= $stats['weekend_students'] ?></div>
     </div>
   </div>
 </div>
-
-<?php if ($pendingEligibility > 0): ?>
-  <div class="alert alert-warning small d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-exclamation-triangle-fill me-1"></i> <strong><?= $pendingEligibility ?></strong> CAT/Exam eligibility decision(s) awaiting your review.</span>
-    <a href="<?= APP_URL ?>/coordinator/eligibility.php" class="btn btn-sm btn-semas-gold">Review</a>
-  </div>
-<?php endif; ?>
 
 <div class="semas-card p-3 mb-4">
   <div class="d-flex gap-2 flex-wrap">
