@@ -283,7 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         AuditLog::record(Auth::id(), 'STUDENT_BULK_IMPORT', 'users', null,
             "created={$created}; updated={$updated}; failed={$failed}");
 
-        $msg = "Import complete — {$created} created, {$updated} updated, {$failed} failed.";
+        $msg = "Import complete / {$created} created, {$updated} updated, {$failed} failed.";
         if ($failedRows) {
             $msg .= ' Failures: ' . implode(' | ', array_slice($failedRows, 0, 5));
         }

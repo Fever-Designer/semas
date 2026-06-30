@@ -178,8 +178,9 @@ function att_status(?array $e, string $date, string $today): string
 }
 
 // ── Overall Attendance (cross-module, special-case detection) ──────────────
-$viewMode    = ($_GET['view'] ?? 'register') === 'overall' ? 'overall' : 'register';
-$overallRows = [];
+$viewMode       = ($_GET['view'] ?? 'register') === 'overall' ? 'overall' : 'register';
+$detailModuleId = (int) ($_GET['detail_module'] ?? 0);
+$overallRows    = [];
 
 if ($viewMode === 'overall') {
     $allHolidays = [];
@@ -255,6 +256,30 @@ if ($viewMode === 'overall') {
     if (!empty($_GET['special'])) {
         $overallRows = array_values(array_filter($overallRows, function ($r) { return $r['a'] >= 3; }));
     }
+
+    // Group into per-module summaries — HoD/Coordinator view modules, not individual students.
+    $moduleSummary = [];
+    foreach ($overallRows as $r) {
+        $mid = $r['module_id'];
+        if (!isset($moduleSummary[$mid])) {
+            $moduleSummary[$mid] = ['module_id' => $mid, 'module' => $r['module'], 'students' => 0, 'p' => 0, 'l' => 0, 'a' => 0, 'total' => 0, 'special' => 0, 'critical' => 0];
+        }
+        $moduleSummary[$mid]['students']++;
+        $moduleSummary[$mid]['p'] += $r['p'];
+        $moduleSummary[$mid]['l'] += $r['l'];
+        $moduleSummary[$mid]['a'] += $r['a'];
+        $moduleSummary[$mid]['total'] += $r['total'];
+        if ($r['a'] >= 4) { $moduleSummary[$mid]['critical']++; }
+        elseif ($r['a'] >= 3) { $moduleSummary[$mid]['special']++; }
+    }
+    foreach ($moduleSummary as &$ms) {
+        $ms['pct'] = $ms['total'] > 0 ? round(($ms['p'] + $ms['l']) / $ms['total'] * 100, 1) : 0;
+    }
+    unset($ms);
+    $moduleSummary = array_values($moduleSummary);
+    usort($moduleSummary, function ($x, $y) { return strcmp($x['module'], $y['module']); });
+
+    $detailRows = $detailModuleId ? array_values(array_filter($overallRows, function ($r) use ($detailModuleId) { return $r['module_id'] === $detailModuleId; })) : [];
 }
 
 require __DIR__ . '/../partials/layout_top.php';
@@ -277,6 +302,61 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <?php if ($viewMode === 'overall'): ?>
 
+<?php if ($detailModuleId): ?>
+  <?php $detailModuleTitle = $detailRows[0]['module'] ?? ''; ?>
+  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <h6 class="display-font mb-0"><?= e($detailModuleTitle) ?> / Student Breakdown</h6>
+    <a href="?view=overall<?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i> Back to Modules</a>
+  </div>
+
+  <?php if (!$detailRows): ?>
+    <div class="semas-card p-4 text-center text-muted small">No attendance data recorded yet for this module.</div>
+  <?php else: ?>
+  <div class="semas-card p-0 mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.8rem;">
+        <thead class="table-dark">
+          <tr>
+            <th>Student</th><th>Reg No</th>
+            <th class="text-center" style="background:#d4edda;color:#155724;">P</th>
+            <th class="text-center" style="background:#fff3cd;color:#856404;">L</th>
+            <th class="text-center" style="background:#f8d7da;color:#721c24;">A</th>
+            <th class="text-center">Total</th>
+            <th class="text-center">Attend %</th>
+            <th class="text-center">Flag</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($detailRows as $r):
+            $rowBg = $r['a'] >= 4 ? '#f8d7da' : ($r['a'] >= 3 ? '#fff3cd' : '');
+          ?>
+          <tr style="<?= $rowBg ? "background:$rowBg;" : '' ?>">
+            <td class="fw-semibold"><?= e($r['name']) ?></td>
+            <td style="color:#666;"><?= e($r['reg'] ?? '—') ?></td>
+            <td class="text-center"><?= $r['p'] ?></td>
+            <td class="text-center"><?= $r['l'] ?></td>
+            <td class="text-center fw-bold"><?= $r['a'] ?></td>
+            <td class="text-center"><?= $r['total'] ?></td>
+            <td class="text-center fw-bold" style="color:<?= $r['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format($r['pct'], 1) ?>%</td>
+            <td class="text-center">
+              <?php if ($r['a'] >= 4): ?>
+                <span class="badge bg-danger">⛔ Critical</span>
+              <?php elseif ($r['a'] >= 3): ?>
+                <span class="badge bg-warning text-dark">⚠ Special Case</span>
+              <?php else: ?>
+                <span class="text-muted">—</span>
+              <?php endif; ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <?php endif; ?>
+
+<?php else: ?>
+
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
   <div class="d-flex gap-3 flex-wrap" style="font-size:.75rem;">
     <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3+ absences</span> Special Case</span>
@@ -287,52 +367,39 @@ require __DIR__ . '/../partials/layout_top.php';
   </a>
 </div>
 
-<?php if (!$overallRows): ?>
+<?php if (!$moduleSummary): ?>
   <div class="semas-card p-4 text-center text-muted small">No attendance data recorded yet across <?= $isCoordinator ? 'Weekend' : '' ?> ongoing modules.</div>
 <?php else: ?>
-<div class="semas-card p-0 mb-3">
-  <div class="table-responsive">
-    <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.8rem;">
-      <thead class="table-dark">
-        <tr>
-          <th>Student</th><th>Reg No</th><th>Module</th>
-          <th class="text-center" style="background:#d4edda;color:#155724;">P</th>
-          <th class="text-center" style="background:#fff3cd;color:#856404;">L</th>
-          <th class="text-center" style="background:#f8d7da;color:#721c24;">A</th>
-          <th class="text-center">Total</th>
-          <th class="text-center">Attend %</th>
-          <th class="text-center">Flag</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($overallRows as $r):
-          $rowBg = $r['a'] >= 4 ? '#f8d7da' : ($r['a'] >= 3 ? '#fff3cd' : '');
-        ?>
-        <tr style="<?= $rowBg ? "background:$rowBg;" : '' ?>">
-          <td class="fw-semibold"><?= e($r['name']) ?></td>
-          <td style="color:#666;"><?= e($r['reg'] ?? '—') ?></td>
-          <td><a href="?view=register&module_id=<?= $r['module_id'] ?>"><?= e($r['module']) ?></a></td>
-          <td class="text-center"><?= $r['p'] ?></td>
-          <td class="text-center"><?= $r['l'] ?></td>
-          <td class="text-center fw-bold"><?= $r['a'] ?></td>
-          <td class="text-center"><?= $r['total'] ?></td>
-          <td class="text-center fw-bold" style="color:<?= $r['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format($r['pct'], 1) ?>%</td>
-          <td class="text-center">
-            <?php if ($r['a'] >= 4): ?>
-              <span class="badge bg-danger">⛔ Critical</span>
-            <?php elseif ($r['a'] >= 3): ?>
-              <span class="badge bg-warning text-dark">⚠ Special Case</span>
-            <?php else: ?>
-              <span class="text-muted">—</span>
-            <?php endif; ?>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
+<div class="row g-3">
+  <?php foreach ($moduleSummary as $ms): ?>
+    <div class="col-md-6 col-lg-4">
+      <div class="semas-card p-3 h-100 d-flex flex-column">
+        <h6 class="fw-semibold mb-1"><?= e($ms['module']) ?></h6>
+        <p class="text-muted small mb-2"><?= $ms['students'] ?> student(s) with recorded attendance</p>
+        <div class="d-flex gap-3 small mb-2">
+          <span style="color:#155724;">P <?= $ms['p'] ?></span>
+          <span style="color:#856404;">L <?= $ms['l'] ?></span>
+          <span style="color:#721c24;">A <?= $ms['a'] ?></span>
+        </div>
+        <div class="mb-2">
+          <span class="fw-bold fs-5" style="color:<?= $ms['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format($ms['pct'], 1) ?>%</span>
+          <span class="text-muted small"> avg attendance</span>
+        </div>
+        <div class="mb-2">
+          <?php if ($ms['critical']): ?><span class="badge bg-danger me-1">⛔ <?= $ms['critical'] ?> Critical</span><?php endif; ?>
+          <?php if ($ms['special']): ?><span class="badge bg-warning text-dark me-1">⚠ <?= $ms['special'] ?> Special Case</span><?php endif; ?>
+          <?php if (!$ms['critical'] && !$ms['special']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
+        </div>
+        <a href="?view=overall&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark mt-auto">
+          <i class="bi bi-people me-1"></i> View More Details
+        </a>
+      </div>
+    </div>
+  <?php endforeach; ?>
 </div>
 <?php endif; ?>
+
+<?php endif; // detailModuleId ?>
 
 <?php else: ?>
 

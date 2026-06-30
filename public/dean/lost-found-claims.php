@@ -53,7 +53,7 @@ $claims = $stmt->fetchAll();
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
-<h4 class="display-font mb-1">Lost &amp; Found — Ownership Claims</h4>
+<h4 class="display-font mb-1">Lost &amp; Found / Ownership Claims</h4>
 
 <div class="semas-card p-3 mb-3">
   <div class="d-flex gap-2">
@@ -92,8 +92,8 @@ require __DIR__ . '/../partials/layout_top.php';
       </form>
     <?php else: ?>
       <p class="text-muted small mb-0 mt-2">
-        Decided <?= e($c['decided_at']) ?><?= $c['receiver_name'] ? ' — received by ' . e($c['receiver_name']) . ($c['receiver_reg_number'] ? ' (' . e($c['receiver_reg_number']) . ')' : '') : '' ?>
-        <?= $c['verification_notes'] ? ' — ' . e($c['verification_notes']) : '' ?>
+        Decided <?= e($c['decided_at']) ?><?= $c['receiver_name'] ? ' / received by ' . e($c['receiver_name']) . ($c['receiver_reg_number'] ? ' (' . e($c['receiver_reg_number']) . ')' : '') : '' ?>
+        <?= $c['verification_notes'] ? ' / ' . e($c['verification_notes']) : '' ?>
       </p>
     <?php endif; ?>
   </div>

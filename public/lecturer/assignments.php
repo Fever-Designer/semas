@@ -1,13 +1,14 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireTeachingAccess();
 
 $pageTitle = 'Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
 $me = Auth::user();
-$defaultAssignmentInstructions = "Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
+// SEMAS Default Assignment Instructions (System-Wide) — fixed block id def_ins_001, applies to every assignment.
+$defaultAssignmentInstructions = "📘 Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
 
 $lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');
 $lecStmt->execute(['uid' => $me['user_id']]);
@@ -96,10 +97,18 @@ $assignments = $db->prepare(
 $assignments->execute(['mid' => $moduleId]);
 $assignments = $assignments->fetchAll();
 
+$enrolledStudents = $db->prepare(
+    "SELECT u.user_id, u.full_name, u.reg_number FROM users u
+     JOIN module_enrollments e ON e.user_id = u.user_id
+     WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
+);
+$enrolledStudents->execute(['mid' => $moduleId]);
+$enrolledStudents = $enrolledStudents->fetchAll();
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <div><h4 class="display-font mb-1">Assignments — <?= e($module['module_title']) ?></h4></div>
+  <div><h4 class="display-font mb-1">Assignments / <?= e($module['module_title']) ?></h4></div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newAssignmentModal"><i class="bi bi-plus-circle me-1"></i> New Assignment</button>
 </div>
 
@@ -116,18 +125,29 @@ require __DIR__ . '/../partials/layout_top.php';
     <p class="small mb-2">Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?> &middot; <?= (int) $a['submission_count'] ?> submission(s)
       <?php if ($a['attachment_path']): ?> &middot; <a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank">Attachment</a><?php endif; ?>
     </p>
+    <?php
+      $subs = $db->prepare("SELECT s.*, u.full_name, u.reg_number FROM assignment_submissions s JOIN users u ON u.user_id = s.user_id WHERE s.assignment_id = :id ORDER BY s.submitted_at DESC");
+      $subs->execute(['id' => $a['assignment_id']]);
+      $subs = $subs->fetchAll();
+      $submittedIds = array_column($subs, 'user_id');
+      $missedStudents = array_filter($enrolledStudents, fn($s) => !in_array($s['user_id'], $submittedIds));
+    ?>
     <details>
-      <summary class="small text-muted" style="cursor:pointer;">View submissions</summary>
-      <?php
-        $subs = $db->prepare("SELECT s.*, u.full_name, u.reg_number FROM assignment_submissions s JOIN users u ON u.user_id = s.user_id WHERE s.assignment_id = :id ORDER BY s.submitted_at DESC");
-        $subs->execute(['id' => $a['assignment_id']]);
-        $subs = $subs->fetchAll();
-      ?>
+      <summary class="small text-muted" style="cursor:pointer;">Submitted students (<?= count($subs) ?>)</summary>
       <?php if (!$subs): ?><p class="text-muted small mt-2">No submissions yet.</p><?php endif; ?>
       <?php foreach ($subs as $s): ?>
         <div class="d-flex justify-content-between border-bottom py-1 small">
           <span><?= e($s['full_name']) ?> (<?= e($s['reg_number'] ?? '—') ?>) &middot; <?= e((string) date('d M Y H:i', strtotime((string) ($s['submitted_at'] ?? '')))) ?></span>
           <a href="<?= APP_URL . '/' . e($s['file_path']) ?>" target="_blank">Download</a>
+        </div>
+      <?php endforeach; ?>
+    </details>
+    <details class="mt-1">
+      <summary class="small text-danger" style="cursor:pointer;">Missed to submit (<?= count($missedStudents) ?>)</summary>
+      <?php if (!$missedStudents): ?><p class="text-muted small mt-2">Everyone enrolled has submitted.</p><?php endif; ?>
+      <?php foreach ($missedStudents as $s): ?>
+        <div class="border-bottom py-1 small text-danger">
+          <i class="bi bi-x-circle me-1"></i><?= e($s['full_name']) ?> (<?= e($s['reg_number'] ?? '—') ?>)
         </div>
       <?php endforeach; ?>
     </details>

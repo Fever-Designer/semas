@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(& \"C:\\\\xampp\\\\apache\\\\bin\\\\httpd.exe\" -t 2>&1)"
+      "PowerShell(& \"C:\\\\xampp\\\\apache\\\\bin\\\\httpd.exe\" -t 2>&1)",
+      "Bash(php -l public/lecturer/modules.php)",
+      "Bash(php -l public/student/assignments.php)",
+      "Bash(php -l includes/bootstrap.php)"
     ]
   }
 }

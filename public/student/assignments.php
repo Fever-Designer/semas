@@ -7,6 +7,9 @@ $pageTitle = 'My Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
 $me = Auth::user();
+// SEMAS Default Assignment Instructions (System-Wide) — fixed block id def_ins_001, applies to every assignment.
+$defaultAssignmentInstructionsId = 'def_ins_001';
+$defaultAssignmentInstructionsVersion = 'SEMAS-ASSIGN-2026-V1';
 $defaultAssignmentInstructions = "📘 Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
@@ -121,32 +124,134 @@ $assignments = $assignments->fetchAll();
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
-<h4 class="display-font mb-1">Assignments — <?= e($module['module_title']) ?></h4>
+<h4 class="display-font mb-1">Assignments / <?= e($module['module_title']) ?></h4>
 <p class="text-muted small mb-4">Submit PDF or ZIP files only. Rename your file as Firstname_Lastname_RegNo.pdf or .zip before uploading. No submissions are accepted after the deadline.</p>
 
-<?php foreach ($assignments as $a): $closed = strtotime($a['deadline']) < time(); ?>
+<?php foreach ($assignments as $a): $closed = strtotime($a['deadline']) < time(); $customNotes = trim((string) $a['instructions']); $hasCustomNotes = $customNotes !== '' && $customNotes !== trim($defaultAssignmentInstructions); ?>
   <div class="semas-card p-3 mb-3">
-    <div class="d-flex justify-content-between align-items-start">
-      <h6 class="display-font mb-1"><?= e($a['title']) ?></h6>
-      <span class="badge <?= $closed ? 'bg-secondary' : 'badge-completed' ?>"><?= $closed ? 'Closed' : 'Open' ?></span>
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+      <div>
+        <h6 class="display-font mb-1"><?= e($a['title']) ?></h6>
+        <span class="badge <?= $closed ? 'bg-secondary' : 'badge-completed' ?>"><?= $closed ? 'Closed' : 'Open' ?></span>
+      </div>
+      <!-- Countdown timer: top-right, beside the instructions block -->
+      <?php if (!$closed): ?>
+        <div class="text-center px-3 py-2 rounded" style="background:#fff7e0;border:2px solid var(--semas-gold,#c9a227);min-width:180px;">
+          <div class="text-uppercase text-muted fw-semibold" style="font-size:.68rem;letter-spacing:.06em;"><i class="bi bi-stopwatch me-1"></i>Time Left</div>
+          <div class="js-countdown fw-bold" data-deadline="<?= e((string) date('c', strtotime((string) $a['deadline']))) ?>" style="font-size:1.5rem;line-height:1.15;color:#1E2A52;">—</div>
+        </div>
+      <?php else: ?>
+        <div class="text-center px-3 py-2 rounded bg-light" style="min-width:180px;">
+          <div class="text-uppercase text-secondary fw-semibold" style="font-size:.68rem;letter-spacing:.06em;"><i class="bi bi-stopwatch me-1"></i>Time Left</div>
+          <div class="fw-bold text-secondary" style="font-size:1.1rem;">Closed</div>
+        </div>
+      <?php endif; ?>
     </div>
-    <?php $assignmentInstructions = $a['instructions'] ?: $defaultAssignmentInstructions; ?>
-    <p class="text-muted small mb-2"><?= nl2br(e($assignmentInstructions)) ?></p>
-    <p class="small mb-2">Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?>
-      <?php if ($a['attachment_path']): ?> &middot; <a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank">Lecturer's attachment</a><?php endif; ?>
+
+    <!-- 1. System Instructions (DEFAULT) -->
+    <div class="alert alert-light border small mb-2" data-instructions-id="<?= e($defaultAssignmentInstructionsId) ?>">
+      <p class="text-muted mb-1"><?= nl2br(e($defaultAssignmentInstructions)) ?></p>
+      <p class="text-muted mb-0" style="font-size:.75rem;">Policy Version: <?= e($defaultAssignmentInstructionsVersion) ?></p>
+    </div>
+
+    <!-- 2. Lecturer assignment details -->
+    <p class="small mb-2">Module: <?= e($module['module_title']) ?> &middot; Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?>
+      <?php if ($hasCustomNotes): ?><br><span class="text-muted"><?= nl2br(e($a['instructions'])) ?></span><?php endif; ?>
     </p>
-    <?php if ($a['my_file']): ?>
-      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['my_submitted_at'] ?? '')))) ?> — <a href="<?= APP_URL . '/' . e($a['my_file']) ?>" target="_blank">View your file</a></p>
+
+    <!-- 3. Attachment download -->
+    <?php if ($a['attachment_path']): ?>
+      <p class="small mb-2"><a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank"><i class="bi bi-paperclip me-1"></i>Lecturer's attachment</a></p>
     <?php endif; ?>
+
+    <?php if ($a['my_file']): ?>
+      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['my_submitted_at'] ?? '')))) ?> / <a href="<?= APP_URL . '/' . e($a['my_file']) ?>" target="_blank">View your file</a></p>
+    <?php endif; ?>
+
+    <!-- 5. Submit button -->
     <?php if (!$closed): ?>
-      <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">
+      <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end js-submit-form">
         <?= csrf_field() ?><input type="hidden" name="assignment_id" value="<?= (int) $a['assignment_id'] ?>">
-        <input type="file" name="file" accept=".pdf,.zip" class="form-control form-control-sm" required>
-        <button class="btn btn-sm btn-semas-gold text-nowrap"><?= $a['my_file'] ? 'Resubmit' : 'Submit' ?></button>
+        <input type="file" name="file" accept=".pdf,.zip" class="form-control form-control-sm js-file-input" required>
+        <button type="button" class="btn btn-sm btn-semas-gold text-nowrap js-preview-btn"><?= $a['my_file'] ? 'Resubmit' : 'Submit' ?></button>
       </form>
     <?php endif; ?>
   </div>
 <?php endforeach; ?>
 <?php if (!$assignments): ?><div class="semas-card p-4 text-center text-muted small">No assignments posted for this module yet.</div><?php endif; ?>
+
+<div class="modal fade" id="submitPreviewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h6 class="modal-title display-font">Confirm Submission</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Review your file before submitting. Once confirmed, this will be recorded as your submission.</p>
+        <div id="submitPreviewArea" style="height:60vh; background:#f5f5f5;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-semas-gold" id="submitPreviewConfirmBtn">Confirm &amp; Submit</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var pendingForm = null;
+  var previewModalEl = document.getElementById('submitPreviewModal');
+  var previewModal = previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
+  var previewArea = document.getElementById('submitPreviewArea');
+
+  document.querySelectorAll('.js-preview-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var form = btn.closest('form');
+      var fileInput = form.querySelector('.js-file-input');
+      if (!fileInput.files.length) { fileInput.reportValidity(); return; }
+      var file = fileInput.files[0];
+      previewArea.innerHTML = '';
+      if (file.type === 'application/pdf') {
+        var url = URL.createObjectURL(file);
+        previewArea.innerHTML = '<embed src="' + url + '" type="application/pdf" width="100%" height="100%">';
+      } else {
+        previewArea.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-file-earmark-zip display-4"></i><p class="mt-2 mb-0">' + file.name.replace(/[<>]/g, '') + '</p><p class="small">Preview is only available for PDF files. The ZIP will still be uploaded as-is.</p></div>';
+      }
+      pendingForm = form;
+      previewModal.show();
+    });
+  });
+
+  document.getElementById('submitPreviewConfirmBtn').addEventListener('click', function () {
+    if (pendingForm) { pendingForm.submit(); }
+  });
+
+  previewModalEl.addEventListener('hidden.bs.modal', function () {
+    previewArea.innerHTML = '';
+    pendingForm = null;
+  });
+})();
+
+(function () {
+  var els = document.querySelectorAll('.js-countdown');
+  if (!els.length) { return; }
+  function tick() {
+    els.forEach(function (el) {
+      var deadline = new Date(el.dataset.deadline).getTime();
+      var diff = deadline - Date.now();
+      if (diff <= 0) { el.textContent = 'Deadline passed'; el.classList.add('text-danger'); return; }
+      var d = Math.floor(diff / 86400000);
+      var h = Math.floor((diff % 86400000) / 3600000);
+      var m = Math.floor((diff % 3600000) / 60000);
+      var s = Math.floor((diff % 60000) / 1000);
+      var parts = [];
+      if (d > 0) { parts.push(d + 'd'); }
+      parts.push(h + 'h', m + 'm', s + 's');
+      el.textContent = parts.join(' ');
+      if (diff < 3600000) { el.classList.add('text-danger'); }
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

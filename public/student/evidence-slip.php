@@ -72,7 +72,7 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title><?= e($schedule['exam_type']) ?> Evidence Slip — <?= e($schedule['module_title']) ?></title>
+<title><?= e($schedule['exam_type']) ?> Evidence Slip / <?= e($schedule['module_title']) ?></title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Times New Roman', Times, serif; background: #f4f5f7; margin: 0; padding: 24px 0; color: #1B1F2A; }

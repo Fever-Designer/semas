@@ -208,7 +208,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="save">
                 <div class="modal-header">
-                  <h6 class="modal-title display-font">Edit — <?= e($c['semester_name']) ?></h6>
+                  <h6 class="modal-title display-font">Edit / <?= e($c['semester_name']) ?></h6>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">

@@ -195,7 +195,7 @@ if ($scheduleId) {
         header('Content-Type: text/html; charset=utf-8');
         ?>
         <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-        <title><?= e($schedDetail['exam_type']) ?> Attendance — <?= e($schedDetail['module_title']) ?></title>
+        <title><?= e($schedDetail['exam_type']) ?> Attendance / <?= e($schedDetail['module_title']) ?></title>
         <style>
           body { font-family: Arial, sans-serif; font-size: 12px; color: #1B1F2A; margin: 20px; }
           h1 { font-size: 16px; text-align: center; }

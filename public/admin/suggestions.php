@@ -76,7 +76,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="text-muted small fw-semibold">
           Staff reply
           <?php if ($s['replied_by_name']): ?>
-            — <strong><?= e($s['replied_by_name']) ?></strong> <span class="text-muted">(<?= e($s['replied_by_role'] ?? '') ?>)</span>
+            / <strong><?= e($s['replied_by_name']) ?></strong> <span class="text-muted">(<?= e($s['replied_by_role'] ?? '') ?>)</span>
           <?php endif; ?>
           <?php if ($s['replied_at']): ?>
             &middot; <?= e($s['replied_at']) ?>

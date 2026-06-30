@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($who === 'everyone') {
         $audienceKey = 'University Community';
-        $scopeLabel  = 'University-wide — All active users';
+        $scopeLabel  = 'University-wide / All active users';
         $recipients  = AudienceResolver::resolve('University Community');
 
     } elseif ($who === 'lecturers') {
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($who === 'students') {
         if ($subScope === 'session' && $sessionT) {
             $audienceKey = $sessionT . ' Students';
-            $scopeLabel  = $sessionT . ' Session — All Students';
+            $scopeLabel  = $sessionT . ' Session / All Students';
             $recipients  = AudienceResolver::resolve($sessionT . ' Students');
         } elseif ($subScope === 'first_year') {
             $audienceKey = 'First Year Students';

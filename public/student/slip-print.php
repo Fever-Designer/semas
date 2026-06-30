@@ -31,7 +31,7 @@ if (!$module || !$allowed) {
 
 // Get schedule details (room, invigilator, time) from cat_exam_schedules
 $schedStmt = $db->prepare(
-    "SELECT cs.room, cs.start_time, cs.end_time, cs.scheduled_date, u.full_name AS invigilator_name
+    "SELECT cs.schedule_id, cs.room, cs.start_time, cs.end_time, cs.scheduled_date, u.full_name AS invigilator_name
      FROM cat_exam_schedules cs
      JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
      JOIN users u ON u.user_id = l.user_id
@@ -40,6 +40,21 @@ $schedStmt = $db->prepare(
 );
 $schedStmt->execute(['mid' => $moduleId, 'type' => $examType]);
 $sched = $schedStmt->fetch() ?: [];
+
+// Once the student has signed out, the Entry Slip is no longer available — only the Evidence Slip remains.
+if (!empty($sched['schedule_id'])) {
+    $soutStmt = $db->prepare(
+        "SELECT 1 FROM cat_exam_attendance_logs WHERE schedule_id = :s AND user_id = :u AND attendance_type = 'Sign Out'"
+    );
+    $soutStmt->execute(['s' => $sched['schedule_id'], 'u' => $me['user_id']]);
+    if ($soutStmt->fetchColumn()) {
+        http_response_code(403);
+        echo 'This Entry Slip is no longer available because you have already signed out of this ' . e($examType) . '. '
+            . 'Please use the ' . e($examType) . ' Evidence Slip instead: '
+            . '<a href="' . APP_URL . '/student/evidence-slip.php?schedule_id=' . (int) $sched['schedule_id'] . '">View Evidence Slip</a>.';
+        exit;
+    }
+}
 
 $examDate = !empty($sched['scheduled_date']) ? $sched['scheduled_date'] : ($examType === 'CAT' ? $module['cat_date'] : $module['exam_date']);
 $room = $sched['room'] ?? ($module['room'] ?? '—');
@@ -51,7 +66,7 @@ $endTime   = !empty($sched['end_time'])   ? date('h:i A', strtotime($sched['end_
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title><?= e($examType) ?> Entry Slip — <?= e($module['module_title']) ?></title>
+<title><?= e($examType) ?> Entry Slip / <?= e($module['module_title']) ?></title>
 <style>
   body { font-family: Georgia, serif; max-width: 680px; margin: 40px auto; color: #1B1F2A; }
   .slip { border: 2px solid #1E2A52; padding: 28px; border-radius: 8px; }
@@ -83,7 +98,7 @@ $endTime   = !empty($sched['end_time'])   ? date('h:i A', strtotime($sched['end_
     <tr><td class="label">Session</td><td><?= e($module['session_type'] ?? '—') ?></td></tr>
     <tr><td class="label">Issued</td><td><?= e(date('d F Y, h:i A')) ?></td></tr>
   </table>
-  <div class="stamp">✓ ELIGIBLE — APPROVED BY HOD</div>
+  <div class="stamp">✓ ELIGIBLE / APPROVED BY HOD</div>
   <div style="text-align:center;"><a href="#" class="btn no-print" onclick="window.print(); return false;">Print Entry Slip</a></div>
 </div>
 </body></html>

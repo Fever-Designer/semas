@@ -33,6 +33,8 @@ if ($role === 'Principal') {
     )->fetchAll();
     $recentAnnouncementsAdmin = $db->query('SELECT * FROM announcements ORDER BY posted_at DESC LIMIT 5')->fetchAll();
     $pendingSuggestions = (int) $db->query("SELECT COUNT(*) FROM suggestions WHERE status = 'New'")->fetchColumn();
+    $usersByRole = $db->query("SELECT r.role_name, COUNT(*) AS c FROM users u JOIN roles r ON r.role_id = u.role_id GROUP BY r.role_name ORDER BY c DESC")->fetchAll();
+    $newAccounts14d = (int) $db->query("SELECT COUNT(*) FROM users WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)")->fetchColumn();
 
     // Storage usage: real disk space where the app's upload directory lives.
     $uploadsPath = __DIR__ . '/uploads';
@@ -51,6 +53,8 @@ if ($role === 'Principal') {
         'total_events'    => (int) $db->query('SELECT COUNT(*) FROM events')->fetchColumn(),
     ];
     $recentAnnouncements = $db->query("SELECT * FROM announcements ORDER BY posted_at DESC LIMIT 5")->fetchAll();
+    $studentStatusBreakdown = $db->query("SELECT status, COUNT(*) AS c FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' GROUP BY status")->fetchAll();
+    $eventCheckins7d = (int) $db->query("SELECT COUNT(*) FROM attendance_logs WHERE checkin_time >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)")->fetchColumn();
 
 } elseif ($role === 'HOD') {
     Module::autoCompleteExpired();
@@ -99,6 +103,13 @@ if ($role === 'Principal') {
 
     $modulesWithoutLecturer = 0; // schema requires lecturer_id NOT NULL, kept for symmetry with the alerts card
 
+    $classAttendanceStatus = $db->query("SELECT status, COUNT(*) AS c FROM class_attendance_logs WHERE attendance_type='Sign In' GROUP BY status")->fetchAll();
+    $studentStatusBreakdown = $db->query("SELECT status, COUNT(*) AS c FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' GROUP BY status")->fetchAll();
+    $modulesByDept = $db->query(
+        "SELECT d.department_name, COUNT(m.module_id) AS c FROM departments d
+         LEFT JOIN modules m ON m.department_id = d.department_id GROUP BY d.department_id ORDER BY c DESC LIMIT 10"
+    )->fetchAll();
+
 } elseif ($role === 'Lecturer') {
     $lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');
     $lecStmt->execute(['uid' => $user['user_id']]);
@@ -114,6 +125,25 @@ if ($role === 'Principal') {
         $allModules = $modStmt->fetchAll();
         $ongoingModules = array_values(array_filter($allModules, function ($m) { return $m['status'] === 'Ongoing'; }));
         $completedModules = array_values(array_filter($allModules, function ($m) { return $m['status'] === 'Completed'; }));
+    }
+    $lecClassAttendanceStatus = [];
+    $lecSessions14d = 0;
+    if ($lecturer) {
+        $lecStatusStmt = $db->prepare(
+            "SELECT cal.status, COUNT(*) AS c FROM class_attendance_logs cal
+             JOIN class_sessions cs ON cs.session_id = cal.session_id
+             JOIN modules m ON m.module_id = cs.module_id
+             WHERE m.lecturer_id = :lec AND cal.attendance_type = 'Sign In' GROUP BY cal.status"
+        );
+        $lecStatusStmt->execute(['lec' => $lecturer['lecturer_id']]);
+        $lecClassAttendanceStatus = $lecStatusStmt->fetchAll();
+
+        $lecSessionsStmt = $db->prepare(
+            "SELECT COUNT(*) FROM class_sessions cs JOIN modules m ON m.module_id = cs.module_id
+             WHERE m.lecturer_id = :lec AND cs.start_time >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)"
+        );
+        $lecSessionsStmt->execute(['lec' => $lecturer['lecturer_id']]);
+        $lecSessions14d = (int) $lecSessionsStmt->fetchColumn();
     }
 
 } elseif ($role === 'Registrar') {
@@ -189,10 +219,15 @@ require __DIR__ . '/partials/layout_top.php';
 
   <div class="row g-3 mb-3">
     <div class="col-lg-6">
-      <div class="semas-card p-3"><h6 class="display-font mb-2">Users by Role</h6><canvas id="chartUsersByRole" height="180"></canvas></div>
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">Users by Role</h6>
+        <?php foreach ($usersByRole as $r): ?>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['role_name']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+        <?php endforeach; ?>
+      </div>
     </div>
     <div class="col-lg-6">
-      <div class="semas-card p-3"><h6 class="display-font mb-2">System Activity — New Accounts, Last 14 Days</h6><canvas id="chartSignups" height="180"></canvas></div>
+      <div class="semas-card p-3 h-100"><div class="stat-label">New Accounts / Last 14 Days</div><div class="stat-value"><?= $newAccounts14d ?></div></div>
     </div>
   </div>
 
@@ -250,8 +285,15 @@ require __DIR__ . '/partials/layout_top.php';
     </div>
   </div>
   <div class="row g-3">
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">Student Account Status</h6><canvas id="chartStudentStatus" height="180"></canvas></div></div>
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">Event Attendance — Last 7 Days</h6><canvas id="chartEventTrend" height="180"></canvas></div></div>
+    <div class="col-lg-6">
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">Student Account Status</h6>
+        <?php foreach ($studentStatusBreakdown as $r): ?>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['status']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="col-lg-6"><div class="semas-card p-3 h-100"><div class="stat-label">Event Check-ins / Last 7 Days</div><div class="stat-value"><?= $eventCheckins7d ?></div></div></div>
     <div class="col-12">
       <div class="semas-card p-3">
         <h6 class="display-font mb-3">Recent Announcements</h6>
@@ -282,9 +324,34 @@ require __DIR__ . '/partials/layout_top.php';
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">Class Attendance Breakdown (University-wide)</h6><canvas id="chartClassStatus" height="180"></canvas></div></div>
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">Student Account Status</h6><canvas id="chartStudentStatus" height="180"></canvas></div></div>
-    <div class="col-12"><div class="semas-card p-3"><h6 class="display-font mb-2">Modules by Department</h6><canvas id="chartModulesByDept" height="160"></canvas></div></div>
+    <div class="col-lg-6">
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">Class Attendance Breakdown (University-wide)</h6>
+        <?php if (!$classAttendanceStatus): ?><p class="text-muted small mb-0">No attendance recorded yet.</p><?php endif; ?>
+        <?php foreach ($classAttendanceStatus as $r): ?>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['status']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">Student Account Status</h6>
+        <?php foreach ($studentStatusBreakdown as $r): ?>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['status']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">Modules by Department</h6>
+        <?php if (!$modulesByDept): ?><p class="text-muted small mb-0">No departments yet.</p><?php endif; ?>
+        <div class="row g-2">
+          <?php foreach ($modulesByDept as $r): ?>
+            <div class="col-md-3 col-6"><div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['department_name']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div></div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="row g-3 mb-3">
@@ -390,8 +457,16 @@ require __DIR__ . '/partials/layout_top.php';
   </div>
 
   <div class="row g-3">
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">My Class Attendance Breakdown</h6><canvas id="chartClassStatus" height="180"></canvas></div></div>
-    <div class="col-lg-6"><div class="semas-card p-3"><h6 class="display-font mb-2">Sessions Run — Last 14 Days</h6><canvas id="chartSessionsTrend" height="180"></canvas></div></div>
+    <div class="col-lg-6">
+      <div class="semas-card p-3">
+        <h6 class="display-font mb-2">My Class Attendance Breakdown</h6>
+        <?php if (!$lecClassAttendanceStatus): ?><p class="text-muted small mb-0">No attendance recorded yet.</p><?php endif; ?>
+        <?php foreach ($lecClassAttendanceStatus as $r): ?>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['status']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="col-lg-6"><div class="semas-card p-3 h-100"><div class="stat-label">Sessions Run / Last 14 Days</div><div class="stat-value"><?= $lecSessions14d ?></div></div></div>
   </div>
 
 <?php else: /* Student */ ?>
@@ -460,65 +535,6 @@ require __DIR__ . '/partials/layout_top.php';
       </div>
     </div>
   </div>
-<?php endif; ?>
-
-<?php if (in_array($role, ['Principal', 'Dean', 'HOD', 'Lecturer'], true)): ?>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script>
-const ROLE = <?= json_encode($role) ?>;
-const COLORS = { ink: '#1E2A52', gold: '#D4A24C', coral: '#E2554B', success: '#2F9E68', muted: '#6B7280' };
-const charts = {};
-function statusColor(s) { return s === 'Present' || s === 'Active' ? COLORS.success : (s === 'Late' || s === 'Pending' ? COLORS.gold : COLORS.coral); }
-function lineChart(id, labels, datasets) {
-  const el = document.getElementById(id); if (!el) return;
-  if (charts[id]) { charts[id].data.labels = labels; charts[id].data.datasets = datasets; charts[id].update(); return; }
-  charts[id] = new Chart(el, { type: 'line', data: { labels, datasets }, options: { responsive: true, plugins: { legend: { display: datasets.length > 1 } } } });
-}
-function barChart(id, labels, datasets, stacked) {
-  const el = document.getElementById(id); if (!el) return;
-  if (charts[id]) { charts[id].data.labels = labels; charts[id].data.datasets = datasets; charts[id].update(); return; }
-  charts[id] = new Chart(el, { type: 'bar', data: { labels, datasets }, options: { responsive: true, scales: stacked ? { x: { stacked: true }, y: { stacked: true } } : {}, plugins: { legend: { display: datasets.length > 1 } } } });
-}
-function pieChart(id, labels, data, colors) {
-  const el = document.getElementById(id); if (!el) return;
-  if (charts[id]) { charts[id].data.labels = labels; charts[id].data.datasets[0].data = data; charts[id].update(); return; }
-  charts[id] = new Chart(el, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: colors }] }, options: { responsive: true } });
-}
-
-function render(data) {
-  if (ROLE === 'Principal') {
-    const ubr = data.users_by_role || [];
-    pieChart('chartUsersByRole', ubr.map(r => r.role_name), ubr.map(r => r.c), [COLORS.ink, COLORS.gold, COLORS.coral, COLORS.success, COLORS.muted]);
-    const su = data.signups_trend || [];
-    lineChart('chartSignups', su.map(r => r.d), [{ label: 'New accounts', data: su.map(r => r.c), borderColor: COLORS.ink, backgroundColor: COLORS.ink, tension: 0.3 }]);
-  }
-  if (ROLE === 'Dean') {
-    const ss = data.student_status || [];
-    pieChart('chartStudentStatus', ss.map(r => r.status), ss.map(r => r.c), ss.map(r => statusColor(r.status)));
-    const evt = data.event_attendance_trend || [];
-    lineChart('chartEventTrend', evt.map(r => r.d), [{ label: 'Check-ins', data: evt.map(r => r.c), borderColor: COLORS.ink, backgroundColor: COLORS.ink, tension: 0.3 }]);
-  }
-  if (ROLE === 'HOD') {
-    const cs = data.class_attendance_status || [];
-    pieChart('chartClassStatus', cs.map(r => r.status), cs.map(r => r.c), cs.map(r => statusColor(r.status)));
-    const ss = data.student_status || [];
-    pieChart('chartStudentStatus', ss.map(r => r.status), ss.map(r => r.c), ss.map(r => statusColor(r.status)));
-    const mbd = data.modules_by_department || [];
-    barChart('chartModulesByDept', mbd.map(r => r.department_name), [{ label: 'Modules', data: mbd.map(r => r.c), backgroundColor: COLORS.gold }]);
-  }
-  if (ROLE === 'Lecturer') {
-    const cs = data.class_attendance_status || [];
-    pieChart('chartClassStatus', cs.map(r => r.status), cs.map(r => r.c), cs.map(r => statusColor(r.status)));
-    const st = data.sessions_trend || [];
-    lineChart('chartSessionsTrend', st.map(r => r.d), [{ label: 'Sessions', data: st.map(r => r.c), borderColor: COLORS.ink, backgroundColor: COLORS.ink, tension: 0.3 }]);
-  }
-}
-function refresh() {
-  fetch(window.SEMAS_BASE_URL + '/api/analytics-data.php').then(r => r.json()).then(function (data) { if (data.ok) render(data); });
-}
-refresh();
-setInterval(refresh, 15000);
-</script>
 <?php endif; ?>
 
 <?php require __DIR__ . '/partials/layout_bottom.php'; ?>

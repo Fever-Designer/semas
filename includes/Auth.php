@@ -129,4 +129,45 @@ final class Auth
             exit;
         }
     }
+
+    /**
+     * True for actual Lecturers, and for HOD/Coordinator staff who have been
+     * assigned to teach at least one ongoing module. Used to expose the
+     * "My Teaching" pages/nav to staff who teach, and hide it again once
+     * they have no ongoing module assigned to them.
+     */
+    public static function canAccessTeaching(): bool
+    {
+        if (!self::check()) {
+            return false;
+        }
+        $role = self::role();
+        if ($role === 'Lecturer') {
+            return true;
+        }
+        if (!in_array($role, ['HOD', 'Coordinator'], true)) {
+            return false;
+        }
+        $stmt = Database::connection()->prepare(
+            "SELECT 1 FROM lecturers l JOIN modules m ON m.lecturer_id = l.lecturer_id
+             WHERE l.user_id = :uid AND m.status = 'Ongoing' LIMIT 1"
+        );
+        $stmt->execute(['uid' => self::id()]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** Call at the top of "My Teaching" pages instead of requireRole(['Lecturer']). */
+    public static function requireTeachingAccess(): void
+    {
+        self::start();
+        if (!self::check()) {
+            header('Location: ' . APP_URL . '/auth/login.php');
+            exit;
+        }
+        if (!self::canAccessTeaching()) {
+            http_response_code(403);
+            echo '<h1>403 Forbidden</h1><p>Your role does not have access to this page.</p>';
+            exit;
+        }
+    }
 }

@@ -51,7 +51,7 @@ header('Content-Type: text/html; charset=utf-8');
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Attendance Report — <?= e($module['module_title']) ?></title>
+<title>Attendance Report / <?= e($module['module_title']) ?></title>
 <style>
   body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 20px; }
   h2 { font-size: 16px; margin: 0 0 4px; }
@@ -67,11 +67,11 @@ header('Content-Type: text/html; charset=utf-8');
 </style>
 </head>
 <body>
-<h2><?= e($brandName) ?> — Attendance Report</h2>
+<h2><?= e($brandName) ?> / Attendance Report</h2>
 <h3><?= e($module['module_title']) ?> (<?= e($module['department_name'] ?? '') ?>)</h3>
 <p><strong>Lecturer:</strong> <?= e($module['lecturer_name'] ?? '—') ?> &nbsp;|&nbsp;
    <strong>Session:</strong> <?= e($module['session_type'] ?? 'Any') ?> &nbsp;|&nbsp;
-   <strong>Period:</strong> <?= ucfirst($rangeType) ?> — <?= date('d M Y', strtotime($dateFrom)) ?><?= $dateFrom !== $dateTo ? ' to ' . date('d M Y', strtotime($dateTo)) : '' ?></p>
+   <strong>Period:</strong> <?= ucfirst($rangeType) ?> / <?= date('d M Y', strtotime($dateFrom)) ?><?= $dateFrom !== $dateTo ? ' to ' . date('d M Y', strtotime($dateTo)) : '' ?></p>
 
 <table>
   <thead>

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireTeachingAccess();
 Module::autoCompleteExpired();
 
 $pageTitle = 'My Modules';
@@ -29,7 +29,6 @@ $modules = $db->prepare(
 $modules->execute(['lec' => $lecturer['lecturer_id']]);
 $modules = $modules->fetchAll();
 $ongoing   = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Ongoing'; }));
-$completed = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Completed'; }));
 
 $activeWindow = ClassAttendance::currentWindow();
 
@@ -136,24 +135,5 @@ function module_card(array $m, ?array $todaySchedule = null): void {
     <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No modules assigned to you for the current <?= e(ClassAttendance::describeWindow($activeWindow)) ?> session.</div></div>
   <?php endif; ?>
 </div>
-
-<h6 class="display-font mb-2">Completed Modules</h6>
-<?php if (!$completed): ?>
-  <div class="semas-card p-4 text-center text-muted small">No completed modules yet.</div>
-<?php else: ?>
-  <div class="semas-card">
-    <?php foreach ($completed as $i => $m): ?>
-      <div class="d-flex justify-content-between align-items-center p-3 <?= $i < count($completed) - 1 ? 'border-bottom' : '' ?>">
-        <div>
-          <div class="fw-semibold small"><?= e($m['module_title']) ?></div>
-          <div class="text-muted" style="font-size:.75rem"><?= e($m['department_name'] ?? '—') ?> &middot; <?= e($m['session_type'] ?? 'Any') ?> &middot; <?= (int) $m['student_count'] ?> student(s)</div>
-        </div>
-        <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark text-nowrap">
-          <i class="bi bi-clock-history me-1"></i>View Attendance
-        </a>
-      </div>
-    <?php endforeach; ?>
-  </div>
-<?php endif; ?>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

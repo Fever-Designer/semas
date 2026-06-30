@@ -49,7 +49,7 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 
 <div id="previewPanel" class="semas-card p-3 mt-3" style="display:none;">
-  <h6 class="display-font mb-3">Student Profile — Confirm Attendance</h6>
+  <h6 class="display-font mb-3">Student Profile / Confirm Attendance</h6>
   <div class="d-flex gap-3">
     <img id="prevPhoto" src="" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
     <div>

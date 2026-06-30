@@ -1,7 +1,7 @@
     </div>
   </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<style>@keyframes notifSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }</style>
 <script>
 document.getElementById('sidebarToggle')?.addEventListener('click', function () {
   document.getElementById('semasSidebar')?.classList.toggle('open');
@@ -48,6 +48,34 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     });
   }
 
+  let lastSeenId = null;
+  let toastBox = null;
+
+  function ensureToastBox() {
+    if (toastBox) return toastBox;
+    toastBox = document.createElement('div');
+    toastBox.id = 'notifToastBox';
+    toastBox.style.cssText = 'position:fixed;top:70px;right:16px;z-index:2000;max-width:320px;display:flex;flex-direction:column;gap:8px;';
+    document.body.appendChild(toastBox);
+    return toastBox;
+  }
+
+  function popToast(n) {
+    const icon = categoryIcon[n.category] || 'bi-bell-fill';
+    const box = ensureToastBox();
+    const el = document.createElement('div');
+    el.className = 'semas-card p-2 px-3 shadow-sm';
+    el.style.cssText = 'background:#fff;border-left:4px solid var(--semas-gold, #c9a227);animation:notifSlideIn .25s ease-out;';
+    el.innerHTML = '<div class="fw-semibold small"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(n.title) + '</div>' +
+      '<div class="text-muted" style="font-size:0.78rem;">' + escapeHtml(n.body || '') + '</div>';
+    box.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = 'opacity .3s';
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 300);
+    }, 6000);
+  }
+
   function loadNotifications() {
     fetch(APP_URL + '/api/notifications.php?action=list')
       .then(function (r) { return r.json(); })
@@ -55,6 +83,16 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
         if (!data.ok) return;
         renderCount(data.unread_count);
         renderList(data.items);
+
+        if (lastSeenId !== null) {
+          data.items
+            .filter(function (n) { return n.notification_id > lastSeenId; })
+            .reverse()
+            .forEach(popToast);
+        }
+        if (data.items.length) {
+          lastSeenId = Math.max.apply(null, data.items.map(function (n) { return n.notification_id; }));
+        }
       });
   }
 
@@ -91,7 +129,7 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
   });
 
   loadNotifications();
-  setInterval(loadNotifications, 20000);
+  setInterval(loadNotifications, 8000);
 })();
 
 // Navigation progress bar

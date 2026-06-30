@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireTeachingAccess();
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -109,22 +109,22 @@ if ($status === 'Absent' && $student) {
         if ($absences === 2) {
             NotificationCenter::notify(
                 $studentUserId,
-                'Attendance Warning — ' . $module['module_title'],
+                'Attendance Warning / ' . $module['module_title'],
                 'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your HOD if you have a valid reason.',
                 'Attendance'
             );
         } elseif ($absences >= 3) {
             NotificationCenter::notify(
                 $studentUserId,
-                'Attendance Alert — ' . $module['module_title'],
+                'Attendance Alert / ' . $module['module_title'],
                 'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for CAT/Exam. Contact your HOD immediately.',
                 'Attendance'
             );
             if (!empty($student['email'])) {
-                Mailer::send($student['email'], 'Attendance Warning — ' . $module['module_title'], 'announcement_notification', [
+                Mailer::send($student['email'], 'Attendance Warning / ' . $module['module_title'], 'announcement_notification', [
                     'full_name'    => $student['full_name'],
                     'announcement' => [
-                        'title'    => 'Attendance Warning — ' . $module['module_title'],
+                        'title'    => 'Attendance Warning / ' . $module['module_title'],
                         'category' => 'Academic',
                         'message'  => 'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for the CAT/Exam. Please contact your Head of Department immediately.',
                     ],

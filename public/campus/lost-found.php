@@ -224,8 +224,8 @@ CONTACT: <?= e($me['email'] ?? '') ?>
           <div class="mb-2">
             <label class="form-label small">This item is...</label>
             <select name="item_type" class="form-select form-select-sm" required>
-              <option value="Lost">Lost — I lost something</option>
-              <option value="Found">Found — I found something</option>
+              <option value="Lost">Lost / I lost something</option>
+              <option value="Found">Found / I found something</option>
             </select>
           </div>
           <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="e.g. Black backpack"></div>

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer', 'HOD', 'Coordinator']);
+Auth::requireTeachingAccess();
 Module::autoCompleteExpired();
 
 $pageTitle = 'Class Attendance';
@@ -384,7 +384,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($total > 0): ?>
               <i class="bi <?= $eligible ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger' ?>"
                  style="font-size:.65rem;vertical-align:middle;"
-                 title="<?= $eligible ? 'Eligible' : 'Below 75% — not eligible' ?>"></i>
+                 title="<?= $eligible ? 'Eligible' : 'Below 75% / not eligible' ?>"></i>
             <?php endif; ?>
           </td>
         </tr>

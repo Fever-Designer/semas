@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireTeachingAccess();
 
 $pageTitle = 'CAT / Exam Attendance';
 $activeNav = 'cat-exam';
@@ -52,6 +52,26 @@ $histStmt = $db->prepare(
 $histStmt->execute(['lid' => $lecturer['lecturer_id']]);
 $histSchedules = $histStmt->fetchAll();
 
+// ── Group by Module — lecturer picks a module first, then sees all operations
+// (Sign In, Sign Out, Submit) for that module's CAT/Exam sessions in one place.
+$moduleOptions = [];
+foreach (array_merge($activeSchedules, $histSchedules) as $s) {
+    $mid = (int) $s['module_id'];
+    if (!isset($moduleOptions[$mid])) {
+        $moduleOptions[$mid] = ['module_id' => $mid, 'module_title' => $s['module_title'], 'active_count' => 0, 'history_count' => 0];
+    }
+}
+foreach ($activeSchedules as $s) { $moduleOptions[(int) $s['module_id']]['active_count']++; }
+foreach ($histSchedules as $s) { $moduleOptions[(int) $s['module_id']]['history_count']++; }
+$moduleOptions = array_values($moduleOptions);
+usort($moduleOptions, function ($x, $y) { return strcmp($x['module_title'], $y['module_title']); });
+
+$selectedModuleId = (int) ($_GET['module_id'] ?? 0);
+if ($selectedModuleId) {
+    $activeSchedules = array_values(array_filter($activeSchedules, function ($s) use ($selectedModuleId) { return (int) $s['module_id'] === $selectedModuleId; }));
+    $histSchedules   = array_values(array_filter($histSchedules, function ($s) use ($selectedModuleId) { return (int) $s['module_id'] === $selectedModuleId; }));
+}
+
 // Build time labels for all schedules
 $schedMeta = [];
 foreach (array_merge($activeSchedules, $histSchedules) as $s) {
@@ -67,17 +87,50 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Attendance</h4>
 <p class="text-muted small mb-4">
-  Sign students in and out during assessments you are invigilating. Students cannot self-scan during CAT or Exam.
-  Submit the full list to HOD when done.
+  Choose a module to manage its CAT/Exam sign-in, sign-out, and submission in one place.
+  Students cannot self-scan during CAT or Exam.
 </p>
 
-<?php if (!$activeSchedules && !$histSchedules): ?>
+<?php if (!$moduleOptions): ?>
   <div class="semas-card p-4 text-center">
     <i class="bi bi-calendar-x" style="font-size:2rem;color:var(--semas-text-muted);"></i>
     <h6 class="display-font mt-2 mb-1">No Assigned Assessments</h6>
-    <p class="text-muted small mb-0">You have no CAT / Exam sessions assigned to you.</p>
+    <p class="text-muted small mb-0">You have no CAT / Exam sessions assigned to you as invigilator.</p>
   </div>
-<?php endif; ?>
+<?php else: ?>
+
+<!-- Module selector -->
+<div class="semas-card p-3 mb-3">
+  <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
+    <label class="form-label small fw-semibold mb-0 text-nowrap">Select Module:</label>
+    <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:440px;" onchange="this.form.submit()">
+      <option value="">— Choose a module —</option>
+      <?php foreach ($moduleOptions as $mo): ?>
+        <option value="<?= $mo['module_id'] ?>" <?= $mo['module_id'] === $selectedModuleId ? 'selected' : '' ?>>
+          <?= e($mo['module_title']) ?> (<?= $mo['active_count'] ?> active, <?= $mo['history_count'] ?> submitted)
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </form>
+</div>
+
+<?php if (!$selectedModuleId): ?>
+  <div class="row g-3">
+    <?php foreach ($moduleOptions as $mo): ?>
+      <div class="col-md-6 col-lg-4">
+        <div class="semas-card p-3 h-100 d-flex flex-column">
+          <h6 class="fw-semibold mb-2"><?= e($mo['module_title']) ?></h6>
+          <p class="text-muted small mb-3">
+            <?= $mo['active_count'] ?> active session(s) &middot; <?= $mo['history_count'] ?> submitted
+          </p>
+          <a href="?module_id=<?= $mo['module_id'] ?>" class="btn btn-sm btn-semas-gold mt-auto">
+            <i class="bi bi-clipboard2-check me-1"></i> Manage Attendance
+          </a>
+        </div>
+      </div>
+    <?php endforeach; ?>
+  </div>
+<?php else: ?>
 
 <!-- ═══════════════════════════ ACTIVE ═══════════════════════════ -->
 <?php if ($activeSchedules): ?>
@@ -254,6 +307,10 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 <?php endforeach; ?>
 <?php endif; ?>
+
+<?php endif; // !$selectedModuleId ?>
+
+<?php endif; // !$moduleOptions ?>
 
 <!-- ── Preview / Confirm Modal (shared) ──────────────────────────────────── -->
 <div class="modal fade" id="previewModal" tabindex="-1">
@@ -485,7 +542,7 @@ function populatePreview(data, sid, action) {
     document.getElementById('prevDept').textContent    = s.department || '';
     document.getElementById('prevEligBadge').innerHTML = data.eligible
         ? '<span class="badge badge-completed">Eligible</span>'
-        : `<span class="badge badge-cancelled">Not Eligible — ${esc(data.elig_status)}</span>`;
+        : `<span class="badge badge-cancelled">Not Eligible / ${esc(data.elig_status)}</span>`;
 
     let statusHtml = '';
     if (data.signed_in && data.signed_out)
@@ -577,7 +634,7 @@ document.getElementById('confirmActionBtn').addEventListener('click', function()
 // ── Submit ──────────────────────────────────────────────────────────────────
 function openSubmitModal(sid, moduleTitle) {
     activeSubmitSid = sid;
-    document.getElementById('submitModalTitle').textContent = 'Submit Attendance — ' + moduleTitle;
+    document.getElementById('submitModalTitle').textContent = 'Submit Attendance / ' + moduleTitle;
     postApi(sid, 'roster', {}, function(data) {
         if (!data.ok) return;
         const missing = (data.roster || []).filter(r => r.signin_time && !r.signout_time);

@@ -31,10 +31,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $startTime  = trim($_POST['start_time'] ?? '');
         $endTime    = trim($_POST['end_time'] ?? '');
 
+        // Exam cannot be scheduled until CAT has been scheduled for this module.
+        $catScheduledCheck = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = 'CAT'");
+        $catScheduledCheck->execute(['mid' => $moduleId]);
+        $catAlreadyScheduled = (bool) $catScheduledCheck->fetchColumn();
+
         // Validate invigilator is a lecturer
         $invCheck = $db->prepare('SELECT lecturer_id FROM lecturers WHERE lecturer_id = :id');
         $invCheck->execute(['id' => $invigId]);
-        if (!$invCheck->fetch()) {
+        if ($examType === 'Exam' && !$catAlreadyScheduled) {
+            flash('error', 'CAT must be scheduled for this module before the Exam can be scheduled.');
+        } elseif (!$invCheck->fetch()) {
             flash('error', 'Invalid invigilator selected.');
         } elseif (!$room || !$schedDate || !$startTime || !$endTime) {
             flash('error', 'Room, scheduled date, start time and end time are all required.');
@@ -46,8 +53,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $modCheck->execute(['id' => $moduleId]);
             $modRow = $modCheck->fetch();
             $expectedDate = $examType === 'CAT' ? ($modRow['cat_date'] ?? null) : ($modRow['exam_date'] ?? null);
+
+            // A lecturer cannot invigilate two different rooms at the same time — but
+            // invigilating several modules in the same room/time is allowed.
+            $conflictStmt = $db->prepare(
+                "SELECT room FROM cat_exam_schedules
+                 WHERE invigilator_id = :inv AND scheduled_date = :date AND room <> :room
+                   AND NOT (end_time <= :stime OR start_time >= :etime)
+                   AND NOT (module_id = :mid AND exam_type = :type)"
+            );
+            $conflictStmt->execute([
+                'inv' => $invigId, 'date' => $schedDate, 'room' => $room,
+                'stime' => $startTime, 'etime' => $endTime, 'mid' => $moduleId, 'type' => $examType,
+            ]);
+            $conflictRoom = $conflictStmt->fetchColumn();
+
             if ($expectedDate && $schedDate !== $expectedDate) {
                 flash('error', 'The scheduled date (' . $schedDate . ') does not match the module\'s ' . $examType . ' date (' . $expectedDate . '). Update the module first if the date changed.');
+            } elseif ($conflictRoom) {
+                flash('error', "This invigilator is already assigned to Room \"$conflictRoom\" at an overlapping time on $schedDate. A lecturer cannot invigilate two different rooms simultaneously.");
             } else {
                 $db->prepare(
                     "INSERT INTO cat_exam_schedules (module_id, exam_type, scheduled_date, start_time, end_time, room, invigilator_id, created_by)
@@ -81,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'invigilator_name' => $invName,
                 ];
                 $timeLabel = date('h:i A', strtotime($startTime)) . '–' . date('h:i A', strtotime($endTime));
-                $notifTitle = "Your $examType is on $dayOfWeek — $modTitle";
+                $notifTitle = "Your $examType is on $dayOfWeek / $modTitle";
                 $notifBody  = "$examType for $modTitle scheduled on $dayOfWeek, " . date('d M Y', strtotime($schedDate)) . " · Time: $timeLabel · Room: $room · Invigilator: $invName. Be prepared with all required documents.";
 
                 // Notify every enrolled student
@@ -191,6 +215,17 @@ $moduleId  = (int) ($_GET['module_id'] ?? 0);
 $examType  = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
 $viewMode  = ($_GET['view'] ?? 'active') === 'history' ? 'history' : 'active';
 
+// Exam cannot be viewed/scheduled until CAT has been scheduled for the selected module.
+$catScheduledForModule = false;
+if ($moduleId) {
+    $catCheckStmt = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = 'CAT'");
+    $catCheckStmt->execute(['mid' => $moduleId]);
+    $catScheduledForModule = (bool) $catCheckStmt->fetchColumn();
+}
+if ($moduleId && $examType === 'Exam' && !$catScheduledForModule) {
+    $examType = 'CAT';
+}
+
 $ongoingFilter = $isCoordinator ? "AND m.session_type = 'Weekend'" : '';
 $modules = $db->query(
     "SELECT m.*, d.department_name FROM modules m LEFT JOIN departments d ON d.department_id = m.department_id
@@ -258,17 +293,20 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="col-md-4">
       <select name="exam_type" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="CAT" <?= $examType === 'CAT' ? 'selected' : '' ?>>CAT</option>
-        <option value="Exam" <?= $examType === 'Exam' ? 'selected' : '' ?>>Exam</option>
+        <option value="Exam" <?= $examType === 'Exam' ? 'selected' : '' ?> <?= ($moduleId && !$catScheduledForModule) ? 'disabled' : '' ?>>Exam<?= ($moduleId && !$catScheduledForModule) ? ' (schedule CAT first)' : '' ?></option>
       </select>
     </div>
   </form>
+  <?php if ($moduleId && !$catScheduledForModule): ?>
+    <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Exam scheduling is locked until a CAT schedule exists for this module.</p>
+  <?php endif; ?>
 </div>
 
 <?php if ($selectedModule): ?>
   <div class="semas-card p-3 mb-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
       <div>
-        <h6 class="display-font mb-0"><?= e($selectedModule['module_title']) ?> — <?= e($examType) ?> Eligibility</h6>
+        <h6 class="display-font mb-0"><?= e($selectedModule['module_title']) ?> / <?= e($examType) ?> Eligibility</h6>
         <p class="text-muted small mb-0">Date from module: <strong><?= e($examType === 'CAT' ? ($selectedModule['cat_date'] ?? 'Not set') : ($selectedModule['exam_date'] ?? 'Not set')) ?></strong></p>
       </div>
       <div class="d-flex gap-2 flex-wrap">

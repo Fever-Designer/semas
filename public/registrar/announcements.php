@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dn->execute(['id' => $deptId]);
         $deptName    = $dn->fetchColumn() ?: '';
         $audienceKey = 'Specific Department';
-        $scopeLabel  = 'Students — Department of ' . $deptName;
+        $scopeLabel  = 'Students / Department of ' . $deptName;
         $recipients  = AudienceResolver::resolve('Specific Department', $deptId);
     } elseif ($subScope === 'session' && $sessionT) {
         $audienceKey = $sessionT . ' Students';
@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $recipients  = AudienceResolver::resolve($sessionT . ' Students');
     } elseif ($subScope === 'intake' && $intake) {
         $audienceKey = 'All Students';
-        $scopeLabel  = "Students — {$intake} Intake";
+        $scopeLabel  = "Students / {$intake} Intake";
         $stmt = $db->prepare(
             "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
              WHERE r.role_name='Student' AND u.status='Active' AND u.intake=:intake"

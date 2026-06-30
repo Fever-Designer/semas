@@ -112,7 +112,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <p class="small text-muted"><?= e(mb_substr((string) $ev['description'], 0, 140)) ?></p>
 
       <?php if ($ev['capacity'] !== null): ?>
-        <div class="small text-muted mb-2"><?= (int) $ev['registered_count'] ?> / <?= (int) $ev['capacity'] ?> registered<?= $full ? ' — FULL' : '' ?></div>
+        <div class="small text-muted mb-2"><?= (int) $ev['registered_count'] ?> / <?= (int) $ev['capacity'] ?> registered<?= $full ? ' / FULL' : '' ?></div>
       <?php endif; ?>
 
       <?php if ($ev['my_status'] === 'Registered'): ?>

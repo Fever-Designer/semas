@@ -279,7 +279,7 @@ if ($type === 'Sign In' && $status === 'Absent') {
     trigger_absence_warning($db, $me, $module, $session);
 }
 
-$label = $type === 'Sign In' ? "Checked in — marked <strong>$status</strong>." : 'Signed out successfully.';
+$label = $type === 'Sign In' ? "Checked in / marked <strong>$status</strong>." : 'Signed out successfully.';
 echo json_encode(['ok' => true, 'message' => $label, 'type' => $type, 'status' => $status]);
 
 // ── Warning helper ────────────────────────────────────────────────────────
@@ -309,14 +309,14 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
     if ($absences === 2) {
         NotificationCenter::notify(
             $student['user_id'],
-            'Attendance Warning — ' . $module['module_title'],
+            'Attendance Warning / ' . $module['module_title'],
             'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your HOD if you have a valid reason.',
             'Attendance'
         );
     } elseif ($absences >= 3) {
         NotificationCenter::notify(
             $student['user_id'],
-            'Attendance Alert — ' . $module['module_title'],
+            'Attendance Alert / ' . $module['module_title'],
             'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for the CAT/Exam. Contact your HOD immediately.',
             'Attendance'
         );
@@ -325,7 +325,7 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
             Mailer::send(
                 $student['email'],
                 $student['full_name'],
-                'Attendance Warning — ' . $module['module_title'],
+                'Attendance Warning / ' . $module['module_title'],
                 '<p>Dear ' . htmlspecialchars($student['full_name']) . ',</p>' .
                 '<p>You have exceeded the permitted absences for <strong>' . htmlspecialchars($module['module_title']) . '</strong>. ' .
                 'You have missed <strong>' . $absences . ' sessions</strong>.</p>' .

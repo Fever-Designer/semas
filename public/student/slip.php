@@ -29,7 +29,7 @@ if (!$module) {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>CAT/Exam Slip — <?= e($module['module_title']) ?></title>
+<title>CAT/Exam Slip / <?= e($module['module_title']) ?></title>
 <style>
   body { font-family: Georgia, serif; max-width: 640px; margin: 40px auto; color: #1B1F2A; }
   .slip { border: 2px solid #1E2A52; padding: 28px; border-radius: 8px; }

@@ -38,15 +38,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lecStmt->execute($params);
             $recipients     = $lecStmt->fetchAll();
             $targetAudience = 'Department Lecturers';
-            $audienceLabel  = ($deptName ?? 'All departments') . ' — Lecturers';
+            $audienceLabel  = ($deptName ?? 'All departments') . ' / Lecturers';
         } else {
             $scope      = $_POST['scope'] ?? 'all';
             $filters    = $deptId ? ['department_id' => $deptId] : [];
             if ($isCoordinator) {
                 $filters['session_type'] = 'Weekend';
-                $audienceLabel = ($deptName ?? 'All Departments') . ' — Weekend Students';
+                $audienceLabel = ($deptName ?? 'All Departments') . ' / Weekend Students';
             } else {
-                $audienceLabel = ($deptName ?? 'All Departments') . ' — Students';
+                $audienceLabel = ($deptName ?? 'All Departments') . ' / Students';
             }
             if ($scope === 'session' && !empty($_POST['session_type']) && !$isCoordinator) {
                 $filters['session_type'] = $_POST['session_type'];
@@ -107,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
                      WHERE r.role_name = 'Student' AND u.session_type = 'Weekend' AND u.status = 'Active'"
                 )->fetchAll();
-                $annTitle = 'Umuganda Schedule Change — ' . $_POST['holiday_date'];
+                $annTitle = 'Umuganda Schedule Change / ' . $_POST['holiday_date'];
                 $annMsg   = "Umuganda falls on {$_POST['holiday_date']}. Weekend classes are rescheduled: Morning session 13:30–16:30, Afternoon session 17:00–20:30.";
                 Announcement::create([
                     'title'           => $annTitle,
@@ -126,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
                      WHERE r.role_name = 'Student' AND u.status = 'Active' {$studentCondition}"
                 )->fetchAll();
-                $annTitle = 'Public Holiday — ' . trim($_POST['title']) . ' (' . $_POST['holiday_date'] . ')';
+                $annTitle = 'Public Holiday / ' . trim($_POST['title']) . ' (' . $_POST['holiday_date'] . ')';
                 $annMsg   = trim($_POST['title']) . " on {$_POST['holiday_date']} is a Public Holiday. " . ($isCoordinator ? 'Weekend classes are affected and only weekend students are notified.' : 'All classes and attendance scanning are suspended for the day.') . (trim($_POST['notes'] ?? '') ? ' Note: ' . trim($_POST['notes']) : '');
                 Announcement::create([
                     'title'           => $annTitle,
@@ -297,8 +297,8 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="mb-2">
               <label class="form-label small">Type</label>
               <select name="holiday_type" id="holidayType" class="form-select form-select-sm" onchange="toggleUmuganda()">
-                <option value="Public Holiday">Public Holiday — notifies all students</option>
-                <option value="Umuganda">Umuganda — notifies weekend students only</option>
+                <option value="Public Holiday">Public Holiday / notifies all students</option>
+                <option value="Umuganda">Umuganda / notifies weekend students only</option>
               </select>
             </div>
             <div id="umugandaFields" style="display:none;">

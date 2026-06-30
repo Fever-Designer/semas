@@ -29,12 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($who === 'everyone') {
         $audienceKey = 'University Community';
-        $scopeLabel  = 'University-wide — All active users';
+        $scopeLabel  = 'University-wide / All active users';
         $recipients  = AudienceResolver::resolve('University Community');
 
     } elseif ($who === 'staff') {
         $audienceKey = 'All Staff';
-        $scopeLabel  = 'All Staff — Principals, Deans, HODs, Registrars, Coordinators & Lecturers';
+        $scopeLabel  = 'All Staff / Principals, Deans, HODs, Registrars, Coordinators & Lecturers';
         // Include all non-student roles
         $stmt = $db->query(
             "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dn = $db->prepare('SELECT department_name FROM departments WHERE department_id = :id');
             $dn->execute(['id' => $deptId]);
             $deptName   = $dn->fetchColumn() ?: '';
-            $scopeLabel = 'Lecturers — ' . $deptName;
+            $scopeLabel = 'Lecturers / ' . $deptName;
             $audienceKey = 'Department Lecturers';
         } else {
             $scopeLabel = 'All Lecturers';
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dn->execute(['id' => $deptId]);
             $deptName    = $dn->fetchColumn() ?: '';
             $audienceKey = 'Specific Department';
-            $scopeLabel  = 'Students — Department of ' . $deptName;
+            $scopeLabel  = 'Students / Department of ' . $deptName;
             $recipients  = AudienceResolver::resolve('Specific Department', $deptId);
         } elseif ($subScope === 'session' && $sessionT) {
             $audienceKey = $sessionT . ' Students';
@@ -102,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recipients  = AudienceResolver::resolve('Final Year Students');
         } elseif ($subScope === 'year' && $yearVal) {
             $audienceKey = 'All Students';
-            $scopeLabel  = 'Students — Year ' . $yearVal;
+            $scopeLabel  = 'Students / Year ' . $yearVal;
             $stmt = $db->prepare(
                 "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
                  WHERE r.role_name = 'Student' AND u.status = 'Active' AND u.year_of_study = :year"

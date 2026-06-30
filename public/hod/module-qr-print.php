@@ -28,7 +28,7 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Module QR — <?= e($module['module_title']) ?></title>
+<title>Module QR / <?= e($module['module_title']) ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>

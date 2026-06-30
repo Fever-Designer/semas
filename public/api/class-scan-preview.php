@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer']);
+Auth::requireTeachingAccess();
 header('Content-Type: application/json');
 
 $db = Database::connection();
@@ -116,7 +116,7 @@ if ($mode === 'qr') {
     }
     $expectedHmac = hash_hmac('sha256', $iv . $cipher, $secret, true);
     if (!hash_equals($expectedHmac, $hmac)) {
-        echo json_encode(['ok' => false, 'message' => 'QR signature invalid — possible tampering.']);
+        echo json_encode(['ok' => false, 'message' => 'QR signature invalid / possible tampering.']);
         exit;
     }
     $plain = openssl_decrypt($cipher, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);

@@ -56,6 +56,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $roomId    = (int) ($_POST['room_id'] ?? 0) ?: null;
         $modId     = $action === 'update' ? (int) $_POST['module_id'] : 0;
 
+        // Resolve user_id → lecturers.lecturer_id (auto-create row for HOD/Coordinator who can teach)
+        $lecId = 0;
+        if ($lecUserId) {
+            $lrRow = $db->prepare('SELECT lecturer_id FROM lecturers WHERE user_id = :uid');
+            $lrRow->execute(['uid' => $lecUserId]);
+            $lrFetch = $lrRow->fetch();
+            if ($lrFetch) {
+                $lecId = (int) $lrFetch['lecturer_id'];
+            } else {
+                $db->prepare('INSERT INTO lecturers (user_id) VALUES (:uid)')->execute(['uid' => $lecUserId]);
+                $lecId = (int) $db->lastInsertId();
+            }
+        }
+
         // All department IDs come in as dept_ids[] (first = primary)
         $deptIds = array_map('intval', array_filter($_POST['dept_ids'] ?? []));
         $primaryDeptId = $deptIds[0] ?? 0;
@@ -336,7 +350,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="modal-dialog">
             <div class="modal-content">
               <div id="enrollSearch-<?= $mId ?>">
-                <div class="modal-header"><h6 class="modal-title display-font">Enroll Student — <?= e($m['module_title']) ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header"><h6 class="modal-title display-font">Enroll Student / <?= e($m['module_title']) ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                   <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
                   <div class="input-group">
@@ -567,10 +581,10 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
       <!-- Lecturer -->
       <div class="col-md-6">
         <label class="form-label small fw-semibold">Lecturer <span class="text-danger">*</span></label>
-        <select name="lecturer_id" class="form-select form-select-sm" required>
-          <option value="">Select lecturer</option>
+        <select name="lecturer_user_id" class="form-select form-select-sm" required>
+          <option value="">Select lecturer / staff</option>
           <?php foreach ($lecturers as $l): ?>
-            <option value="<?= $l['lecturer_id'] ?>" <?= ($mod['lecturer_id'] ?? 0)==$l['lecturer_id']?'selected':'' ?>><?= e($l['full_name']) ?></option>
+            <option value="<?= $l['user_id'] ?>" <?= ($mod['lecturer_user_id'] ?? 0)==$l['user_id']?'selected':'' ?>><?= e($l['full_name']) ?><?= $l['role_name'] !== 'Lecturer' ? ' (' . e($l['role_name']) . ')' : '' ?></option>
           <?php endforeach; ?>
         </select>
       </div>
@@ -748,7 +762,7 @@ function showDeptSuggestions(input) {
     dd.innerHTML = matches.map(function(d) {
         return '<div class="dept-option px-3 py-2 small" style="cursor:pointer;" '
             + 'onmousedown="addDeptById(' + d.id + ',\'' + escHtml(d.name) + '\',\'' + uid + '\')">'
-            + '<strong>' + escHtml(d.name) + '</strong> <span class="text-muted">(' + escHtml(d.code) + ') — ' + escHtml(d.faculty) + '</span></div>';
+            + '<strong>' + escHtml(d.name) + '</strong> <span class="text-muted">(' + escHtml(d.code) + ') / ' + escHtml(d.faculty) + '</span></div>';
     }).join('');
     dd.style.display = '';
 }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Lecturer', 'HOD', 'Coordinator']);
+Auth::requireTeachingAccess();
 
 $pageTitle = 'Live Session';
 $activeNav = 'live-session';
@@ -52,7 +52,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <option value="<?= (int) $m['module_id'] ?>"
                 <?= (int) $m['module_id'] === $moduleId ? 'selected' : '' ?>>
           <?= e($m['module_title']) ?> (<?= e($m['session_type']) ?>)
-          <?php if ($m['room_name']): ?> — <?= e($m['room_name']) ?><?php endif; ?>
+          <?php if ($m['room_name']): ?> / <?= e($m['room_name']) ?><?php endif; ?>
         </option>
       <?php endforeach; ?>
     </select>

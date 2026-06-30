@@ -46,6 +46,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
 </style>
 <script src="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.min.js"></script>
 <script>NProgress.configure({ showSpinner: false, trickleSpeed: 60 }); NProgress.start();</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
 <script>window.SEMAS_BASE_URL = "<?= APP_URL ?>";</script>
@@ -58,6 +59,13 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <a class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>" href="<?= APP_URL ?>/dashboard.php">
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
       </a>
+
+      <?php if (Auth::canAccessTeaching()): ?>
+        <div class="nav-section-label">My Teaching</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/modules.php"><i class="bi bi-journal-bookmark-fill"></i> My Modules</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/cat-exam-attendance.php"><i class="bi bi-pencil-square"></i> CAT / Exam Attendance</a>
+        <a class="nav-link" href="<?= APP_URL ?>/lecturer/announcements.php"><i class="bi bi-megaphone-fill"></i> Module Announcements</a>
+      <?php endif; ?>
 
       <?php if ($roleLabel === 'Principal'): ?>
         <div class="nav-section-label">User Management</div>
@@ -101,10 +109,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Lecturer'): ?>
-        <div class="nav-section-label">My Teaching</div>
-        <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/modules.php"><i class="bi bi-journal-bookmark-fill"></i> My Modules</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/cat-exam-attendance.php"><i class="bi bi-pencil-square"></i> CAT / Exam Attendance</a>
-        <a class="nav-link" href="<?= APP_URL ?>/lecturer/announcements.php"><i class="bi bi-megaphone-fill"></i> Module Announcements</a>
         <div class="nav-section-label">Lost &amp; Found</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Report / Claim Items</a>
       <?php endif; ?>
