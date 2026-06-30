@@ -125,7 +125,13 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     if (e.target.closest('.notif-del-btn')) {
       e.preventDefault();
       postAction('delete', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); });
+      return;
     }
+    // Clicking any notification marks all as read and clears the list.
+    postAction('clear_all').then(function (d) {
+      renderCount(d.unread_count);
+      renderList([]);
+    });
   });
 
   loadNotifications();

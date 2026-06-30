@@ -74,24 +74,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $modRow = $modCheck->fetch();
             $expectedDate = $examType === 'CAT' ? ($modRow['cat_date'] ?? null) : ($modRow['exam_date'] ?? null);
 
-            // A lecturer cannot invigilate two different rooms at the same time — but
-            // invigilating several modules in the same room/time is allowed.
+            // A lecturer can only invigilate ONE room per day, regardless of
+            // time overlap — but several modules sharing that same
+            // invigilator + day + room is fine (no conflict). Only check
+            // against Ongoing modules; Completed modules' schedules are
+            // historical and must not block new scheduling.
             $conflictStmt = $db->prepare(
-                "SELECT room FROM cat_exam_schedules
-                 WHERE invigilator_id = :inv AND scheduled_date = :date AND room <> :room
-                   AND NOT (end_time <= :stime OR start_time >= :etime)
-                   AND NOT (module_id = :mid AND exam_type = :type)"
+                "SELECT cs.room FROM cat_exam_schedules cs
+                 JOIN modules m ON m.module_id = cs.module_id
+                 WHERE cs.invigilator_id = :inv AND cs.scheduled_date = :date AND cs.room <> :room
+                   AND m.status = 'Ongoing'
+                   AND NOT (cs.module_id = :mid AND cs.exam_type = :type)"
             );
             $conflictStmt->execute([
                 'inv' => $invigId, 'date' => $schedDate, 'room' => $room,
-                'stime' => $startTime, 'etime' => $endTime, 'mid' => $moduleId, 'type' => $examType,
+                'mid' => $moduleId, 'type' => $examType,
             ]);
             $conflictRoom = $conflictStmt->fetchColumn();
 
             if ($expectedDate && $schedDate !== $expectedDate) {
                 flash('error', 'The scheduled date (' . $schedDate . ') does not match the module\'s ' . $examType . ' date (' . $expectedDate . '). Update the module first if the date changed.');
             } elseif ($conflictRoom) {
-                flash('error', "This invigilator is already assigned to Room \"$conflictRoom\" at an overlapping time on $schedDate. A lecturer cannot invigilate two different rooms simultaneously.");
+                flash('error', "This invigilator is already assigned to Room \"$conflictRoom\" on $schedDate. A lecturer can only invigilate one room per day.");
             } else {
                 $db->prepare(
                     "INSERT INTO cat_exam_schedules (module_id, exam_type, scheduled_date, start_time, end_time, room, invigilator_id, created_by)

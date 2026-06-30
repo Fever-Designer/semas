@@ -78,4 +78,10 @@ final class NotificationCenter
         );
         return $stmt->execute(['id' => $notificationId, 'uid' => $userId]);
     }
+
+    public static function deleteAll(int $userId): void
+    {
+        Database::connection()->prepare('DELETE FROM notifications WHERE user_id = :uid')
+            ->execute(['uid' => $userId]);
+    }
 }

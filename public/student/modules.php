@@ -202,7 +202,7 @@ require __DIR__ . '/../partials/layout_top.php';
               <span class="badge badge-completed">Registered</span>
             <?php else: ?>
               <button class="btn btn-sm btn-semas-gold"
-                onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= json_encode($m['module_title']) ?>, <?= json_encode($m['lecturer_name'] ?? 'TBA') ?>, <?= json_encode($m['session_type'] ?? '') ?>)">
+                onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= e(json_encode($m['module_title'])) ?>, <?= e(json_encode($m['lecturer_name'] ?? 'TBA')) ?>, <?= e(json_encode($m['session_type'] ?? '')) ?>)">
                 Register
               </button>
             <?php endif; ?>

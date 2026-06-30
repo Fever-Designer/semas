@@ -46,6 +46,13 @@ switch ($action) {
         echo json_encode(['ok' => true, 'unread_count' => NotificationCenter::unreadCount($userId)]);
         break;
 
+    case 'clear_all':
+        csrf_verify();
+        NotificationCenter::markAllRead($userId);
+        NotificationCenter::deleteAll($userId);
+        echo json_encode(['ok' => true, 'unread_count' => 0]);
+        break;
+
     default:
         http_response_code(400);
         echo json_encode(['ok' => false, 'message' => 'Unknown action.']);
