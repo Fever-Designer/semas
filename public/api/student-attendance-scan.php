@@ -18,6 +18,25 @@ csrf_verify();
 $db       = Database::connection();
 $me       = Auth::user();
 $ip       = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$lat      = isset($_POST['latitude'])  && $_POST['latitude']  !== '' ? (float) $_POST['latitude']  : null;
+$lng      = isset($_POST['longitude']) && $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null;
+$deviceId = trim($_POST['device_id'] ?? '') ?: null;
+
+if ($lat === null || $lng === null) {
+    echo json_encode(['ok' => false, 'message' => 'Location is required to record attendance. Please allow location access and try again.']);
+    exit;
+}
+
+$gps = GpsService::withinCampus($lat, $lng);
+if (!$gps['passed']) {
+    AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_DENIED_GPS', 'class_sessions', null,
+        "distance={$gps['distance_meters']}m radius={$gps['radius_meters']}m");
+    echo json_encode([
+        'ok' => false,
+        'message' => "You appear to be {$gps['distance_meters']}m from campus (allowed radius: {$gps['radius_meters']}m). Move closer and try again.",
+    ]);
+    exit;
+}
 
 // ── Detect QR format: dynamic "SEMAS:{module_id}:{session_id}:{token}" ────
 $qrData       = trim($_POST['qr_data'] ?? '');
@@ -241,26 +260,47 @@ if ($ipAlready->fetch()) {
     exit;
 }
 
+// ── Device deduplication — a persisted client-side token, stronger than
+//    shared-WiFi IP alone (catches "friend scans for me" from a different
+//    network) ────────────────────────────────────────────────────────────
+if ($deviceId !== null) {
+    $devAlready = $db->prepare('SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND device_id = :d AND attendance_type = :type');
+    $devAlready->execute(['s' => $session['session_id'], 'd' => $deviceId, 'type' => $type]);
+    if ($devAlready->fetch()) {
+        echo json_encode(['ok' => false, 'message' => 'A ' . $type . ' has already been recorded from this device for this session. If this is a shared device, ask your lecturer to mark you manually.']);
+        exit;
+    }
+}
+
+$gpsParams = [
+    'lat'  => $lat,
+    'lng'  => $lng,
+    'dist' => $gps['distance_meters'],
+    'pass' => $gps['passed'] ? 1 : 0,
+    'dev'  => $deviceId,
+];
+
 // ── Record ───────────────────────────────────────────────────────────────
 try {
     if ($type === 'Sign In') {
         $upd = $db->prepare(
             "UPDATE class_attendance_logs
-             SET status=:status, verification_method='QR', ip_address=:ip, checkin_time=NOW()
+             SET status=:status, verification_method='QR', ip_address=:ip, checkin_time=NOW(),
+                 latitude=:lat, longitude=:lng, distance_meters=:dist, gps_passed=:pass, device_id=:dev
              WHERE session_id=:s AND user_id=:u AND attendance_type='Sign In' AND verification_method='Auto'"
         );
-        $upd->execute(['status' => $status, 'ip' => $ip, 's' => $session['session_id'], 'u' => $me['user_id']]);
+        $upd->execute($gpsParams + ['status' => $status, 'ip' => $ip, 's' => $session['session_id'], 'u' => $me['user_id']]);
         if ($upd->rowCount() === 0) {
             $db->prepare(
-                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address)
-                 VALUES (:s, :u, 'Sign In', :status, 'QR', :ip)"
-            )->execute(['s' => $session['session_id'], 'u' => $me['user_id'], 'status' => $status, 'ip' => $ip]);
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, latitude, longitude, distance_meters, gps_passed, device_id)
+                 VALUES (:s, :u, 'Sign In', :status, 'QR', :ip, :lat, :lng, :dist, :pass, :dev)"
+            )->execute($gpsParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'status' => $status, 'ip' => $ip]);
         }
     } else {
         $db->prepare(
-            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, checkin_time)
-             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip, NOW())"
-        )->execute(['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip]);
+            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, checkin_time, latitude, longitude, distance_meters, gps_passed, device_id)
+             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip, NOW(), :lat, :lng, :dist, :pass, :dev)"
+        )->execute($gpsParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip]);
     }
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {

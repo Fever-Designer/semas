@@ -53,11 +53,20 @@ final class Auth
         AuditLog::record((int) $user['user_id'], 'LOGIN');
     }
 
-    /** Returns true if the logged-in user must change their password before accessing anything. */
+    /** Returns true if the logged-in user must change their password before accessing anything.
+     *  Reads the DB fresh rather than the session-cached flag set at login — the session value
+     *  can go stale (e.g. a request that updates the DB but doesn't finish syncing the session),
+     *  and a stale "true" here against an up-to-date "false" in change-password.php's own DB
+     *  check produces an infinite redirect loop between this page and /dashboard.php. */
     public static function mustChangePassword(): bool
     {
         self::start();
-        return !empty($_SESSION['must_change_password']);
+        if (!self::check()) {
+            return false;
+        }
+        $stmt = Database::connection()->prepare('SELECT must_change_password FROM users WHERE user_id = :id');
+        $stmt->execute(['id' => self::id()]);
+        return (bool) $stmt->fetchColumn();
     }
 
     /** Call at the top of any protected page to enforce the first-login password change. */

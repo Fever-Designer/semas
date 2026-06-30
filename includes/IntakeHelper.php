@@ -25,14 +25,36 @@ function availableIntakes(int $startYear = 2024): array
             $intakes[] = 'SEPT' . $yy;
         }
     }
+
+    // Also include any intake codes already in use by real student records —
+    // covers a cohort registered ahead of its calendar date (e.g. a SEPT
+    // intake added in June) so it shows up immediately everywhere intakes are
+    // selected/filtered (module creation, semester calendar, student filters),
+    // not just once the date naturally catches up to it.
+    try {
+        $used = Database::connection()
+            ->query("SELECT DISTINCT intake FROM users WHERE intake IS NOT NULL AND intake != ''")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($used as $code) {
+            if (isValidIntakeCode((string) $code) && !in_array($code, $intakes, true)) {
+                $intakes[] = $code;
+            }
+        }
+    } catch (Throwable $e) {
+        // DB not ready yet — fall back to the date-computed list only.
+    }
+
     return $intakes;
 }
 
 /**
  * Detect intake code (e.g. 'MAY26') from a UoK registration number.
  *
- * Format: [YYY][NNN]...
- *   YYY = year prefix: 230→23, 240→24, 250→25, 260→26
+ * Format: [YY][0][NNN]...
+ *   YY  = 2-digit year (any year — not a fixed lookup table, so a new
+ *         year prefix is recognised automatically the moment it appears
+ *         in a reg number, with no code change needed)
+ *   0   = literal separator digit (3rd character)
  *   NNN = digits 4–6 (sequence range):
  *         100–499 → JAN
  *         500–899 → MAY
@@ -41,10 +63,10 @@ function availableIntakes(int $startYear = 2024): array
 function detectIntakeCode(string $regNumber): ?string
 {
     if (strlen($regNumber) < 6) return null;
+    if (substr($regNumber, 2, 1) !== '0') return null;
 
-    $yearMap = ['260' => '26', '250' => '25', '240' => '24', '230' => '23'];
-    $yy = $yearMap[substr($regNumber, 0, 3)] ?? null;
-    if (!$yy) return null;
+    $yy = substr($regNumber, 0, 2);
+    if (!ctype_digit($yy)) return null;
 
     $seq = (int) substr($regNumber, 3, 3); // digits 4–6 as integer
     if ($seq >= 100 && $seq <= 499) return 'JAN'  . $yy;

@@ -63,6 +63,9 @@ foreach (array_merge($activeSchedules, $histSchedules) as $s) {
 }
 foreach ($activeSchedules as $s) { $moduleOptions[(int) $s['module_id']]['active_count']++; }
 foreach ($histSchedules as $s) { $moduleOptions[(int) $s['module_id']]['history_count']++; }
+// Only list modules that still have a scheduled (not-yet-submitted) CAT/Exam session —
+// modules whose invigilation is fully completed/submitted drop off the picker.
+$moduleOptions = array_filter($moduleOptions, function ($mo) { return $mo['active_count'] > 0; });
 $moduleOptions = array_values($moduleOptions);
 usort($moduleOptions, function ($x, $y) { return strcmp($x['module_title'], $y['module_title']); });
 
@@ -328,6 +331,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div id="previewContent" style="display:none;">
           <div class="d-flex gap-3 align-items-start mb-3">
             <img id="prevPhoto" src="" alt=""
+                 onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=Student&background=1E2A52&color=fff';"
                  style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);flex-shrink:0;">
             <div>
               <div class="fw-semibold fs-6 mb-0" id="prevName"></div>
@@ -535,54 +539,61 @@ function loadPreviewModal(sid, userId, action) {
 }
 
 function populatePreview(data, sid, action) {
-    const s = data.student;
-    document.getElementById('prevPhoto').src           = s.photo_url;
-    document.getElementById('prevName').textContent    = s.full_name;
-    document.getElementById('prevReg').textContent     = 'Reg. No: ' + (s.reg_number || '—');
-    document.getElementById('prevDept').textContent    = s.department || '';
-    document.getElementById('prevEligBadge').innerHTML = data.eligible
-        ? '<span class="badge badge-completed">Eligible</span>'
-        : `<span class="badge badge-cancelled">Not Eligible / ${esc(data.elig_status)}</span>`;
+    try {
+        const s = data.student;
+        if (!s) throw new Error('No student data in response.');
 
-    let statusHtml = '';
-    if (data.signed_in && data.signed_out)
-        statusHtml = `<span class="badge bg-success">In: ${data.signin_time} &middot; Out: ${data.signout_time}</span>`;
-    else if (data.signed_in)
-        statusHtml = `<span class="badge badge-completed">Signed in at ${data.signin_time}</span> <span class="badge bg-secondary">Not yet out</span>`;
-    else
-        statusHtml = `<span class="badge bg-secondary">Not yet signed in</span>`;
-    document.getElementById('prevSignStatus').innerHTML = statusHtml;
+        document.getElementById('prevPhoto').src           = s.photo_url || '';
+        document.getElementById('prevName').textContent    = s.full_name || '—';
+        document.getElementById('prevReg').textContent     = 'Reg. No: ' + (s.reg_number || '—');
+        document.getElementById('prevDept').textContent    = s.department || '';
+        document.getElementById('prevEligBadge').innerHTML = data.eligible
+            ? '<span class="badge badge-completed">Eligible</span>'
+            : `<span class="badge badge-cancelled">Not Eligible / ${esc(data.elig_status)}</span>`;
 
-    const warn    = document.getElementById('prevWarning');
-    const blocked = document.getElementById('prevBlocked');
-    warn.style.display = blocked.style.display = 'none';
+        let statusHtml = '';
+        if (data.signed_in && data.signed_out)
+            statusHtml = `<span class="badge bg-success">In: ${data.signin_time} &middot; Out: ${data.signout_time}</span>`;
+        else if (data.signed_in)
+            statusHtml = `<span class="badge badge-completed">Signed in at ${data.signin_time}</span> <span class="badge bg-secondary">Not yet out</span>`;
+        else
+            statusHtml = `<span class="badge bg-secondary">Not yet signed in</span>`;
+        document.getElementById('prevSignStatus').innerHTML = statusHtml;
 
-    let canConfirm = true;
-    if (action === 'sign_in') {
-        if (data.signed_in) {
-            blocked.textContent = s.full_name + ' is already signed in.';
-            blocked.style.display = ''; canConfirm = false;
-        } else if (!data.eligible) {
-            warn.textContent = 'This student is NOT eligible. You can still sign them in — the HOD will be notified.';
-            warn.style.display = '';
+        const warn    = document.getElementById('prevWarning');
+        const blocked = document.getElementById('prevBlocked');
+        warn.style.display = blocked.style.display = 'none';
+
+        let canConfirm = true;
+        if (action === 'sign_in') {
+            if (data.signed_in) {
+                blocked.textContent = s.full_name + ' is already signed in.';
+                blocked.style.display = ''; canConfirm = false;
+            } else if (!data.eligible) {
+                warn.textContent = 'This student is NOT eligible. You can still sign them in — the HOD will be notified.';
+                warn.style.display = '';
+            }
+        } else {
+            if (!data.signed_in) {
+                blocked.textContent = s.full_name + ' has not signed in yet.';
+                blocked.style.display = ''; canConfirm = false;
+            } else if (data.signed_out) {
+                blocked.textContent = s.full_name + ' has already signed out.';
+                blocked.style.display = ''; canConfirm = false;
+            }
         }
-    } else {
-        if (!data.signed_in) {
-            blocked.textContent = s.full_name + ' has not signed in yet.';
-            blocked.style.display = ''; canConfirm = false;
-        } else if (data.signed_out) {
-            blocked.textContent = s.full_name + ' has already signed out.';
-            blocked.style.display = ''; canConfirm = false;
-        }
+
+        document.getElementById('previewLoading').style.display    = 'none';
+        document.getElementById('previewContent').style.display    = '';
+        document.getElementById('searchResultsList').style.display = 'none';
+        const confirmBtn = document.getElementById('confirmActionBtn');
+        confirmBtn.style.display = canConfirm ? '' : 'none';
+        document.getElementById('confirmBtnText').textContent =
+            action === 'sign_in' ? 'Confirm Sign In' : 'Confirm Sign Out';
+    } catch (err) {
+        console.error('populatePreview failed:', err);
+        showPreviewError('Could not display this student\'s profile. Please close this dialog and try again.');
     }
-
-    document.getElementById('previewLoading').style.display    = 'none';
-    document.getElementById('previewContent').style.display    = '';
-    document.getElementById('searchResultsList').style.display = 'none';
-    const confirmBtn = document.getElementById('confirmActionBtn');
-    confirmBtn.style.display = canConfirm ? '' : 'none';
-    document.getElementById('confirmBtnText').textContent =
-        action === 'sign_in' ? 'Confirm Sign In' : 'Confirm Sign Out';
 }
 
 function showPreviewError(msg) {
@@ -698,7 +709,12 @@ document.getElementById('confirmSubmitBtn').addEventListener('click', function()
 function postApi(sid, action, extra, cb) {
     const params = new URLSearchParams({ action, schedule_id: sid, csrf_token: CSRF, ...extra });
     fetch(APP_URL + '/api/cat-exam-attendance-confirm.php', { method: 'POST', body: params })
-        .then(r => r.json()).then(cb).catch(err => console.error(err));
+        .then(r => r.json())
+        .then(cb)
+        .catch(err => {
+            console.error(err);
+            cb({ ok: false, message: 'Network or session error. Please refresh the page and try again.' });
+        });
 }
 
 function fmtTime(dt) {

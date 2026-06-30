@@ -31,17 +31,7 @@ $modStmt = $db->prepare(
 $modStmt->execute(['uid' => $me['user_id']]);
 $allModules = $modStmt->fetchAll();
 
-$weekendStudent = (($me['session_type'] ?? '') === 'Weekend');
-if (!$weekendStudent) {
-    foreach ($allModules as $am) {
-        if (($am['session_type'] ?? '') === 'Weekend') {
-            $weekendStudent = true;
-            break;
-        }
-    }
-}
 $showPublicHolidayNotice = $holiday && $holiday['holiday_type'] === 'Public Holiday';
-$showUmugandaNotice = $holiday && $holiday['holiday_type'] === 'Umuganda' && $weekendStudent;
 
 // Holidays
 $holidayMap = [];
@@ -79,39 +69,78 @@ function stu_att_status(?array $e, string $date, string $today): string
     return 'A';
 }
 
+// Only show modules whose session is in its live window right now — even a
+// registered Ongoing module stays hidden outside its actual class time.
+$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today) {
+    return stu_window_matches($am, $window) && stu_within_dates($am, $today) && $am['status'] === 'Ongoing';
+}));
+
 // Selected module tab
-$selectedId = (int) ($_GET['module_id'] ?? ($allModules[0]['module_id'] ?? 0));
+$selectedId = (int) ($_GET['module_id'] ?? ($visibleModules[0]['module_id'] ?? 0));
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
   <h4 class="display-font mb-0">My Attendance</h4>
+  <a href="<?= APP_URL ?>/student/scan.php" class="btn btn-semas-gold btn-sm">
+    <i class="bi bi-qr-code-scan me-1"></i> Scan QR Code
+  </a>
 </div>
 
-<?php if ($showPublicHolidayNotice || $showUmugandaNotice): ?>
-  <div class="alert alert-info small mb-3">
-    <i class="bi bi-info-circle me-1"></i>
-    Today is a <strong><?= e($holiday['holiday_type']) ?></strong>: <?= e($holiday['title']) ?>.
-    <?= $showPublicHolidayNotice ? 'No attendance scanning today.' : 'Umuganda adjusted schedule applies.' ?>
+<div class="alert <?= $window ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <?php if ($showPublicHolidayNotice): ?>
+      <i class="bi bi-info-circle me-1"></i>
+      Today is a <strong><?= e($holiday['holiday_type']) ?></strong>: <?= e($holiday['title']) ?>. No attendance scanning today.
+    <?php elseif ($window): ?>
+      <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
+    <?php else: ?>
+      <i class="bi bi-clock-history me-1"></i> No active class session window right now.
+    <?php endif; ?>
   </div>
-<?php elseif ($window): ?>
-  <div class="alert alert-success small mb-3">
-    <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
+  <div class="text-end">
+    <div class="text-muted small"><i class="bi bi-calendar-event me-1"></i><?= e(ClassAttendance::now()->format('l, d F Y')) ?></div>
+    <div id="liveClock" class="display-font fw-bold" style="font-size:1.9rem;line-height:1.1;letter-spacing:.03em;"
+         data-h="<?= (int) ClassAttendance::now()->format('H') ?>"
+         data-m="<?= (int) ClassAttendance::now()->format('i') ?>"
+         data-s="<?= (int) ClassAttendance::now()->format('s') ?>">
+      <?= e(ClassAttendance::now()->format('H:i:s')) ?>
+    </div>
   </div>
-<?php endif; ?>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('liveClock');
+  if (!el) return;
+  var h = parseInt(el.dataset.h, 10), m = parseInt(el.dataset.m, 10), s = parseInt(el.dataset.s, 10);
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  setInterval(function () {
+    s++;
+    if (s >= 60) { s = 0; m++; }
+    if (m >= 60) { m = 0; h++; }
+    if (h >= 24) { h = 0; }
+    el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+  }, 1000);
+})();
+</script>
 
 <?php if (!$allModules): ?>
   <div class="semas-card p-5 text-center text-muted">
     <i class="bi bi-journal-x" style="font-size:2.5rem;opacity:.3;"></i>
     <p class="mt-3 mb-0">You are not enrolled in any modules yet.</p>
   </div>
+<?php elseif (!$visibleModules): ?>
+  <div class="semas-card p-5 text-center text-muted">
+    <i class="bi bi-clock-history" style="font-size:2.5rem;opacity:.3;"></i>
+    <p class="mt-3 mb-0">None of your modules are in session right now. Modules only appear here during their actual class time.</p>
+  </div>
 <?php else: ?>
 
 <!-- Module tabs -->
 <div class="mb-3" style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;">
   <div class="d-flex gap-2 flex-nowrap" style="min-width:max-content;">
-    <?php foreach ($allModules as $am): ?>
+    <?php foreach ($visibleModules as $am): ?>
       <?php
         $amId = (int) $am['module_id'];
         $isActive = $amId === $selectedId;
@@ -134,10 +163,10 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php
 // Find selected module
 $module = null;
-foreach ($allModules as $am) {
+foreach ($visibleModules as $am) {
     if ((int) $am['module_id'] === $selectedId) { $module = $am; break; }
 }
-if (!$module) { $module = $allModules[0]; $selectedId = (int) $module['module_id']; }
+if (!$module) { $module = $visibleModules[0]; $selectedId = (int) $module['module_id']; }
 
 $moduleId = $selectedId;
 
@@ -416,12 +445,43 @@ document.getElementById('manualCheckinBtn').addEventListener('click', function (
   submitAttendance(activeModuleId, null);
 });
 
+function getDeviceId() {
+  let id = localStorage.getItem('semas_device_id');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+       : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    localStorage.setItem('semas_device_id', id);
+  }
+  return id;
+}
+
 function submitAttendance(moduleId, qrToken) {
-  const body = 'module_id=' + moduleId + '&csrf_token=' + encodeURIComponent(CSRF) + (qrToken ? '&qr_token=' + encodeURIComponent(qrToken) : '');
+  const msgEl = document.getElementById('scanMsg');
+  if (!navigator.geolocation) {
+    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Your browser does not support location, which is required to record attendance.</div>';
+    return;
+  }
+  msgEl.innerHTML = '<div class="text-muted small mt-2">Getting your location…</div>';
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    doSubmitAttendance(moduleId, qrToken, pos.coords.latitude, pos.coords.longitude);
+  }, function () {
+    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Location access is required to record attendance. Please allow location access and try again.</div>';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function doSubmitAttendance(moduleId, qrToken, lat, lng) {
+  const params = new URLSearchParams({
+    module_id: moduleId,
+    csrf_token: CSRF,
+    latitude: lat,
+    longitude: lng,
+    device_id: getDeviceId(),
+  });
+  if (qrToken) params.set('qr_token', qrToken);
   fetch(window.SEMAS_BASE_URL + '/api/student-attendance-scan.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body,
+    body: params.toString(),
   })
   .then(function (r) { return r.json(); })
   .then(function (data) {

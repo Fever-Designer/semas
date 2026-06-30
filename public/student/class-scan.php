@@ -20,16 +20,42 @@ $tokenParam    = $_GET['t'] ?? '';
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Class Attendance</h4>
-<p class="text-muted small mb-3">
-  <?php if ($holidayInfo && $holidayInfo['holiday_type'] === 'Public Holiday'): ?>
-    <span class="badge bg-danger">Public Holiday</span> Today is a public holiday — no attendance required.
-  <?php elseif (!$window): ?>
-    <span class="badge bg-secondary">No Active Session</span> No session window is active right now.
-    (Day: 08:00–11:30 &nbsp;|&nbsp; Evening: 18:00–20:00 &nbsp;|&nbsp; Weekend Morning: 08:30–14:00 &nbsp;|&nbsp; Weekend Afternoon: 14:30–20:30)
-  <?php else: ?>
-    <span class="badge badge-completed">Active</span> <?= e(ClassAttendance::describeWindow($window)) ?> — Sign in within the first <strong>10 min</strong> to be marked Present, within <strong>20 min</strong> for Late. After 20 minutes you will be marked Absent automatically.
-  <?php endif; ?>
-</p>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <p class="text-muted small mb-0">
+    <?php if ($holidayInfo && $holidayInfo['holiday_type'] === 'Public Holiday'): ?>
+      <span class="badge bg-danger">Public Holiday</span> Today is a public holiday — no attendance required.
+    <?php elseif (!$window): ?>
+      <span class="badge bg-secondary">No Active Session</span> No session window is active right now.
+      (Day: 08:00–11:30 &nbsp;|&nbsp; Evening: 18:00–20:00 &nbsp;|&nbsp; Weekend Morning: 08:30–14:00 &nbsp;|&nbsp; Weekend Afternoon: 14:30–20:30)
+    <?php else: ?>
+      <span class="badge badge-completed">Active</span> <?= e(ClassAttendance::describeWindow($window)) ?> — Sign in within the first <strong>10 min</strong> to be marked Present, within <strong>20 min</strong> for Late. After 20 minutes you will be marked Absent automatically.
+    <?php endif; ?>
+  </p>
+  <div class="text-end">
+    <div class="text-muted small"><i class="bi bi-calendar-event me-1"></i><?= e(ClassAttendance::now()->format('l, d F Y')) ?></div>
+    <div id="liveClock" class="display-font fw-bold" style="font-size:1.9rem;line-height:1.1;letter-spacing:.03em;"
+         data-h="<?= (int) ClassAttendance::now()->format('H') ?>"
+         data-m="<?= (int) ClassAttendance::now()->format('i') ?>"
+         data-s="<?= (int) ClassAttendance::now()->format('s') ?>">
+      <?= e(ClassAttendance::now()->format('H:i:s')) ?>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('liveClock');
+  if (!el) return;
+  var h = parseInt(el.dataset.h, 10), m = parseInt(el.dataset.m, 10), s = parseInt(el.dataset.s, 10);
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  setInterval(function () {
+    s++;
+    if (s >= 60) { s = 0; m++; }
+    if (m >= 60) { m = 0; h++; }
+    if (h >= 24) { h = 0; }
+    el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+  }, 1000);
+})();
+</script>
 
 <?php
 // Load student's enrolled ongoing modules
@@ -161,12 +187,45 @@ document.getElementById('manualCheckinBtn').addEventListener('click', function (
   submitAttendance(activeModuleId, null);
 });
 
+// Persisted per-browser device token — stronger than IP alone for catching
+// "a friend scans for me" since it survives across networks.
+function getDeviceId() {
+  let id = localStorage.getItem('semas_device_id');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+       : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    localStorage.setItem('semas_device_id', id);
+  }
+  return id;
+}
+
 function submitAttendance(moduleId, qrToken) {
-  const body = 'module_id=' + moduleId + '&csrf_token=' + encodeURIComponent(CSRF) + (qrToken ? '&qr_token=' + encodeURIComponent(qrToken) : '');
+  const msgEl = document.getElementById('scanMsg');
+  if (!navigator.geolocation) {
+    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Your browser does not support location, which is required to record attendance.</div>';
+    return;
+  }
+  msgEl.innerHTML = '<div class="text-muted small mt-2">Getting your location…</div>';
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    doSubmitAttendance(moduleId, qrToken, pos.coords.latitude, pos.coords.longitude);
+  }, function () {
+    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Location access is required to record attendance. Please allow location access and try again.</div>';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function doSubmitAttendance(moduleId, qrToken, lat, lng) {
+  const params = new URLSearchParams({
+    module_id: moduleId,
+    csrf_token: CSRF,
+    latitude: lat,
+    longitude: lng,
+    device_id: getDeviceId(),
+  });
+  if (qrToken) params.set('qr_token', qrToken);
   fetch(APP_URL + '/api/student-attendance-scan.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body,
+    body: params.toString(),
   })
   .then(function (r) { return r.json(); })
   .then(function (data) {

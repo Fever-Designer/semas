@@ -278,7 +278,6 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="semas-card p-3 mb-4">
     <div class="d-flex gap-2 flex-wrap">
       <a href="<?= APP_URL ?>/dean/announcements.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-megaphone-fill me-1"></i> Send Student Announcement</a>
-      <a href="<?= APP_URL ?>/admin/users.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-people me-1"></i> Manage Students</a>
       <a href="<?= APP_URL ?>/admin/events.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-calendar-event me-1"></i> Event Management</a>
       <a href="<?= APP_URL ?>/reports/index.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-clipboard-check me-1"></i> Compliance Reports</a>
       <a href="<?= APP_URL ?>/campus/lost-found.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-search-heart me-1"></i> Lost &amp; Found</a>
@@ -482,7 +481,7 @@ require __DIR__ . '/partials/layout_top.php';
     <div class="d-flex gap-2 flex-wrap">
       <a href="<?= APP_URL ?>/student/modules.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-journal-plus me-1"></i> Module Registration</a>
       <a href="<?= APP_URL ?>/student/events.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-calendar-event me-1"></i> Browse Events</a>
-      <a href="<?= APP_URL ?>/student/scan.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-qr-code-scan me-1"></i> Scan to Check In</a>
+      <a href="<?= APP_URL ?>/student/scan.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-qr-code-scan me-1"></i> Scan Class Attendance QR</a>
       <a href="<?= APP_URL ?>/campus/lost-found.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-search-heart me-1"></i> Lost &amp; Found</a>
     </div>
   </div>

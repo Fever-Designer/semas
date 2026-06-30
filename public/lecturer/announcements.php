@@ -46,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $result = Announcement::create([
         'title'           => $_POST['title'],
-        'category'        => $_POST['category'],
-        'priority'        => $_POST['priority'],
+        'category'        => $_POST['category'] ?? 'General',
+        'priority'        => $_POST['priority'] ?? 'Normal',
         'target_audience' => 'Module Students',
         'department_id'   => $module['department_id'],
         'message'         => $_POST['message'],

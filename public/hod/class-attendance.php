@@ -135,7 +135,7 @@ if ($module) {
     }
 
     $stuStmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number
+        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number
          FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
          WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
     );
@@ -464,7 +464,13 @@ require __DIR__ . '/../partials/layout_top.php';
       <?= e($module['status']) ?>
     </span>
     <span class="text-muted small"><?= count($students) ?> students &nbsp;·&nbsp; <?= count($sessions) ?> sessions</span>
-    <button type="button" class="btn btn-sm btn-outline-dark ms-auto"
+    <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $moduleId ?>" target="_blank" class="btn btn-sm btn-outline-dark ms-auto">
+      <i class="bi bi-printer me-1"></i> Print Attendance Sheet
+    </a>
+    <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $moduleId ?>" class="btn btn-sm btn-outline-dark">
+      <i class="bi bi-file-earmark-excel me-1"></i> Excel
+    </a>
+    <button type="button" class="btn btn-sm btn-outline-dark"
             data-bs-toggle="modal" data-bs-target="#addSessionModal">
       <i class="bi bi-calendar-plus me-1"></i> Add Session Date
     </button>
@@ -498,6 +504,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <th class="text-center" style="min-width:30px;">#</th>
           <th style="min-width:95px;">Reg No</th>
           <th style="min-width:170px;position:sticky;left:0;z-index:3;background:#212529;">Student Name</th>
+          <th style="min-width:105px;">Phone Number</th>
           <?php foreach ($sessions as $s):
             $isHol   = isset($holidayMap[$s['session_date']]);
             $isToday = ($s['session_date'] === $today);
@@ -544,6 +551,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:600;min-width:170px;">
             <?= e($stu['full_name']) ?>
           </td>
+          <td style="color:#666;"><?= e($stu['phone_number'] ?? '—') ?></td>
           <?php foreach ($sessions as $s):
             $sid   = (int) $s['session_id'];
             $isHol = isset($holidayMap[$s['session_date']]);

@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['Student']);
 
 $pageTitle = 'Scan QR Code';
-$activeNav = 'attendance';
+$activeNav = 'class-attendance';
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -127,13 +127,41 @@ function processFrame() {
     submitQr(raw);
 }
 
-async function submitQr(qrData) {
+function getDeviceId() {
+    let id = localStorage.getItem('semas_device_id');
+    if (!id) {
+        id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+           : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        localStorage.setItem('semas_device_id', id);
+    }
+    return id;
+}
+
+function submitQr(qrData) {
+    if (!navigator.geolocation) {
+        showResult(false, 'Your browser does not support location, which is required to record attendance.');
+        setStatus('Location not supported.', 'text-danger');
+        return;
+    }
+    setStatus('<span class="spinner-border spinner-border-sm me-1"></span> Getting your location&hellip;', 'text-primary');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+        doSubmitQr(qrData, pos.coords.latitude, pos.coords.longitude);
+    }, function () {
+        showResult(false, 'Location access is required to record attendance. Please allow location access and try again.');
+        setTimeout(function () { lastData = ''; scanning = true; scheduleFrame(); }, 3500);
+    }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+async function doSubmitQr(qrData, lat, lng) {
     const parts = qrData.split(':');
     const body  = new URLSearchParams({
         qr_data:    qrData,
         module_id:  parts[1] || '',
         session_id: parts[2] || '',
         csrf_token: CSRF,
+        latitude:   lat,
+        longitude:  lng,
+        device_id:  getDeviceId(),
     });
     try {
         const r    = await fetch(BASE + '/api/student-attendance-scan.php', {

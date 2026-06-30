@@ -229,6 +229,11 @@ if ($assignmentInstructions === '') {
         • <?= (int) $a['submission_count'] ?> submissions
     </p>
 
+    <a href="<?= APP_URL ?>/lecturer/assignment-submissions.php?assignment_id=<?= (int) $a['assignment_id'] ?>&module_id=<?= $moduleId ?>"
+       class="btn btn-sm btn-outline-dark">
+        <i class="bi bi-folder2-open me-1"></i> View / Download Submissions
+    </a>
+
 </div>
 
 <?php endforeach; ?>

@@ -7,8 +7,12 @@
     <td style="padding:8px 12px;background:#F4F6FB;"><?= htmlspecialchars($reg_number) ?></td>
   </tr>
   <tr>
-    <td style="padding:8px 12px;font-weight:bold;">Default Password</td>
-    <td style="padding:8px 12px;"><?= htmlspecialchars($password) ?></td>
+    <td style="padding:8px 12px;font-weight:bold;">Username</td>
+    <td style="padding:8px 12px;"><?= htmlspecialchars($reg_number) ?></td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;background:#F4F6FB;font-weight:bold;">Default Password</td>
+    <td style="padding:8px 12px;background:#F4F6FB;"><?= htmlspecialchars($password) ?></td>
   </tr>
 </table>
 <p><strong>⚠ Important:</strong> For security, you will be required to change this password the first time you log in.</p>

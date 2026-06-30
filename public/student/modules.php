@@ -121,6 +121,16 @@ $myEnrolledIds = $db->prepare('SELECT module_id FROM module_enrollments WHERE us
 $myEnrolledIds->execute(['uid' => $me['user_id']]);
 $myEnrolledIds = array_map('intval', $myEnrolledIds->fetchAll(PDO::FETCH_COLUMN));
 
+// Module titles the student has already completed (a later re-offering of the
+// same title shouldn't be suggested again in Browse).
+$completedTitlesStmt = $db->prepare(
+    "SELECT DISTINCT m.module_title FROM modules m
+     JOIN module_enrollments e ON e.module_id = m.module_id AND e.user_id = :uid
+     WHERE m.status = 'Completed'"
+);
+$completedTitlesStmt->execute(['uid' => $me['user_id']]);
+$myCompletedTitles = $completedTitlesStmt->fetchAll(PDO::FETCH_COLUMN);
+
 // Session types the student is already enrolled in (for ongoing modules)
 $enrolledSessionsStmt = $db->prepare(
     "SELECT DISTINCT m.session_type FROM modules m
@@ -135,6 +145,7 @@ foreach ($browseModules as $m) {
     $alreadyEnrolled = in_array((int) $m['module_id'], $myEnrolledIds, true);
     $sessionTaken    = $m['session_type'] && in_array($m['session_type'], $enrolledSessionTypes, true) && !$alreadyEnrolled;
     if ($sessionTaken) continue; // student already has a module in this session
+    if (!$alreadyEnrolled && in_array($m['module_title'], $myCompletedTitles, true)) continue; // already completed this module
     $grouped[$m['department_name'] ?? 'Unassigned'][] = $m;
 }
 

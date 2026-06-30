@@ -122,9 +122,40 @@ $allModules = $db->prepare(
 $allModules->execute(['uid' => $me['user_id']]);
 $allModules = $allModules->fetchAll();
 
+// Only modules whose session (Day / Evening / Weekend Morning / Weekend
+// Afternoon, incl. Umuganda override hours) matches the CURRENT live
+// window — a lecturer shouldn't be picking a module to take attendance for
+// outside its actual class time.
+$nowDt        = ClassAttendance::now();
+$window       = ClassAttendance::currentWindow();
+$holidayToday = ClassAttendance::holidayToday();
+
+$visibleModules = [];
+foreach ($allModules as $am) {
+    $matchesWindow = false;
+    if ($window) {
+        $st   = $am['session_type'] ?? '';
+        $slot = $am['weekend_slot'] ?? '';
+        if (!$st) {
+            $matchesWindow = true;
+        } elseif ($st === 'Day' && $window['name'] === 'Day') {
+            $matchesWindow = true;
+        } elseif ($st === 'Evening' && $window['name'] === 'Evening') {
+            $matchesWindow = true;
+        } elseif ($st === 'Weekend') {
+            if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+            elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+            else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+        }
+    }
+    if ($matchesWindow) {
+        $visibleModules[] = $am;
+    }
+}
+
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 $module   = null;
-foreach ($allModules as $am) {
+foreach ($visibleModules as $am) {
     if ((int) $am['module_id'] === $moduleId) { $module = $am; break; }
 }
 
@@ -152,7 +183,7 @@ if ($module) {
     }
 
     $stuStmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number
+        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number
          FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
          WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
     );
@@ -199,14 +230,54 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <h4 class="display-font mb-3">Class Attendance Register</h4>
 
-<!-- Module selector -->
+<!-- Local hour / day / date + active session status -->
+<div class="alert <?= $window ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <?php if ($window): ?>
+      <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
+    <?php elseif ($holidayToday && $holidayToday['holiday_type'] === 'Public Holiday'): ?>
+      <i class="bi bi-info-circle me-1"></i> Today is a <strong>Public Holiday</strong> — no attendance scanning today.
+    <?php else: ?>
+      <i class="bi bi-clock-history me-1"></i> No active class session window right now.
+    <?php endif; ?>
+  </div>
+  <div class="text-end">
+    <div class="text-muted small"><i class="bi bi-calendar-event me-1"></i><?= e($nowDt->format('l, d F Y')) ?></div>
+    <div id="liveClock" class="display-font fw-bold" style="font-size:1.9rem;line-height:1.1;letter-spacing:.03em;"
+         data-h="<?= (int) $nowDt->format('H') ?>"
+         data-m="<?= (int) $nowDt->format('i') ?>"
+         data-s="<?= (int) $nowDt->format('s') ?>">
+      <?= e($nowDt->format('H:i:s')) ?>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('liveClock');
+  if (!el) return;
+  var h = parseInt(el.dataset.h, 10), m = parseInt(el.dataset.m, 10), s = parseInt(el.dataset.s, 10);
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  setInterval(function () {
+    s++;
+    if (s >= 60) { s = 0; m++; }
+    if (m >= 60) { m = 0; h++; }
+    if (h >= 24) { h = 0; }
+    el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+  }, 1000);
+})();
+</script>
+
+<!-- Module selector — only modules whose session matches the current window -->
 <div class="semas-card p-3 mb-3">
+  <?php if (!$visibleModules): ?>
+    <p class="text-muted small mb-0">None of your modules are scheduled for the current session window.</p>
+  <?php else: ?>
   <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
     <label class="form-label small fw-semibold mb-0 text-nowrap">My Module:</label>
     <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:420px;"
             onchange="this.form.submit()">
       <option value="">— Choose a module —</option>
-      <?php foreach ($allModules as $am): ?>
+      <?php foreach ($visibleModules as $am): ?>
         <option value="<?= (int) $am['module_id'] ?>"
                 <?= (int) $am['module_id'] === $moduleId ? 'selected' : '' ?>>
           <?= e($am['module_title']) ?> &mdash; <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
@@ -214,6 +285,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php endforeach; ?>
     </select>
   </form>
+  <?php endif; ?>
 </div>
 
 <?php if (!$module): ?>
@@ -258,7 +330,13 @@ require __DIR__ . '/../partials/layout_top.php';
       <?= e($module['status']) ?>
     </span>
     <span class="text-muted small"><?= count($students) ?> students &nbsp;·&nbsp; <?= count($sessions) ?> sessions</span>
-    <button type="button" class="btn btn-sm btn-outline-dark ms-auto"
+    <a href="<?= APP_URL ?>/lecturer/attendance-sheet-print.php?module_id=<?= $moduleId ?>" target="_blank" class="btn btn-sm btn-outline-dark ms-auto">
+      <i class="bi bi-printer me-1"></i> Print Attendance Sheet
+    </a>
+    <a href="<?= APP_URL ?>/lecturer/attendance-sheet-excel.php?module_id=<?= $moduleId ?>" class="btn btn-sm btn-outline-dark">
+      <i class="bi bi-file-earmark-excel me-1"></i> Excel
+    </a>
+    <button type="button" class="btn btn-sm btn-outline-dark"
             data-bs-toggle="modal" data-bs-target="#addSessionModal">
       <i class="bi bi-calendar-plus me-1"></i> Add Session Date
     </button>
@@ -288,8 +366,9 @@ require __DIR__ . '/../partials/layout_top.php';
       <thead>
         <tr class="table-dark" style="font-size:.71rem;">
           <th class="text-center" style="min-width:30px;">#</th>
-          <th style="min-width:95px;">Reg No</th>
+          <th style="min-width:95px;">Reg Number</th>
           <th style="min-width:170px;position:sticky;left:0;z-index:3;background:#212529;">Student Name</th>
+          <th style="min-width:105px;">Phone Number</th>
           <?php foreach ($sessions as $s):
             $isHol   = isset($holidayMap[$s['session_date']]);
             $isToday = ($s['session_date'] === $today);
@@ -335,6 +414,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:600;min-width:170px;">
             <?= e($stu['full_name']) ?>
           </td>
+          <td style="color:#666;"><?= e($stu['phone_number'] ?? '—') ?></td>
           <?php foreach ($sessions as $s):
             $sid   = (int) $s['session_id'];
             $isHol = isset($holidayMap[$s['session_date']]);

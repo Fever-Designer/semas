@@ -27,6 +27,7 @@ require_once __DIR__ . '/../includes/Settings.php';
 require_once __DIR__ . '/../includes/Module.php';
 require_once __DIR__ . '/../includes/Eligibility.php';
 require_once __DIR__ . '/../includes/IntakeHelper.php';
+require_once __DIR__ . '/../includes/AttendanceSheet.php';
 
 Auth::start();
 Auth::enforceMustChangePassword();
@@ -49,6 +50,21 @@ function csrf_verify(): void
     $token = $_POST['csrf_token'] ?? '';
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
         http_response_code(419);
+        // AJAX/API endpoints set Content-Type: application/json before calling
+        // csrf_verify() — match that so fetch().then(r => r.json()) can parse
+        // the failure instead of throwing a SyntaxError that the caller's
+        // .catch() swallows silently (leaving the UI stuck, e.g. a "Looking
+        // up student…" spinner that never resolves).
+        $isJson = false;
+        foreach (headers_list() as $h) {
+            if (stripos($h, 'Content-Type:') === 0 && stripos($h, 'application/json') !== false) {
+                $isJson = true;
+                break;
+            }
+        }
+        if ($isJson) {
+            die(json_encode(['ok' => false, 'message' => 'Session expired or invalid request token. Please refresh the page and try again.']));
+        }
         die('Session expired or invalid request token. Please go back and try again.');
     }
 }

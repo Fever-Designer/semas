@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash = password_hash($newPass, PASSWORD_BCRYPT);
         $db->prepare('UPDATE users SET password_hash=:h, must_change_password=0 WHERE user_id=:id')
            ->execute(['h' => $hash, 'id' => $user['user_id']]);
+        $_SESSION['must_change_password'] = false; // keep session in sync with the DB so enforceMustChangePassword() stops redirecting here
         AuditLog::record(Auth::id(), 'PASSWORD_CHANGED_FIRST_LOGIN', 'users', $user['user_id']);
         flash('success', 'Password changed successfully. Welcome to SEMAS!');
         redirect('/dashboard.php');
