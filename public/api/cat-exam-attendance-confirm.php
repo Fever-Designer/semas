@@ -178,7 +178,7 @@ if ($action === 'sign_out') {
     $name = $nameRow->fetchColumn() ?: 'Student';
 
     AuditLog::record(Auth::id(), 'CAT_EXAM_SIGNOUT', 'cat_exam_schedules', $scheduleId, "student_user_id=$studentUserId");
-    NotificationCenter::notify($studentUserId, 'Signed out from ' . $schedule['exam_type'], 'You have been signed out from "' . $schedule['module_title'] . '" ' . $schedule['exam_type'] . '. You may now generate your Evidence Slip.', 'Attendance');
+    NotificationCenter::notify($studentUserId, 'Signed out from ' . $schedule['exam_type'], 'You have been signed out from "' . $schedule['module_title'] . '" ' . $schedule['exam_type'] . '. You may now generate your Attendance Slip.', 'Attendance');
     echo json_encode(['ok' => true, 'message' => "$name signed out."]);
     exit;
 }

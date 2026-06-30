@@ -252,10 +252,11 @@ $isScanable = $window && stu_window_matches($module, $window) && stu_within_date
 
   <?php if ($isScanable): ?>
     <div class="mt-3 pt-2 border-top">
-      <button class="btn btn-semas-gold btn-sm scan-btn" data-module="<?= $moduleId ?>">
-        <i class="bi bi-camera-fill me-1"></i> Scan Attendance QR
+      <button class="btn btn-semas-gold btn-sm scan-btn"
+              data-module-id="<?= $moduleId ?>"
+              data-module-name="<?= e($module['module_title']) ?>">
+        <i class="bi bi-qr-code-scan me-1"></i> Scan / Check In
       </button>
-      <div class="scan-result mt-2 small" data-module-result="<?= $moduleId ?>"></div>
     </div>
   <?php elseif ($module['status'] === 'Ongoing' && !$holiday): ?>
     <p class="text-muted small mt-2 mb-0">
@@ -263,6 +264,27 @@ $isScanable = $window && stu_window_matches($module, $window) && stu_within_date
       No active session window for this module right now.
     </p>
   <?php endif; ?>
+</div>
+
+<!-- Scan modal — opens when student taps "Scan / Check In" -->
+<div class="modal fade" id="scanModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font" id="scanModalTitle">Scan Class QR</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="stopCamera()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small" id="scanInstruction">Point your camera at the QR code posted in your classroom.</p>
+        <div id="reader" style="width:100%;"></div>
+        <div id="scanMsg" class="mt-2"></div>
+        <!-- Manual checkin (for students who can't use camera) -->
+        <hr>
+        <p class="text-muted small mb-1">No camera? Use manual check-in:</p>
+        <button id="manualCheckinBtn" class="btn btn-outline-dark btn-sm w-100">Check In Without QR Scan</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Attendance register — my own row -->
@@ -358,33 +380,61 @@ $isScanable = $window && stu_window_matches($module, $window) && stu_within_date
 <?php endif; // sessions ?>
 <?php endif; // allModules ?>
 
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 const CSRF = '<?= csrf_token() ?>';
+let html5QrCode = null;
+let activeModuleId   = null;
+let activeModuleName = null;
+
+function stopCamera() {
+  if (html5QrCode) {
+    html5QrCode.stop().catch(() => {});
+    html5QrCode = null;
+  }
+}
+
 document.querySelectorAll('.scan-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-        const mid = btn.getAttribute('data-module');
-        const result = document.querySelector('[data-module-result="' + mid + '"]');
-        btn.disabled = true;
-        fetch(window.SEMAS_BASE_URL + '/api/student-attendance-scan.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'module_id=' + mid + '&csrf_token=' + encodeURIComponent(CSRF)
-        })
-        .then(r => r.json())
-        .then(function (data) {
-            result.innerHTML = '<span class="' + (data.ok ? 'text-success' : 'text-danger') + '">' + data.message + '</span>';
-            btn.disabled = false;
-            if (data.ok) {
-                // Refresh to update register
-                setTimeout(function () { location.reload(); }, 1500);
-            }
-        })
-        .catch(function () {
-            result.innerHTML = '<span class="text-danger">Network error — please try again.</span>';
-            btn.disabled = false;
-        });
+  btn.addEventListener('click', function () {
+    activeModuleId   = btn.dataset.moduleId;
+    activeModuleName = btn.dataset.moduleName;
+    document.getElementById('scanModalTitle').textContent = activeModuleName;
+    document.getElementById('scanMsg').innerHTML = '';
+    document.getElementById('reader').innerHTML  = '';
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    modal.show();
+    html5QrCode = new Html5Qrcode('reader');
+    html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, function (decodedText) {
+      html5QrCode.stop().then(function () { html5QrCode = null; submitAttendance(activeModuleId, decodedText); });
+    }).catch(function () {
+      document.getElementById('reader').innerHTML = '<p class="text-muted small text-center mt-2">Camera not available. Use manual check-in below.</p>';
     });
+  });
 });
+
+document.getElementById('manualCheckinBtn').addEventListener('click', function () {
+  submitAttendance(activeModuleId, null);
+});
+
+function submitAttendance(moduleId, qrToken) {
+  const body = 'module_id=' + moduleId + '&csrf_token=' + encodeURIComponent(CSRF) + (qrToken ? '&qr_token=' + encodeURIComponent(qrToken) : '');
+  fetch(window.SEMAS_BASE_URL + '/api/student-attendance-scan.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body,
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    const cls = data.ok ? 'alert-success' : 'alert-danger';
+    document.getElementById('scanMsg').innerHTML = '<div class="alert ' + cls + ' small mt-2">' + data.message + '</div>';
+    if (data.ok) {
+      setTimeout(function () { location.reload(); }, 1500);
+    }
+  })
+  .catch(function () {
+    document.getElementById('scanMsg').innerHTML = '<div class="alert alert-danger small mt-2">Network error. Try again.</div>';
+  });
+}
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

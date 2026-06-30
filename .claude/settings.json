@@ -4,7 +4,22 @@
       "PowerShell(& \"C:\\\\xampp\\\\apache\\\\bin\\\\httpd.exe\" -t 2>&1)",
       "Bash(php -l public/lecturer/modules.php)",
       "Bash(php -l public/student/assignments.php)",
-      "Bash(php -l includes/bootstrap.php)"
+      "Bash(php -l includes/bootstrap.php)",
+      "Bash(xargs grep -l \"api/[a-zA-Z0-9_-]*\\\\.php'\")",
+      "Bash(curl -s -i -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=lookup --data-urlencode schedule_id=1 --data-urlencode reg_number=2401001192 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_in --data-urlencode schedule_id=1 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_out --data-urlencode schedule_id=1 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=submit --data-urlencode schedule_id=1 --data-urlencode missing_signouts=[] --data-urlencode 'submission_notes=test verification' --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_in --data-urlencode schedule_id=6 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=roster --data-urlencode schedule_id=6 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_out --data-urlencode schedule_id=6 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=submit --data-urlencode schedule_id=6 --data-urlencode missing_signouts=[] --data-urlencode 'submission_notes=verification test' --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_in --data-urlencode schedule_id=8 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(curl -s -b /tmp/cj.txt http://localhost/semas/public/api/cat-exam-attendance-confirm.php --data-urlencode action=sign_out --data-urlencode schedule_id=8 --data-urlencode user_id=1 --data-urlencode csrf_token=__TRACKED_VAR__)",
+      "Bash(rm -f /tmp/cj.txt /tmp/page.html)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

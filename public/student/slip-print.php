@@ -41,7 +41,7 @@ $schedStmt = $db->prepare(
 $schedStmt->execute(['mid' => $moduleId, 'type' => $examType]);
 $sched = $schedStmt->fetch() ?: [];
 
-// Once the student has signed out, the Entry Slip is no longer available — only the Evidence Slip remains.
+// Once the student has signed out, the Entry Slip is no longer available — only the Attendance Slip remains.
 if (!empty($sched['schedule_id'])) {
     $soutStmt = $db->prepare(
         "SELECT 1 FROM cat_exam_attendance_logs WHERE schedule_id = :s AND user_id = :u AND attendance_type = 'Sign Out'"
@@ -50,8 +50,8 @@ if (!empty($sched['schedule_id'])) {
     if ($soutStmt->fetchColumn()) {
         http_response_code(403);
         echo 'This Entry Slip is no longer available because you have already signed out of this ' . e($examType) . '. '
-            . 'Please use the ' . e($examType) . ' Evidence Slip instead: '
-            . '<a href="' . APP_URL . '/student/evidence-slip.php?schedule_id=' . (int) $sched['schedule_id'] . '">View Evidence Slip</a>.';
+            . 'Please use the ' . e($examType) . ' Attendance Slip instead: '
+            . '<a href="' . APP_URL . '/student/evidence-slip.php?schedule_id=' . (int) $sched['schedule_id'] . '">View Attendance Slip</a>.';
         exit;
     }
 }

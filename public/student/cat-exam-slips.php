@@ -122,10 +122,10 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($catAtt && $catAtt['signed_in'] && $catAtt['signed_out']): ?>
               <a href="<?= APP_URL ?>/student/evidence-slip.php?schedule_id=<?= (int) $catAtt['schedule_id'] ?>"
                  target="_blank" class="btn btn-sm btn-semas">
-                <i class="bi bi-award me-1"></i> Evidence Slip
+                <i class="bi bi-award me-1"></i> Attendance Slip
               </a>
             <?php elseif ($catAtt && $catAtt['signed_in'] && !$catAtt['signed_out']): ?>
-              <span class="badge badge-urgent small align-self-center">Evidence slip available after sign-out</span>
+              <span class="badge badge-urgent small align-self-center">Attendance slip available after sign-out</span>
             <?php endif; ?>
           </div>
         </div>
@@ -150,10 +150,10 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($examAtt && $examAtt['signed_in'] && $examAtt['signed_out']): ?>
               <a href="<?= APP_URL ?>/student/evidence-slip.php?schedule_id=<?= (int) $examAtt['schedule_id'] ?>"
                  target="_blank" class="btn btn-sm btn-semas">
-                <i class="bi bi-award me-1"></i> Evidence Slip
+                <i class="bi bi-award me-1"></i> Attendance Slip
               </a>
             <?php elseif ($examAtt && $examAtt['signed_in'] && !$examAtt['signed_out']): ?>
-              <span class="badge badge-urgent small align-self-center">Evidence slip available after sign-out</span>
+              <span class="badge badge-urgent small align-self-center">Attendance slip available after sign-out</span>
             <?php endif; ?>
           </div>
         </div>
@@ -184,18 +184,18 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php if ($catAtt && $catAtt['signed_out']): ?>
           <a href="<?= APP_URL ?>/student/evidence-slip.php?schedule_id=<?= (int) $catAtt['schedule_id'] ?>"
              target="_blank" class="btn btn-sm btn-semas">
-            <i class="bi bi-award me-1"></i> CAT Evidence Slip
+            <i class="bi bi-award me-1"></i> CAT Attendance Slip
           </a>
         <?php endif; ?>
         <?php if ($examAtt && $examAtt['signed_out']): ?>
           <a href="<?= APP_URL ?>/student/evidence-slip.php?schedule_id=<?= (int) $examAtt['schedule_id'] ?>"
              target="_blank" class="btn btn-sm btn-semas">
-            <i class="bi bi-award me-1"></i> Exam Evidence Slip
+            <i class="bi bi-award me-1"></i> Exam Attendance Slip
           </a>
         <?php endif; ?>
       </div>
     <?php else: ?>
-      <p class="text-muted small mb-0">No evidence slips available.</p>
+      <p class="text-muted small mb-0">No attendance slips available.</p>
     <?php endif; ?>
   </div>
 <?php endforeach; ?>

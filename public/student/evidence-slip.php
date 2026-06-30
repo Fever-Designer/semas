@@ -31,7 +31,7 @@ $schedule = $stmt->fetch();
 
 if (!$schedule) {
     http_response_code(403);
-    echo 'Evidence slip not found or you are not enrolled in this module.';
+    echo 'Attendance slip not found or you are not enrolled in this module.';
     exit;
 }
 
@@ -46,7 +46,7 @@ $soutRecord = $soutStmt->fetch();
 
 if (!$sinRecord || !$soutRecord) {
     http_response_code(403);
-    echo 'Evidence slip is only available after both Sign In and Sign Out have been recorded for this ' . htmlspecialchars($schedule['exam_type']) . '.';
+    echo 'Attendance slip is only available after both Sign In and Sign Out have been recorded for this ' . htmlspecialchars($schedule['exam_type']) . '.';
     exit;
 }
 
@@ -72,7 +72,7 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title><?= e($schedule['exam_type']) ?> Evidence Slip / <?= e($schedule['module_title']) ?></title>
+<title><?= e($schedule['exam_type']) ?> Attendance Slip / <?= e($schedule['module_title']) ?></title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Times New Roman', Times, serif; background: #f4f5f7; margin: 0; padding: 24px 0; color: #1B1F2A; }
@@ -152,7 +152,7 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
   </div>
 
   <div class="slip-title">
-    <h2><?= e($schedule['exam_type']) ?> Evidence Slip</h2>
+    <h2><?= e($schedule['exam_type']) ?> Attendance Slip</h2>
     <div class="sub"><?= e($schedule['module_title']) ?> · <?= e($dayOfWeek) ?>, <?= e($examDate) ?></div>
   </div>
 

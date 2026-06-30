@@ -44,11 +44,27 @@ require __DIR__ . '/../partials/auth_top.php';
   </div>
   <div class="mb-3">
     <label class="form-label small">Password</label>
-    <input type="password" name="password" class="form-control" required>
+    <div class="input-group">
+      <input type="password" name="password" id="password" class="form-control" required>
+      <button type="button" class="btn btn-outline-secondary" id="togglePassword" tabindex="-1" aria-label="Show password">
+        <i class="bi bi-eye"></i>
+      </button>
+    </div>
   </div>
   <div class="d-flex justify-content-between align-items-center mb-3">
     <a href="<?= APP_URL ?>/auth/forgot-password.php" class="small">Forgot password?</a>
   </div>
   <button type="submit" class="btn btn-semas w-100">Log In</button>
 </form>
+<script>
+document.getElementById('togglePassword').addEventListener('click', function () {
+  const input = document.getElementById('password');
+  const icon  = this.querySelector('i');
+  const show  = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  icon.classList.toggle('bi-eye', !show);
+  icon.classList.toggle('bi-eye-slash', show);
+  this.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+});
+</script>
 <?php require __DIR__ . '/../partials/auth_bottom.php'; ?>

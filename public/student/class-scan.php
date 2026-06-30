@@ -47,29 +47,44 @@ $enrolledStmt = $db->prepare(
 $enrolledStmt->execute(['uid' => $me['user_id']]);
 $enrolledModules = $enrolledStmt->fetchAll();
 
-if (!$enrolledModules): ?>
+// Only keep modules whose session_type matches the currently active window
+$visibleModules = [];
+foreach ($enrolledModules as $m) {
+    $matchesWindow = false;
+    if ($window) {
+        if (!$m['session_type']) {
+            $matchesWindow = true;
+        } elseif ($m['session_type'] === 'Day' && $window['name'] === 'Day') {
+            $matchesWindow = true;
+        } elseif ($m['session_type'] === 'Evening' && $window['name'] === 'Evening') {
+            $matchesWindow = true;
+        } elseif ($m['session_type'] === 'Weekend') {
+            $slot = $m['weekend_slot'] ?? '';
+            if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+            elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+            else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+        }
+    }
+    if ($matchesWindow) {
+        $visibleModules[] = $m;
+    }
+}
+?>
+<?php if (!$enrolledModules): ?>
   <div class="semas-card p-4 text-center text-muted small">
     You are not registered in any ongoing module. <a href="<?= APP_URL ?>/student/modules.php">Register for a module</a>.
   </div>
+<?php elseif (!$window || $holidayInfo): ?>
+  <div class="semas-card p-4 text-center text-muted small">
+    No active session window right now — modules will appear here once a session window opens.
+  </div>
+<?php elseif (!$visibleModules): ?>
+  <div class="semas-card p-4 text-center text-muted small">
+    None of your modules are scheduled for the current active session.
+  </div>
 <?php else: ?>
   <div class="row g-3" id="moduleList">
-    <?php foreach ($enrolledModules as $m):
-      $matchesWindow = false;
-      if ($window) {
-          if (!$m['session_type']) {
-              $matchesWindow = true;
-          } elseif ($m['session_type'] === 'Day' && $window['name'] === 'Day') {
-              $matchesWindow = true;
-          } elseif ($m['session_type'] === 'Evening' && $window['name'] === 'Evening') {
-              $matchesWindow = true;
-          } elseif ($m['session_type'] === 'Weekend') {
-              $slot = $m['weekend_slot'] ?? '';
-              if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
-              elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
-              else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
-          }
-      }
-    ?>
+    <?php foreach ($visibleModules as $m): ?>
       <div class="col-md-6">
         <div class="semas-card p-3 h-100">
           <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
@@ -77,17 +92,11 @@ if (!$enrolledModules): ?>
             <?= e($m['lecturer_name'] ?? 'TBA') ?> &middot; <?= e($m['session_type'] ?? 'Any') ?>
             <?= $m['room'] ? ' &middot; Room ' . e($m['room']) : '' ?>
           </p>
-          <?php if (!$window || $holidayInfo): ?>
-            <span class="badge bg-secondary small">No active session window</span>
-          <?php elseif (!$matchesWindow): ?>
-            <span class="badge bg-secondary small">Your module session (<?= e($m['session_type']) ?>) doesn't match the active window</span>
-          <?php else: ?>
-            <button class="btn btn-semas-gold btn-sm scan-btn"
-                    data-module-id="<?= (int) $m['module_id'] ?>"
-                    data-module-name="<?= e($m['module_title']) ?>">
-              <i class="bi bi-qr-code-scan me-1"></i> Scan / Check In
-            </button>
-          <?php endif; ?>
+          <button class="btn btn-semas-gold btn-sm scan-btn"
+                  data-module-id="<?= (int) $m['module_id'] ?>"
+                  data-module-name="<?= e($m['module_title']) ?>">
+            <i class="bi bi-qr-code-scan me-1"></i> Scan / Check In
+          </button>
         </div>
       </div>
     <?php endforeach; ?>
