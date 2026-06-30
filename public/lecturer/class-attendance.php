@@ -10,11 +10,82 @@ $db        = Database::connection();
 $me        = Auth::user();
 $today     = date('Y-m-d');
 
+// Tracks the lecturer's formal "Submit Module Attendance" step required
+// once HOD/Coordinator schedules a CAT/Exam for a module.
+$db->exec(
+    "CREATE TABLE IF NOT EXISTS module_attendance_submissions (
+        submission_id  INT AUTO_INCREMENT PRIMARY KEY,
+        module_id      INT NOT NULL,
+        exam_type      ENUM('CAT','Exam') NOT NULL,
+        submitted_by   INT NOT NULL,
+        submitted_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status         ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+        decided_by     INT NULL,
+        decided_at     DATETIME NULL,
+        decision_note  VARCHAR(255) NULL,
+        UNIQUE KEY uniq_module_exam_type (module_id, exam_type),
+        FOREIGN KEY (module_id) REFERENCES modules(module_id) ON DELETE CASCADE,
+        FOREIGN KEY (submitted_by) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (decided_by) REFERENCES users(user_id) ON DELETE SET NULL
+    ) ENGINE=InnoDB"
+);
+
+/** Which exam_type cutoff window (per Eligibility::generate()'s own cutoff
+ *  rules) a session date falls under, or null if it's outside both. */
+function attendance_window_for_date(string $sessionDate, ?string $catDate, ?string $examDate): ?string
+{
+    if ($catDate && $sessionDate < $catDate) return 'CAT';
+    if ($catDate && $examDate && $sessionDate > $catDate && $sessionDate < $examDate) return 'Exam';
+    return null;
+}
+
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action   = $_POST['action']    ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
+
+    if ($action === 'submit_attendance') {
+        $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+
+        $ownCheck = $db->prepare(
+            "SELECT 1 FROM modules m JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
+             WHERE m.module_id = :mid AND lt.user_id = :uid"
+        );
+        $ownCheck->execute(['mid' => $moduleId, 'uid' => $me['user_id']]);
+        if (!$ownCheck->fetch()) {
+            flash('error', 'Module not found or not assigned to you.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $schedCheck = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = :type");
+        $schedCheck->execute(['mid' => $moduleId, 'type' => $examType]);
+        if (!$schedCheck->fetch()) {
+            flash('error', "No $examType has been scheduled for this module yet.");
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $existingSub = $db->prepare('SELECT status FROM module_attendance_submissions WHERE module_id = :mid AND exam_type = :type');
+        $existingSub->execute(['mid' => $moduleId, 'type' => $examType]);
+        $subStatus = $existingSub->fetchColumn();
+        if ($subStatus === 'Pending' || $subStatus === 'Approved') {
+            flash('error', "$examType attendance has already been submitted and is awaiting/has received HOD review.");
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $db->prepare(
+            "INSERT INTO module_attendance_submissions (module_id, exam_type, submitted_by, submitted_at, status)
+             VALUES (:mid, :type, :uid, NOW(), 'Pending')
+             ON DUPLICATE KEY UPDATE submitted_by = :uid2, submitted_at = NOW(), status = 'Pending',
+                                     decided_by = NULL, decided_at = NULL, decision_note = NULL"
+        )->execute(['mid' => $moduleId, 'type' => $examType, 'uid' => $me['user_id'], 'uid2' => $me['user_id']]);
+
+        Eligibility::generate($moduleId, $examType);
+
+        AuditLog::record(Auth::id(), 'MODULE_ATTENDANCE_SUBMIT', 'modules', $moduleId, "exam_type=$examType");
+        flash('success', "$examType attendance submitted for HOD review. The register for this period is now locked.");
+        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+    }
 
     if ($action === 'manual_mark') {
         $sessionId = (int) ($_POST['session_id'] ?? 0);
@@ -24,6 +95,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Invalid mark request.');
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
+
+        // Locked if a Pending/Approved submission covers this session's date.
+        $sessDateRow = $db->prepare(
+            "SELECT cs.session_date, m.cat_date, m.exam_date FROM class_sessions cs
+             JOIN modules m ON m.module_id = cs.module_id WHERE cs.session_id = :sid"
+        );
+        $sessDateRow->execute(['sid' => $sessionId]);
+        $sdRow = $sessDateRow->fetch();
+        if ($sdRow) {
+            $coveringType = attendance_window_for_date($sdRow['session_date'], $sdRow['cat_date'], $sdRow['exam_date']);
+            if ($coveringType) {
+                $lockCheck = $db->prepare(
+                    "SELECT status FROM module_attendance_submissions
+                     WHERE module_id = :mid AND exam_type = :type AND status IN ('Pending','Approved')"
+                );
+                $lockCheck->execute(['mid' => $moduleId, 'type' => $coveringType]);
+                if ($lockCheck->fetch()) {
+                    flash('error', "This session's attendance has been submitted for $coveringType and is locked. Ask the HOD/Coordinator to reject the submission if a correction is needed.");
+                    redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+                }
+            }
+        }
+
         // Lecturers can only manually mark during the live class window
         $sessInfo = $db->prepare("SELECT start_time, end_time FROM class_sessions WHERE session_id = :sid");
         $sessInfo->execute(['sid' => $sessionId]);
@@ -122,36 +216,14 @@ $allModules = $db->prepare(
 $allModules->execute(['uid' => $me['user_id']]);
 $allModules = $allModules->fetchAll();
 
-// Only modules whose session (Day / Evening / Weekend Morning / Weekend
-// Afternoon, incl. Umuganda override hours) matches the CURRENT live
-// window — a lecturer shouldn't be picking a module to take attendance for
-// outside its actual class time.
+// A lecturer can open the attendance register / take manual actions for any
+// of their Ongoing modules at any time — only the live QR "Sign" screen
+// (live-session.php / api/lecturer-session-qr.php) is restricted to the
+// module's actual scan window.
 $nowDt        = ClassAttendance::now();
 $window       = ClassAttendance::currentWindow();
 $holidayToday = ClassAttendance::holidayToday();
-
-$visibleModules = [];
-foreach ($allModules as $am) {
-    $matchesWindow = false;
-    if ($window) {
-        $st   = $am['session_type'] ?? '';
-        $slot = $am['weekend_slot'] ?? '';
-        if (!$st) {
-            $matchesWindow = true;
-        } elseif ($st === 'Day' && $window['name'] === 'Day') {
-            $matchesWindow = true;
-        } elseif ($st === 'Evening' && $window['name'] === 'Evening') {
-            $matchesWindow = true;
-        } elseif ($st === 'Weekend') {
-            if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
-            elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
-            else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
-        }
-    }
-    if ($matchesWindow) {
-        $visibleModules[] = $am;
-    }
-}
+$visibleModules = $allModules;
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 $module   = null;
@@ -225,6 +297,50 @@ function lec_att_status(?array $e, string $date, string $today): string
     return 'A';
 }
 
+// ── Module-wide "All Numbers" summary ───────────────────────────────────────
+// Distinguishes WHY a student counts as Absent on a given session — missed
+// signing in entirely vs. signed in but never signed out — instead of just
+// the lumped 'A' shown in each grid cell.
+$summary = ['missed_signin' => 0, 'no_signout' => 0, 'present' => 0, 'late' => 0, 'students_at_risk' => 0];
+foreach ($students as $stu) {
+    $uid = (int) $stu['user_id'];
+    $studentAbsences = 0;
+    foreach ($sessions as $s) {
+        if (isset($holidayMap[$s['session_date']]) || $s['session_date'] > $today) continue;
+        $entry = $attMap[(int) $s['session_id']][$uid] ?? null;
+        if (!$entry || $entry['is_auto']) {
+            $summary['missed_signin']++;
+            $studentAbsences++;
+        } elseif (empty($entry['out_time'])) {
+            $summary['no_signout']++;
+            $studentAbsences++;
+        } elseif ($entry['in_status'] === 'Present') {
+            $summary['present']++;
+        } elseif ($entry['in_status'] === 'Late') {
+            $summary['late']++;
+        }
+    }
+    if ($studentAbsences >= 3) $summary['students_at_risk']++;
+}
+
+// ── CAT/Exam schedules + submission status for the selected module ─────────
+$examSubmissions = [];
+if ($module) {
+    $schedRows = $db->prepare(
+        "SELECT cs.exam_type, cs.scheduled_date,
+                sub.status AS sub_status, sub.submitted_at, sub.decision_note,
+                su.full_name AS submitted_by_name
+         FROM cat_exam_schedules cs
+         LEFT JOIN module_attendance_submissions sub ON sub.module_id = cs.module_id AND sub.exam_type = cs.exam_type
+         LEFT JOIN users su ON su.user_id = sub.submitted_by
+         WHERE cs.module_id = :mid"
+    );
+    $schedRows->execute(['mid' => $moduleId]);
+    foreach ($schedRows->fetchAll() as $row) {
+        $examSubmissions[$row['exam_type']] = $row;
+    }
+}
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 
@@ -267,10 +383,10 @@ require __DIR__ . '/../partials/layout_top.php';
 })();
 </script>
 
-<!-- Module selector — only modules whose session matches the current window -->
+<!-- Module selector -->
 <div class="semas-card p-3 mb-3">
   <?php if (!$visibleModules): ?>
-    <p class="text-muted small mb-0">None of your modules are scheduled for the current session window.</p>
+    <p class="text-muted small mb-0">No ongoing modules assigned to you yet.</p>
   <?php else: ?>
   <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
     <label class="form-label small fw-semibold mb-0 text-nowrap">My Module:</label>
@@ -342,6 +458,72 @@ require __DIR__ . '/../partials/layout_top.php';
     </button>
   </div>
 </div>
+
+<!-- All Numbers — module-wide summary -->
+<div class="semas-card p-3 mb-3">
+  <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.05em;">All Numbers</p>
+  <div class="row g-2 text-center" style="font-size:.8rem;">
+    <div class="col-6 col-md-3">
+      <div class="p-2 rounded" style="background:#f8d7da;">
+        <div class="fw-bold fs-5" style="color:#721c24;"><?= $summary['missed_signin'] ?></div>
+        <div class="text-muted">Missed Sign In</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="p-2 rounded" style="background:#f8d7da;">
+        <div class="fw-bold fs-5" style="color:#721c24;"><?= $summary['no_signout'] ?></div>
+        <div class="text-muted">Signed In, Never Signed Out</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="p-2 rounded" style="background:#d4edda;">
+        <div class="fw-bold fs-5" style="color:#155724;"><?= $summary['present'] + $summary['late'] ?></div>
+        <div class="text-muted">Present / Late (complete)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="p-2 rounded" style="background:#fff3cd;">
+        <div class="fw-bold fs-5" style="color:#856404;"><?= $summary['students_at_risk'] ?></div>
+        <div class="text-muted">Students with ≥3 Absences</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CAT/Exam attendance submission -->
+<?php if ($examSubmissions): ?>
+<div class="semas-card p-3 mb-3">
+  <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.05em;">CAT / Exam Attendance Submission</p>
+  <?php foreach ($examSubmissions as $examType => $row): ?>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 <?= $examType === 'CAT' ? 'border-bottom' : '' ?>">
+      <div>
+        <strong><?= e($examType) ?></strong>
+        <span class="text-muted small">— scheduled <?= e(date('d M Y', strtotime($row['scheduled_date']))) ?></span>
+        <?php if ($row['sub_status'] === 'Pending'): ?>
+          <span class="badge badge-urgent ms-1">Submitted — Pending HOD Review</span>
+          <span class="text-muted small d-block">By <?= e($row['submitted_by_name'] ?? '—') ?> on <?= e(date('d M Y, h:i A', strtotime($row['submitted_at']))) ?></span>
+        <?php elseif ($row['sub_status'] === 'Approved'): ?>
+          <span class="badge badge-completed ms-1"><i class="bi bi-lock-fill me-1"></i>Approved &amp; Locked</span>
+        <?php elseif ($row['sub_status'] === 'Rejected'): ?>
+          <span class="badge bg-secondary ms-1">Rejected — please correct and resubmit</span>
+          <?php if ($row['decision_note']): ?><span class="text-muted small d-block">Reason: <?= e($row['decision_note']) ?></span><?php endif; ?>
+        <?php else: ?>
+          <span class="badge bg-secondary ms-1">Not submitted yet</span>
+        <?php endif; ?>
+      </div>
+      <?php if ($row['sub_status'] !== 'Pending' && $row['sub_status'] !== 'Approved'): ?>
+        <form method="POST" onsubmit="return confirm('Submitting will freeze the <?= e($examType) ?> attendance register up to this date. Continue?');">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="submit_attendance">
+          <input type="hidden" name="module_id" value="<?= $moduleId ?>">
+          <input type="hidden" name="exam_type" value="<?= e($examType) ?>">
+          <button class="btn btn-sm btn-semas-gold"><i class="bi bi-send me-1"></i> Submit Module Attendance for <?= e($examType) ?></button>
+        </form>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <?php if (!$students): ?>
   <div class="semas-card p-4 text-center text-muted small">No students enrolled yet.</div>

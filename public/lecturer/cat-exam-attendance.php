@@ -570,8 +570,8 @@ function populatePreview(data, sid, action) {
                 blocked.textContent = s.full_name + ' is already signed in.';
                 blocked.style.display = ''; canConfirm = false;
             } else if (!data.eligible) {
-                warn.textContent = 'This student is NOT eligible. You can still sign them in — the HOD will be notified.';
-                warn.style.display = '';
+                blocked.textContent = s.full_name + ' is NOT eligible for this ' + (data.elig_status ? '(' + data.elig_status + ')' : '') + ' and cannot be signed in.';
+                blocked.style.display = ''; canConfirm = false;
             }
         } else {
             if (!data.signed_in) {

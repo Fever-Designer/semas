@@ -10,6 +10,26 @@ $db = Database::connection();
 $me = Auth::user();
 $isCoordinator = Auth::role() === 'Coordinator';
 
+// Tracks the lecturer's formal "Submit Module Attendance" step (see
+// public/lecturer/class-attendance.php) — same lazy-create as there.
+$db->exec(
+    "CREATE TABLE IF NOT EXISTS module_attendance_submissions (
+        submission_id  INT AUTO_INCREMENT PRIMARY KEY,
+        module_id      INT NOT NULL,
+        exam_type      ENUM('CAT','Exam') NOT NULL,
+        submitted_by   INT NOT NULL,
+        submitted_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status         ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+        decided_by     INT NULL,
+        decided_at     DATETIME NULL,
+        decision_note  VARCHAR(255) NULL,
+        UNIQUE KEY uniq_module_exam_type (module_id, exam_type),
+        FOREIGN KEY (module_id) REFERENCES modules(module_id) ON DELETE CASCADE,
+        FOREIGN KEY (submitted_by) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (decided_by) REFERENCES users(user_id) ON DELETE SET NULL
+    ) ENGINE=InnoDB"
+);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action = $_POST['action'] ?? '';
@@ -207,6 +227,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE_BULK', 'modules', $moduleId, "exam_type=$examType;count=" . count($pendingRows));
             flash('success', "Approved " . count($pendingRows) . " pending student(s) and queued eligibility emails.");
         }
+    } elseif ($action === 'approve_submission' || $action === 'reject_submission') {
+        $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
+        $subStmt = $db->prepare('SELECT * FROM module_attendance_submissions WHERE module_id = :mid AND exam_type = :type');
+        $subStmt->execute(['mid' => $moduleId, 'type' => $examType]);
+        $sub = $subStmt->fetch();
+        if (!$sub || $sub['status'] !== 'Pending') {
+            flash('error', 'No pending attendance submission found for this module/exam type.');
+        } elseif ($action === 'approve_submission') {
+            $db->prepare("UPDATE module_attendance_submissions SET status='Approved', decided_by=:uid, decided_at=NOW() WHERE submission_id=:id")
+               ->execute(['uid' => $me['user_id'], 'id' => $sub['submission_id']]);
+            AuditLog::record(Auth::id(), 'MODULE_ATTENDANCE_SUBMISSION_APPROVE', 'modules', $moduleId, "exam_type=$examType");
+            flash('success', "$examType attendance submission approved and locked.");
+        } else {
+            $note = trim($_POST['decision_note'] ?? '');
+            if ($note === '') {
+                flash('error', 'A reason is required to reject the submission.');
+                redirect('/hod/eligibility.php?module_id=' . $moduleId . '&exam_type=' . $examType);
+            }
+            $db->prepare("UPDATE module_attendance_submissions SET status='Rejected', decided_by=:uid, decided_at=NOW(), decision_note=:note WHERE submission_id=:id")
+               ->execute(['uid' => $me['user_id'], 'note' => $note, 'id' => $sub['submission_id']]);
+            AuditLog::record(Auth::id(), 'MODULE_ATTENDANCE_SUBMISSION_REJECT', 'modules', $moduleId, "exam_type=$examType");
+            flash('success', "$examType attendance submission rejected. The lecturer can correct and resubmit.");
+        }
     }
     redirect('/hod/eligibility.php?module_id=' . $moduleId . '&exam_type=' . ($_POST['exam_type'] ?? $_GET['exam_type'] ?? 'CAT'));
 }
@@ -242,6 +285,7 @@ $completedModules = $db->query(
 $list = [];
 $selectedModule = null;
 $currentSchedule = null;
+$currentSubmission = null;
 if ($moduleId) {
     foreach ($modules as $m) {
         if ((int) $m['module_id'] === $moduleId) { $selectedModule = $m; break; }
@@ -261,6 +305,14 @@ if ($moduleId) {
     );
     $schedStmt->execute(['mid' => $moduleId, 'type' => $examType]);
     $currentSchedule = $schedStmt->fetch();
+
+    $subStmt = $db->prepare(
+        "SELECT sub.*, su.full_name AS submitted_by_name FROM module_attendance_submissions sub
+         LEFT JOIN users su ON su.user_id = sub.submitted_by
+         WHERE sub.module_id = :mid AND sub.exam_type = :type"
+    );
+    $subStmt->execute(['mid' => $moduleId, 'type' => $examType]);
+    $currentSubmission = $subStmt->fetch();
 }
 
 // Load all lecturers for the invigilator dropdown
@@ -376,6 +428,46 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
       </form>
     </div>
+  </div>
+
+  <!-- Lecturer's "Submit Module Attendance" step -->
+  <div class="semas-card p-3 mb-3">
+    <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.05em;">Attendance Submission</p>
+    <?php if (!$currentSubmission): ?>
+      <p class="text-muted small mb-0"><i class="bi bi-hourglass-split me-1"></i>The lecturer has not submitted the <?= e($examType) ?> attendance register yet.</p>
+    <?php elseif ($currentSubmission['status'] === 'Pending'): ?>
+      <div class="alert alert-warning small mb-0 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          Submitted by <strong><?= e($currentSubmission['submitted_by_name'] ?? '—') ?></strong>
+          on <?= e(date('d M Y, h:i A', strtotime($currentSubmission['submitted_at']))) ?> — awaiting your review.
+        </div>
+        <div class="d-flex gap-2">
+          <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="approve_submission"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
+            <button class="btn btn-success btn-sm"><i class="bi bi-check2-circle me-1"></i> Approve Submission</button></form>
+          <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#rejectSubmissionModal"><i class="bi bi-x-circle me-1"></i> Reject</button>
+        </div>
+      </div>
+      <div class="modal fade" id="rejectSubmissionModal" tabindex="-1">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <form method="post">
+              <?= csrf_field() ?><input type="hidden" name="action" value="reject_submission"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
+              <div class="modal-header"><h6 class="modal-title display-font">Reject <?= e($examType) ?> Attendance Submission</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+              <div class="modal-body">
+                <label class="form-label small">Reason <span class="text-danger">*</span></label>
+                <textarea name="decision_note" class="form-control form-control-sm" rows="3" placeholder="e.g. Several sessions missing manual marks for absent students" required></textarea>
+              </div>
+              <div class="modal-footer"><button class="btn btn-danger btn-sm">Reject &amp; Unlock for Lecturer</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    <?php elseif ($currentSubmission['status'] === 'Approved'): ?>
+      <p class="small mb-0"><span class="badge badge-completed"><i class="bi bi-lock-fill me-1"></i>Approved &amp; Locked</span>
+        Approved on <?= e(date('d M Y, h:i A', strtotime((string) $currentSubmission['decided_at']))) ?>.</p>
+    <?php else: ?>
+      <p class="small mb-0"><span class="badge bg-secondary">Rejected</span> <?= e($currentSubmission['decision_note'] ?? '') ?> — the lecturer can correct the register and resubmit.</p>
+    <?php endif; ?>
   </div>
 
   <div class="semas-card p-3">

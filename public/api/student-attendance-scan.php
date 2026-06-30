@@ -15,6 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 csrf_verify();
 
+// Sign Out must happen noticeably closer than the general campus radius
+// (right by the classroom), unlike Sign In which uses the full campus radius.
+const SCAN_OUT_RADIUS_METERS = 40;
+
 $db       = Database::connection();
 $me       = Auth::user();
 $ip       = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
@@ -70,6 +74,10 @@ if ($qrData !== '') {
 
 $moduleId = (int) ($_POST['module_id'] ?? 0);
 $qrToken  = trim($_POST['qr_token'] ?? '');   // legacy static QR path
+
+// Manual check-in (no camera): neither a dynamic QR payload nor a scanned
+// static module QR token was submitted.
+$isManual = ($qrData === '' && $qrToken === '');
 
 // Legacy static module_qr_secret validation
 if ($qrData === '' && $qrToken !== '') {
@@ -152,7 +160,7 @@ if ($forcedSessId !== null) {
     if ($todaySession) {
         $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Kigali'));
         $afterEnd = $now->getTimestamp() - $endDt->getTimestamp();
-        $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 600);
+        $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 900);
     }
 
     if (!$window && !$allowSignOut) {
@@ -235,7 +243,11 @@ $hasRealSignIn = (bool) $realSignInRow->fetch();
 $statusVal = ClassAttendance::statusFor($session['start_time']);
 
 if (!$hasRealSignIn) {
-    // Attempting Sign In
+    // Attempting Sign In — must always be a QR scan, manual check-in is not allowed.
+    if ($isManual) {
+        echo json_encode(['ok' => false, 'message' => 'Sign In requires scanning the QR code. Manual check-in is only available for Sign Out, near the end of the session.']);
+        exit;
+    }
     if ($statusVal === 'Absent') {
         echo json_encode(['ok' => false, 'message' => 'The sign-in window has closed (more than 20 minutes since class started). You have been marked Absent for this session.']);
         exit;
@@ -244,12 +256,35 @@ if (!$hasRealSignIn) {
     $status = $statusVal;
 } else {
     // Student already signed in — this must be a Sign Out
-    if (!$allowSignOut && $window) {
-        echo json_encode(['ok' => false, 'message' => 'Sign-out is only available within 10 minutes after the session ends. Your sign-in has been recorded.']);
+    if ($isManual) {
+        // Manual sign-out is only allowed in the 40-to-20-minute window
+        // before the session ends (QR scanning may be congested as
+        // everyone rushes to leave).
+        $sessEndDt    = new DateTime((string) $session['end_time'], new DateTimeZone('Africa/Kigali'));
+        $minutesToEnd = ($sessEndDt->getTimestamp() - $now->getTimestamp()) / 60;
+        if ($minutesToEnd > 40 || $minutesToEnd < 20) {
+            echo json_encode(['ok' => false, 'message' => 'Manual sign-out is only available between 20 and 40 minutes before the session ends. Please scan the QR code instead.']);
+            exit;
+        }
+    } elseif (!$allowSignOut && $window) {
+        echo json_encode(['ok' => false, 'message' => 'Sign-out is only available within 15 minutes after the session ends. Your sign-in has been recorded.']);
         exit;
     }
     $type   = 'Sign Out';
     $status = 'Present';
+
+    // Sign Out requires being noticeably closer than the general campus
+    // radius — right by the classroom/QR, not just anywhere on campus.
+    $scanOutGps = GpsService::withinCampus($lat, $lng, null, null, SCAN_OUT_RADIUS_METERS);
+    if (!$scanOutGps['passed']) {
+        AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_DENIED_GPS_SCANOUT', 'class_sessions', (int) $session['session_id'],
+            "distance={$scanOutGps['distance_meters']}m radius={$scanOutGps['radius_meters']}m");
+        echo json_encode([
+            'ok'      => false,
+            'message' => "Sign-out requires you to be closer to the classroom — you appear to be {$scanOutGps['distance_meters']}m away (allowed: {$scanOutGps['radius_meters']}m). Move closer and try again.",
+        ]);
+        exit;
+    }
 }
 
 // ── IP deduplication ─────────────────────────────────────────────────────
@@ -299,8 +334,8 @@ try {
     } else {
         $db->prepare(
             "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, checkin_time, latitude, longitude, distance_meters, gps_passed, device_id)
-             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip, NOW(), :lat, :lng, :dist, :pass, :dev)"
-        )->execute($gpsParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip]);
+             VALUES (:s, :u, 'Sign Out', 'Present', :vm, :ip, NOW(), :lat, :lng, :dist, :pass, :dev)"
+        )->execute($gpsParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip, 'vm' => $isManual ? 'Manual' : 'QR']);
     }
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {

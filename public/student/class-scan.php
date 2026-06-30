@@ -141,10 +141,10 @@ foreach ($enrolledModules as $m) {
         <p class="text-muted small" id="scanInstruction">Point your camera at the QR code posted in your classroom.</p>
         <div id="reader" style="width:100%;"></div>
         <div id="scanMsg" class="mt-2"></div>
-        <!-- Manual checkin (for students who can't use camera) -->
+        <!-- Manual sign-out (Sign In always requires scanning the QR code) -->
         <hr>
-        <p class="text-muted small mb-1">No camera? Use manual check-in:</p>
-        <button id="manualCheckinBtn" class="btn btn-outline-dark btn-sm w-100">Check In Without QR Scan</button>
+        <p class="text-muted small mb-1">Already signed in? You can sign out manually, 20–40 minutes before the session ends (no need to fight the QR queue):</p>
+        <button id="manualCheckinBtn" class="btn btn-outline-dark btn-sm w-100">Manual Sign Out (No QR)</button>
       </div>
     </div>
   </div>

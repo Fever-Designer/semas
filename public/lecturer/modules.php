@@ -30,27 +30,6 @@ $modules->execute(['lec' => $lecturer['lecturer_id']]);
 $modules = $modules->fetchAll();
 $ongoing   = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Ongoing'; }));
 
-$activeWindow = ClassAttendance::currentWindow();
-
-function lec_module_matches_window(array $module, ?array $window): bool
-{
-    if (!$window) return true;
-    if (!$module['session_type']) return true;
-    if ($module['session_type'] === 'Day')     return $window['name'] === 'Day';
-    if ($module['session_type'] === 'Evening') return $window['name'] === 'Evening';
-    if ($module['session_type'] === 'Weekend') {
-        $slot = $module['weekend_slot'] ?? '';
-        if ($slot === 'Morning')   return in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
-        if ($slot === 'Afternoon') return in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
-        return in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
-    }
-    return true;
-}
-
-$ongoingFiltered = $activeWindow
-  ? array_values(array_filter($ongoing, function ($m) use ($activeWindow) { return lec_module_matches_window($m, $activeWindow); }))
-  : $ongoing;
-
 // Today's CAT/Exam schedules where this lecturer is invigilator — keyed by module_id.
 $todaySchedules = [];
 $todayStmt = $db->prepare(
@@ -124,15 +103,10 @@ function module_card(array $m, ?array $todaySchedule = null): void {
 <h4 class="display-font mb-1">My Modules</h4>
 
 <h6 class="display-font mb-2">Ongoing Modules</h6>
-<?php if ($activeWindow && count($ongoingFiltered) < count($ongoing)): ?>
-  <p class="text-muted small mb-2">Showing modules for current session: <strong><?= e(ClassAttendance::describeWindow($activeWindow)) ?></strong></p>
-<?php endif; ?>
 <div class="row g-3 mb-4">
-  <?php foreach ($ongoingFiltered as $m): module_card($m, $todaySchedules[(int) $m['module_id']] ?? null); endforeach; ?>
-  <?php if (!$ongoingFiltered && !$activeWindow): ?>
+  <?php foreach ($ongoing as $m): module_card($m, $todaySchedules[(int) $m['module_id']] ?? null); endforeach; ?>
+  <?php if (!$ongoing): ?>
     <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No ongoing modules assigned to you yet.</div></div>
-  <?php elseif (!$ongoingFiltered && $activeWindow): ?>
-    <div class="col-12"><div class="semas-card p-4 text-center text-muted small">No modules assigned to you for the current <?= e(ClassAttendance::describeWindow($activeWindow)) ?> session.</div></div>
   <?php endif; ?>
 </div>
 

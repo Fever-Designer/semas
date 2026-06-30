@@ -123,6 +123,10 @@ if ($action === 'sign_in') {
     // Verify enrolled + eligible
     $eligCheck = cat_verify_student($db, $schedule, $studentUserId);
     if (!$eligCheck['ok']) { echo json_encode($eligCheck); exit; }
+    if (!$eligCheck['eligible']) {
+        echo json_encode(['ok' => false, 'message' => $eligCheck['student']['full_name'] . ' is not eligible for this ' . $schedule['exam_type'] . ' (' . $eligCheck['elig_status'] . ') and cannot be signed in.']);
+        exit;
+    }
 
     // Block if already signed in
     $existing = $db->prepare("SELECT cat_attendance_id FROM cat_exam_attendance_logs WHERE schedule_id = :s AND user_id = :u AND attendance_type = 'Sign In'");

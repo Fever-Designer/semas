@@ -58,14 +58,40 @@ if ($action === 'open_session') {
         exit;
     }
 
-    $window     = ClassAttendance::currentWindow();
-    $today      = date('Y-m-d');
-    $slot       = $module['weekend_slot'] ?? '';
-    $winMap     = [
-        'Day' => 'Day', 'Evening' => 'Evening',
-        'Weekend' => ($slot === 'Afternoon' ? 'WeekendAfternoon' : 'WeekendMorning'),
-    ];
-    $windowName = $window ? $window['name'] : ($winMap[$module['session_type']] ?? 'Day');
+    $window = ClassAttendance::currentWindow();
+    $today  = date('Y-m-d');
+    $slot   = $module['weekend_slot'] ?? '';
+    $st     = $module['session_type'] ?? '';
+
+    // The QR "Sign" screen only goes live during the module's actual scan
+    // window — lecturers can manage Announcements/Assignments/Attendance
+    // records anytime, but students must not be able to scan outside the
+    // scheduled session.
+    $matchesWindow = false;
+    if ($window) {
+        if (!$st) {
+            $matchesWindow = true;
+        } elseif ($st === 'Day' && $window['name'] === 'Day') {
+            $matchesWindow = true;
+        } elseif ($st === 'Evening' && $window['name'] === 'Evening') {
+            $matchesWindow = true;
+        } elseif ($st === 'Weekend') {
+            if ($slot === 'Morning')        $matchesWindow = in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+            elseif ($slot === 'Afternoon')  $matchesWindow = in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+            else                            $matchesWindow = in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+        }
+    }
+    if (!$matchesWindow) {
+        echo json_encode([
+            'ok'      => false,
+            'message' => $window
+                ? 'This module\'s session does not match the currently active window (' . ClassAttendance::describeWindow($window) . ').'
+                : 'There is no active scan window right now. The QR sign-in screen is only available during the scheduled session.',
+        ]);
+        exit;
+    }
+
+    $windowName = $window['name'];
 
     $findStmt = $db->prepare(
         "SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = :d AND window_name = :win LIMIT 1"
