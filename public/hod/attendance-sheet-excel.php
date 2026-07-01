@@ -6,6 +6,7 @@ Auth::requireRole(['HOD', 'Coordinator']);
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 $db            = Database::connection();
 $me            = Auth::user();
@@ -33,10 +34,15 @@ if (!$module) {
 $students   = AttendanceSheet::students($db, $moduleId);
 $classDates = AttendanceSheet::expectedClassDates($module);
 $sessLabel  = AttendanceSheet::sessionLabel($module);
+$effectiveEnd = empty($classDates) ? date('Y-m-d') : end($classDates);
+reset($classDates);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('Attendance Sheet');
+$sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_LANDSCAPE);
+$sheet->getPageSetup()->setFitToWidth(1);
+$sheet->getPageSetup()->setFitToHeight(0);
 
 $sheet->setCellValue('A1', 'MODULE NAME:');
 $sheet->setCellValue('B1', $module['module_title']);
@@ -45,8 +51,8 @@ $sheet->setCellValue('E1', $module['start_date'] ? date('d M Y', strtotime($modu
 
 $sheet->setCellValue('A2', 'SESSION:');
 $sheet->setCellValue('B2', $sessLabel);
-$sheet->setCellValue('D2', 'END DATE:');
-$sheet->setCellValue('E2', $module['end_date'] ? date('d M Y', strtotime($module['end_date'])) : '');
+$sheet->setCellValue('D2', 'PRINT RANGE:');
+$sheet->setCellValue('E2', ($module['start_date'] ? date('d M Y', strtotime($module['start_date'])) : '') . ' TO ' . date('d M Y', strtotime($effectiveEnd)));
 
 $sheet->setCellValue('A3', 'LECTURER:');
 $sheet->setCellValue('B3', $module['lecturer_name'] ?? '');
@@ -86,6 +92,9 @@ for ($extra = 0; $extra < 5; $extra++) {
     $row++;
 }
 
+for ($col = 1; $col <= $lastCol; $col++) {
+    $sheet->getColumnDimensionByColumn($col)->setAutoSize(true);
+}
 foreach (range('A', 'D') as $col) {
     $sheet->getColumnDimension($col)->setAutoSize(true);
 }

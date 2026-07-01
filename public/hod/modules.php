@@ -164,15 +164,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'enroll_student') {
         $modId  = (int) $_POST['module_id'];
         $regNum = trim($_POST['search_reg_number'] ?? '');
+        $exceptionType = trim($_POST['exception_type'] ?? '');
         $stuStmt = $db->prepare("SELECT u.user_id, u.full_name FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' AND u.reg_number=:rn AND u.status='Active'");
         $stuStmt->execute(['rn' => $regNum]);
         $stu = $stuStmt->fetch();
         if (!$stu) {
             flash('error', "No active student found with reg number: {$regNum}");
         } else {
+            $completedStmt = $db->prepare(
+                "SELECT cm.module_title
+                 FROM modules target
+                 JOIN modules cm ON cm.module_title = target.module_title AND cm.status = 'Completed'
+                 JOIN module_enrollments ce ON ce.module_id = cm.module_id AND ce.user_id = :uid
+                 WHERE target.module_id = :mid
+                 LIMIT 1"
+            );
+            $completedStmt->execute(['uid' => $stu['user_id'], 'mid' => $modId]);
+            $completedTitle = $completedStmt->fetchColumn();
+            if ($completedTitle && !in_array($exceptionType, ['Retake', 'Special'], true)) {
+                flash('error', $stu['full_name'] . ' already completed "' . $completedTitle . '". Enrollment is allowed only as Retake or Special case.');
+                redirect('/hod/modules.php');
+            }
             try {
                 $db->prepare('INSERT INTO module_enrollments (module_id, user_id) VALUES (:m,:u)')->execute(['m' => $modId, 'u' => $stu['user_id']]);
-                flash('success', $stu['full_name'] . ' enrolled successfully.');
+                $reason = $exceptionType ? " ({$exceptionType})" : '';
+                AuditLog::record(Auth::id(), 'MODULE_ENROLL' . ($exceptionType ? '_' . strtoupper($exceptionType) : ''), 'modules', $modId, "user_id={$stu['user_id']}");
+                flash('success', $stu['full_name'] . ' enrolled successfully' . $reason . '.');
             } catch (PDOException $e) {
                 flash('error', $e->getCode() === '23000' ? 'Student already enrolled.' : 'Enrollment failed.');
             }
@@ -183,6 +200,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'de_register') {
         $modId  = (int) $_POST['module_id'];
         $userId = (int) $_POST['user_id'];
+        $statusStmt = $db->prepare('SELECT status FROM modules WHERE module_id = :mid');
+        $statusStmt->execute(['mid' => $modId]);
+        if ($statusStmt->fetchColumn() === 'Completed') {
+            flash('error', 'Completed module enrollments cannot be removed.');
+            redirect('/hod/modules.php');
+        }
         $db->prepare('DELETE FROM module_enrollments WHERE module_id=:m AND user_id=:u')
            ->execute(['m' => $modId, 'u' => $userId]);
         AuditLog::record(Auth::id(), 'MODULE_UNENROLL', 'modules', $modId, "user_id=$userId");
@@ -365,10 +388,18 @@ require __DIR__ . '/../partials/layout_top.php';
                 <div class="modal-body">
                   <div id="enrollCard-<?= $mId ?>" class="d-flex align-items-center gap-3 p-2 border rounded mb-2"></div>
                   <p class="small text-muted mb-0">Enroll this student in <strong><?= e($m['module_title']) ?></strong>?</p>
+                  <div id="enrollExceptionWrap-<?= $mId ?>" class="alert alert-warning small mt-2 mb-0" style="display:none;">
+                    This student already completed this module. Choose why this enrollment is allowed.
+                    <select name="exception_type" form="enrollForm-<?= $mId ?>" id="enrollException-<?= $mId ?>" class="form-select form-select-sm mt-2">
+                      <option value="">Select reason</option>
+                      <option value="Retake">Retake</option>
+                      <option value="Special">Special case</option>
+                    </select>
+                  </div>
                 </div>
                 <div class="modal-footer">
                   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetEnroll(<?= $mId ?>)"><i class="bi bi-arrow-left me-1"></i> Back</button>
-                  <form method="POST" class="d-inline">
+                  <form method="POST" class="d-inline" id="enrollForm-<?= $mId ?>">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="enroll_student">
                     <input type="hidden" name="module_id" value="<?= $mId ?>">
@@ -834,6 +865,13 @@ function lookupStudent(modId) {
             } else {
                 document.getElementById('enrollCard-' + modId).innerHTML = cardHtml;
                 document.getElementById('enrollConfirmReg-' + modId).value = s.reg_number;
+                var exceptionWrap = document.getElementById('enrollExceptionWrap-' + modId);
+                var exceptionSelect = document.getElementById('enrollException-' + modId);
+                if (exceptionWrap && exceptionSelect) {
+                    exceptionWrap.style.display = data.completed_same_title ? '' : 'none';
+                    exceptionSelect.required = !!data.completed_same_title;
+                    if (!data.completed_same_title) exceptionSelect.value = '';
+                }
                 document.getElementById('enrollPreview-' + modId).style.display = '';
             }
         })
@@ -845,6 +883,13 @@ function resetEnroll(modId) {
     document.getElementById('enrollPreview-' + modId).style.display = 'none';
     document.getElementById('enrollAlready-' + modId).style.display = 'none';
     document.getElementById('enrollError-' + modId).style.display = 'none';
+    var exceptionWrap = document.getElementById('enrollExceptionWrap-' + modId);
+    var exceptionSelect = document.getElementById('enrollException-' + modId);
+    if (exceptionWrap && exceptionSelect) {
+        exceptionWrap.style.display = 'none';
+        exceptionSelect.required = false;
+        exceptionSelect.value = '';
+    }
 }
 
 // Allow pressing Enter in reg number field to trigger search

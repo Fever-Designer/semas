@@ -12,7 +12,7 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Scan / Mark Attendance</h4>
 <p class="text-muted small mb-4">
-  Method 2: scan a student's personal QR code. Method 3: search manually by name or registration number.
+  Point your camera at the student ID card barcode or QR code, then check the card before confirming attendance.
   Either way, nothing is saved until you confirm the preview below.
 </p>
 
@@ -27,9 +27,11 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="row g-3">
   <div class="col-md-6">
     <div class="semas-card p-3">
-      <h6 class="display-font mb-2"><i class="bi bi-qr-code-scan me-1"></i> Method 2: Scan Student QR</h6>
+      <h6 class="display-font mb-2"><i class="bi bi-qr-code-scan me-1"></i> Method 2: Check Student Card</h6>
+      <p class="text-muted small mb-2">Keep the card in view until the student preview appears.</p>
       <div id="reader" style="width:100%;"></div>
-      <button id="startScanBtn" class="btn btn-sm btn-semas-gold mt-2">Start Camera</button>
+      <button id="startScanBtn" class="btn btn-sm btn-semas-gold mt-2"><i class="bi bi-camera me-1"></i> Check Card</button>
+      <div id="scanHint" class="text-muted small mt-2" style="display:none;">Scanning... keep the card in view.</div>
     </div>
   </div>
   <div class="col-md-6">
@@ -103,11 +105,23 @@ function showPreview(data, method) {
 document.getElementById('startScanBtn').addEventListener('click', function () {
   const eventId = getEventId();
   if (!eventId) return;
+  document.getElementById('scanHint').style.display = '';
+  this.disabled = true;
+  this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Checking...';
   html5QrCode = new Html5Qrcode("reader");
   html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 240 }, function (decodedText) {
-    html5QrCode.stop();
+    html5QrCode.stop().finally(function () {
+      document.getElementById('startScanBtn').disabled = false;
+      document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Check Card';
+      document.getElementById('scanHint').style.display = 'none';
+    });
     fetch(APP_URL + '/api/admin-scan-preview.php?mode=qr&event_id=' + eventId + '&token=' + encodeURIComponent(decodedText))
       .then(r => r.json()).then(data => showPreview(data, 'qr'));
+  }).catch(function () {
+    document.getElementById('startScanBtn').disabled = false;
+    document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Check Card';
+    document.getElementById('scanHint').style.display = 'none';
+    document.getElementById('resultMsg').innerHTML = '<div class="alert alert-danger small">Camera not available. Allow camera permission and try again.</div>';
   });
 });
 

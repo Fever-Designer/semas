@@ -37,9 +37,18 @@ function eligibility_badge(?array $row): string
 {
     if (!$row) return '<span class="badge bg-secondary">Not generated yet</span>';
     if ($row['hod_decision'] === 'Pending') return '<span class="badge badge-urgent">Pending HOD review</span>';
+    if (!empty($row['requires_review'])) return '<span class="badge badge-urgent">Requires approval</span>';
     return $row['final_decision'] === 'Allowed'
         ? '<span class="badge badge-completed">Allowed</span>'
         : '<span class="badge badge-cancelled">Not Allowed</span>';
+}
+
+function eligibility_summary(?array $row): string
+{
+    if (!$row) return '';
+    $pct = isset($row['attendance_percent']) ? number_format((float) $row['attendance_percent'], 1) . '%' : '';
+    $classes = (int) ($row['total_sessions'] ?? 0);
+    return $pct ? '<div class="text-muted small mt-1">Attendance: <strong>' . e($pct) . '</strong> / Classes: ' . $classes . '</div>' : '';
 }
 
 function cat_attendance_status(PDO $db, int $moduleId, int $userId, string $examType): ?array
@@ -112,6 +121,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <?= eligibility_badge($cat) ?>
           </div>
           <p class="text-muted small mb-2">Date: <?= e($m['cat_date']) ?></p>
+          <?= eligibility_summary($cat) ?>
           <div class="d-flex flex-wrap gap-2">
             <?php if ($cat && $cat['hod_decision'] !== 'Pending' && $cat['final_decision'] === 'Allowed' && (!$catAtt || !$catAtt['signed_out'])): ?>
               <a href="<?= APP_URL ?>/student/slip-print.php?module_id=<?= (int) $m['module_id'] ?>&type=CAT"
@@ -140,6 +150,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <?= eligibility_badge($exam) ?>
           </div>
           <p class="text-muted small mb-2">Date: <?= e($m['exam_date']) ?></p>
+          <?= eligibility_summary($exam) ?>
           <div class="d-flex flex-wrap gap-2">
             <?php if ($exam && $exam['hod_decision'] !== 'Pending' && $exam['final_decision'] === 'Allowed' && (!$examAtt || !$examAtt['signed_out'])): ?>
               <a href="<?= APP_URL ?>/student/slip-print.php?module_id=<?= (int) $m['module_id'] ?>&type=Exam"

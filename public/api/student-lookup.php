@@ -44,15 +44,28 @@ $photoUrl = $student['photo_path']
     : 'https://ui-avatars.com/api/?name=' . urlencode($student['full_name']) . '&background=1E2A52&color=fff&size=80';
 
 $enrolled = false;
+$completedSameTitle = false;
 if ($moduleId && isset($student['user_id'])) {
     $enrollStmt = $db->prepare('SELECT 1 FROM module_enrollments WHERE module_id=:mid AND user_id=:uid');
     $enrollStmt->execute(['mid' => $moduleId, 'uid' => $student['user_id']]);
     $enrolled = (bool) $enrollStmt->fetchColumn();
+
+    $completedStmt = $db->prepare(
+        "SELECT 1
+         FROM modules target
+         JOIN modules cm ON cm.module_title = target.module_title AND cm.status = 'Completed'
+         JOIN module_enrollments ce ON ce.module_id = cm.module_id AND ce.user_id = :uid
+         WHERE target.module_id = :mid
+         LIMIT 1"
+    );
+    $completedStmt->execute(['mid' => $moduleId, 'uid' => $student['user_id']]);
+    $completedSameTitle = (bool) $completedStmt->fetchColumn();
 }
 
 echo json_encode([
     'ok'       => true,
     'enrolled' => $enrolled,
+    'completed_same_title' => $completedSameTitle,
     'student'  => [
         'user_id'         => (int) $student['user_id'],
         'full_name'       => $student['full_name'],

@@ -22,6 +22,28 @@ function detectIntakeFromRegNumber(string $regNumber): ?string
     return detectIntakeCode($regNumber);
 }
 
+function normalizeRegistrarPhone(?string $phone): ?string
+{
+    $digits = preg_replace('/\D+/', '', (string) $phone);
+    if ($digits === '') {
+        return null;
+    }
+    if (strpos($digits, '250') === 0 && strlen($digits) === 12) {
+        $digits = '0' . substr($digits, 3);
+    }
+    return $digits;
+}
+
+function validateRegistrarStudentContact(string $email, ?string $phone, array &$errors): void
+{
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Please enter a valid email address.';
+    }
+    if ($phone !== null && !preg_match('/^\d{10}$/', $phone)) {
+        $errors[] = 'Phone number must be exactly 10 digits with no country code.';
+    }
+}
+
 // One-time migration: upgrade old 3-char intake codes (JAN/MAY/SEPT) to year-coded (JAN24/MAY24/SEPT24)
 (function () use ($db): void {
     $rows = $db->query(
@@ -49,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $regNumber  = trim($_POST['reg_number'] ?? '');
         $fullName   = trim($_POST['full_name'] ?? '');
         $email      = trim($_POST['email'] ?? '');
-        $phone      = trim($_POST['phone_number'] ?? '') ?: null;
+        $phone      = normalizeRegistrarPhone($_POST['phone_number'] ?? '');
         $deptId     = (int) ($_POST['department_id'] ?? 0) ?: null;
         $sessionType = trim($_POST['session_type'] ?? '') ?: null;
         $yearStudy  = (int) ($_POST['year_of_study'] ?? 0) ?: null;
@@ -59,6 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$regNumber || !$fullName || !$email) {
             flash('error', 'Registration number, full name and email are required.');
+            redirect('/registrar/students.php');
+        }
+        $contactErrors = [];
+        validateRegistrarStudentContact($email, $phone, $contactErrors);
+        if ($contactErrors) {
+            flash('error', implode(' ', $contactErrors));
             redirect('/registrar/students.php');
         }
 
@@ -220,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $regNum   = trim($row['reg_number'] ?? $row['RegNumber'] ?? $row['Reg Number'] ?? $row['REG_NUMBER'] ?? '');
             $name     = trim($row['full_name']  ?? $row['FullName']  ?? $row['Full Name']  ?? $row['NAME'] ?? '');
             $email    = trim($row['email']       ?? $row['Email']     ?? $row['EMAIL'] ?? '');
-            $phone    = trim($row['phone']       ?? $row['Phone'] ?? $row['phone_number'] ?? '') ?: null;
+            $phone    = normalizeRegistrarPhone($row['phone'] ?? $row['Phone'] ?? $row['phone_number'] ?? '');
             $dept     = trim($row['department_code'] ?? $row['DeptCode'] ?? $row['dept_code'] ?? '') ?: null;
             $session  = trim($row['session_type'] ?? $row['Session'] ?? '') ?: null;
             $intake   = trim($row['intake'] ?? $row['Intake'] ?? '') ?: null;
@@ -231,6 +259,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$regNum || !$name || !$email) {
                 $failed++;
                 $failedRows[] = "Row " . ($idx + 2) . ": Missing reg_number, full_name, or email.";
+                continue;
+            }
+            $contactErrors = [];
+            validateRegistrarStudentContact($email, $phone, $contactErrors);
+            if ($contactErrors) {
+                $failed++;
+                $failedRows[] = "Row " . ($idx + 2) . ": " . implode(' ', $contactErrors);
                 continue;
             }
 
@@ -543,7 +578,8 @@ require __DIR__ . '/../partials/layout_top.php';
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Phone Number</label>
-              <input type="tel" name="phone_number" id="fieldPhone" class="form-control" placeholder="+250700000000">
+              <input type="tel" name="phone_number" id="fieldPhone" class="form-control" placeholder="0780000000" inputmode="numeric" pattern="\d{10}" maxlength="10">
+              <div class="form-text">Use 10 local digits only. Do not include country code.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Department</label>
@@ -655,6 +691,13 @@ document.getElementById('addStudentModal').addEventListener('hide.bs.modal', fun
     document.getElementById('fieldRegNumber').readOnly = false;
     document.getElementById('studentSubmitBtn').disabled = false;
     document.getElementById('studentSubmitBtn').innerHTML = '<i class="bi bi-floppy-fill me-1"></i> Save Student';
+});
+document.getElementById('fieldPhone').addEventListener('input', function() {
+    var digits = this.value.replace(/\D+/g, '');
+    if (digits.startsWith('250') && digits.length >= 12) {
+        digits = '0' + digits.slice(3);
+    }
+    this.value = digits.slice(0, 10);
 });
 </script>
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

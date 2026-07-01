@@ -67,17 +67,20 @@ $cipher  = openssl_encrypt($payload, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv)
 $hmac    = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
 $b64u    = function (string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); };
 $verifyToken = $b64u($iv) . '.' . $b64u($cipher) . '.' . $b64u($hmac);
-$verifyUrl   = APP_URL . '/public/verify-slip.php?t=' . $verifyToken;
+$verifyUrl   = APP_URL . '/verify-slip.php?t=' . $verifyToken;
 $qrPayload   = json_encode([
     'type' => 'semas_slip',
     'slip' => 'attendance',
+    'verify_url' => $verifyUrl,
     'schedule_id' => $scheduleId,
     'module_title' => $schedule['module_title'],
     'student_name' => $me['full_name'],
+    'reg_number' => $me['reg_number'] ?? '',
     'exam_type' => $schedule['exam_type'],
     'exam_date' => $dayOfWeek . ', ' . $examDate,
     'room' => $schedule['room'],
     'time' => $timeRange,
+    'status' => $soutRecord['status'] ?? 'Present',
     'issued_at' => $issuedAt,
     'sig' => $b64u(hash_hmac('sha256', json_encode([
         'schedule_id' => $scheduleId,
@@ -88,6 +91,20 @@ $qrPayload   = json_encode([
         'time' => $timeRange,
     ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
 ]);
+$qrSig = substr($b64u(hash_hmac('sha256', $scheduleId . '|' . $me['user_id'] . '|' . $sinTime . '|' . $soutTime, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 10);
+$qrPayload = implode('|', [
+    'SEMAS ATT',
+    (string) $schedule['exam_type'],
+    date('dMy', strtotime($schedule['scheduled_date'])),
+    'R:' . substr((string) ($me['reg_number'] ?? ''), 0, 12),
+    'N:' . substr((string) $me['full_name'], 0, 12),
+    'M:' . substr((string) $schedule['module_title'], 0, 12),
+    'RM:' . substr((string) $schedule['room'], 0, 8),
+    'I:' . $sinTime,
+    'O:' . $soutTime,
+    'S:' . $qrSig,
+]);
+$qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -117,13 +134,14 @@ $qrPayload   = json_encode([
   .stamp { margin: 16px 0 0; padding: 10px 14px; background: #ECFDF5; border: 1px solid #6EE7B7; border-radius: 6px; font-size: 13px; color: #065F46; text-align: center; font-weight: bold; letter-spacing: .5px; }
   .stamp.absent { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
 
-  .sig-section { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #ccc; display: flex; align-items: flex-start; gap: 20px; }
+  .sig-section { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #ccc; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
   .sig-photo { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #1E2A52; flex-shrink: 0; }
   .sig-info { flex: 1; font-size: 12px; }
   .sig-info .name { font-weight: bold; font-size: 14px; color: #1E2A52; }
   .sig-line { margin-top: 12px; border-top: 1px solid #333; padding-top: 3px; font-size: 11px; color: #6B7280; }
 
-  .qr-section { margin-top: 16px; text-align: center; }
+  .qr-section { margin-top: 0; text-align: center; flex: 0 0 170px; min-width: 170px; }
+  .qr-section #verifyQr { display: inline-block; padding: 8px; background: #ffffff; border: 1px solid #1E2A52; border-radius: 8px; min-width: 156px; min-height: 156px; }
   .qr-section canvas, .qr-section img { margin: 0 auto; display: block; }
   .qr-section .qr-label { font-size: 10px; color: #9CA3AF; margin-top: 4px; }
 
@@ -156,7 +174,7 @@ $qrPayload   = json_encode([
     .sig-photo { width: 54px; height: 54px; }
     .sig-info .name { font-size: 12px; }
     .sig-info { font-size: 10px; }
-    .qr-section { min-width: 60px; }
+    .qr-section { flex: 0 0 150px; min-width: 150px; }
     .footer { padding: 6px 18px; font-size: 9px; }
   }
 </style>
@@ -204,28 +222,17 @@ $qrPayload   = json_encode([
         <?php endif; ?>
         <div class="sig-line">Digital Signature Verified via SEMAS</div>
       </div>
-      <div class="qr-section" style="min-width:80px;">
-        <div id="verifyQr"></div>
+      <div class="qr-section">
+        <div id="verifyQr"><img src="<?= e($qrImage) ?>" alt="Scan to verify"></div>
         <div class="qr-label">Scan to verify</div>
       </div>
     </div>
   </div>
 
   <div class="footer verification-url">
-    This slip is permanently stored in SEMAS and can be reprinted at any time.
     Verification URL: <?= e($verifyUrl) ?>
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
-<script>
-  const qrText = '<?= e(addslashes($qrPayload)) ?>';
-  new QRCode(document.getElementById('verifyQr'), {
-    text: qrText,
-    width: 120, height: 120,
-    colorDark: '#1E2A52', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.H
-  });
-</script>
 </body>
 </html>

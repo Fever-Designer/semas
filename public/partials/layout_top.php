@@ -63,6 +63,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <?php if (Auth::canAccessTeachingMenu()): ?>
         <div class="nav-section-label">My Teaching</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/modules.php"><i class="bi bi-journal-bookmark-fill"></i> My Modules</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'class-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/cat-exam-attendance.php"><i class="bi bi-pencil-square"></i> CAT / Exam Attendance</a>
         <a class="nav-link" href="<?= APP_URL ?>/lecturer/announcements.php"><i class="bi bi-megaphone-fill"></i> Module Announcements</a>
       <?php endif; ?>

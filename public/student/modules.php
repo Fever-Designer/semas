@@ -46,6 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$module) {
             flash('error', 'Module not available for registration.');
         } else {
+            $completedSameTitle = $db->prepare(
+                "SELECT 1 FROM modules cm
+                 JOIN module_enrollments ce ON ce.module_id = cm.module_id AND ce.user_id = :uid
+                 WHERE cm.status = 'Completed' AND cm.module_title = :title
+                 LIMIT 1"
+            );
+            $completedSameTitle->execute(['uid' => $me['user_id'], 'title' => $module['module_title']]);
+            if ($completedSameTitle->fetchColumn()) {
+                flash('error', 'You already completed "' . $module['module_title'] . '". Contact your HoD if this must be registered as a retake or special case.');
+                redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
+            }
+
             // Block if already has an ongoing module in the same session type
             $conflict = false;
             if ($module['session_type']) {

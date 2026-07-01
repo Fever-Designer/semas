@@ -19,6 +19,31 @@ function attendance_window_for_date(string $sessionDate, ?string $catDate, ?stri
     return null;
 }
 
+function lecturer_module_matches_window(array $module, ?array $window): bool
+{
+    if (!$window) {
+        return false;
+    }
+    $sessionType = $module['session_type'] ?? '';
+    $slot = $module['weekend_slot'] ?? '';
+    if ($sessionType === 'Day') {
+        return $window['name'] === 'Day';
+    }
+    if ($sessionType === 'Evening') {
+        return $window['name'] === 'Evening';
+    }
+    if ($sessionType === 'Weekend') {
+        if ($slot === 'Morning') {
+            return in_array($window['name'], ['WeekendMorning', 'UmugandaMorning'], true);
+        }
+        if ($slot === 'Afternoon') {
+            return in_array($window['name'], ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+        }
+        return in_array($window['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+    }
+    return false;
+}
+
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -98,6 +123,151 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
     }
 
+    if ($action === 'manual_auto_mark') {
+        $regNum = trim($_POST['reg_number'] ?? '');
+        $confirmedUserId = (int) ($_POST['confirmed_user_id'] ?? 0);
+        if (!$moduleId || $regNum === '') {
+            flash('error', 'Registration number is required.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        if (!$confirmedUserId) {
+            flash('error', 'Please search and confirm the student profile before recording attendance.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $modStmt = $db->prepare(
+            "SELECT m.*, lt.user_id AS lecturer_user_id
+             FROM modules m
+             JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
+             WHERE m.module_id = :mid AND m.status = 'Ongoing'"
+        );
+        $modStmt->execute(['mid' => $moduleId]);
+        $modRow = $modStmt->fetch();
+        if (!$modRow || (int) $modRow['lecturer_user_id'] !== (int) $me['user_id']) {
+            flash('error', 'Module not found or not assigned to you.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $window = ClassAttendance::currentWindow();
+        if (!$window) {
+            flash('error', 'Manual attendance is only available during an active class session.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        if (!lecturer_module_matches_window($modRow, $window)) {
+            flash('error', 'This module does not match the active session window.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $stuStmt = $db->prepare(
+            "SELECT u.user_id, u.full_name
+             FROM users u
+             JOIN module_enrollments e ON e.user_id = u.user_id AND e.module_id = :mid
+             WHERE u.user_id = :uid AND u.reg_number = :reg AND u.status = 'Active'"
+        );
+        $stuStmt->execute(['mid' => $moduleId, 'uid' => $confirmedUserId, 'reg' => $regNum]);
+        $student = $stuStmt->fetch();
+        if (!$student) {
+            flash('error', 'The confirmed student profile does not match an active enrolled student.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $find = $db->prepare(
+            'SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win LIMIT 1'
+        );
+        $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+        $session = $find->fetch();
+        if (!$session) {
+            try {
+                $db->prepare(
+                    'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, status, created_by)
+                     VALUES (:mid, CURDATE(), :win, :start, :end, :secret, "Open", :uid)'
+                )->execute([
+                    'mid' => $moduleId,
+                    'win' => $window['name'],
+                    'start' => $window['start']->format('Y-m-d H:i:s'),
+                    'end' => $window['end']->format('Y-m-d H:i:s'),
+                    'secret' => QrService::generateSecret(),
+                    'uid' => $me['user_id'],
+                ]);
+                $newSid = (int) $db->lastInsertId();
+                $db->prepare(
+                    "INSERT IGNORE INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
+                     SELECT :sid, e.user_id, 'Sign In', 'Absent', 'Auto'
+                     FROM module_enrollments e WHERE e.module_id = :mid"
+                )->execute(['sid' => $newSid, 'mid' => $moduleId]);
+            } catch (PDOException $e) {
+                // Session may have been opened by a QR scan at the same moment.
+            }
+            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $session = $find->fetch();
+        }
+
+        if (!$session || $session['status'] !== 'Open') {
+            flash('error', 'No open class session is available for manual attendance.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $uid = (int) $student['user_id'];
+        $alreadyToday = $db->prepare(
+            "SELECT cal.attendance_type, cal.status, cal.verification_method, cal.checkin_time
+             FROM class_attendance_logs cal
+             JOIN class_sessions cs ON cs.session_id = cal.session_id
+             WHERE cs.module_id = :mid
+               AND cs.session_date = CURDATE()
+               AND cal.user_id = :uid
+               AND cal.verification_method <> 'Auto'
+             ORDER BY cal.checkin_time DESC, cal.attendance_id DESC
+             LIMIT 1"
+        );
+        $alreadyToday->execute(['mid' => $moduleId, 'uid' => $uid]);
+        if ($alreadyToday->fetch()) {
+            flash('error', 'Attendance has already been recorded for this student today.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $signedOut = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign Out'");
+        $signedOut->execute(['sid' => $session['session_id'], 'uid' => $uid]);
+        if ($signedOut->fetchColumn()) {
+            flash('error', 'Attendance has already been recorded.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $realSignIn = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method <> 'Auto'");
+        $realSignIn->execute(['sid' => $session['session_id'], 'uid' => $uid]);
+        if ($realSignIn->fetchColumn()) {
+            flash('error', 'Attendance has already been recorded.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $status = ClassAttendance::statusFor((string) $session['start_time']);
+        if ($status === 'Absent') {
+            flash('error', 'The sign-in window has closed. The student remains marked Absent.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        $manualSignInUpdate = $db->prepare(
+            "UPDATE class_attendance_logs
+             SET status = :status, verification_method = 'Manual', confirmed_by = :by, checkin_time = NOW()
+             WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method = 'Auto'"
+        );
+        $manualSignInUpdate->execute(['status' => $status, 'by' => $me['user_id'], 'sid' => $session['session_id'], 'uid' => $uid]);
+        if ($manualSignInUpdate->rowCount() === 0) {
+            $exists = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In'");
+            $exists->execute(['sid' => $session['session_id'], 'uid' => $uid]);
+            if (!$exists->fetchColumn()) {
+                $db->prepare(
+                    "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
+                     VALUES (:sid, :uid, 'Sign In', :status, 'Manual', :by, NOW())"
+                )->execute(['sid' => $session['session_id'], 'uid' => $uid, 'status' => $status, 'by' => $me['user_id']]);
+            }
+        }
+
+        AuditLog::record(Auth::id(), 'MANUAL_SIGNIN_ATTENDANCE', 'class_sessions', (int) $session['session_id'], "user={$uid};status={$status}");
+        flash('success', $student['full_name'] . ' signed in manually and marked ' . $status . '.');
+        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+    }
+
     if ($action === 'create_session') {
         $sessDate   = trim($_POST['session_date'] ?? '');
         $windowName = trim($_POST['window_name']  ?? '');
@@ -161,7 +331,9 @@ $allModules = $allModules->fetchAll();
 $nowDt        = ClassAttendance::now();
 $window       = ClassAttendance::currentWindow();
 $holidayToday = ClassAttendance::holidayToday();
-$visibleModules = $allModules;
+$visibleModules = array_values(array_filter($allModules, function ($module) use ($window) {
+    return lecturer_module_matches_window($module, $window);
+}));
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 $module   = null;
@@ -193,8 +365,9 @@ if ($module) {
     }
 
     $stuStmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number
+        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number, u.photo_path, d.department_name
          FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
+         LEFT JOIN departments d ON d.department_id = u.department_id
          WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
     );
     $stuStmt->execute(['mid' => $moduleId]);
@@ -225,6 +398,36 @@ if ($module) {
             $attMap[$sid][$uid]['out_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
         }
     }
+}
+
+$manualRoster = [];
+foreach ($students as $stu) {
+    $uid = (int) $stu['user_id'];
+    $already = false;
+    $recordedLabel = '';
+    foreach ($sessions as $s) {
+        if ($s['session_date'] !== $today) {
+            continue;
+        }
+        $entry = $attMap[(int) $s['session_id']][$uid] ?? null;
+        if ($entry && !$entry['is_auto']) {
+            $already = true;
+            $recordedLabel = trim(($entry['in_status'] ?? 'Recorded') . ' ' . ($entry['in_time'] ?? ''));
+            break;
+        }
+    }
+    $manualRoster[] = [
+        'user_id' => $uid,
+        'full_name' => $stu['full_name'],
+        'reg_number' => $stu['reg_number'],
+        'phone_number' => $stu['phone_number'],
+        'department' => $stu['department_name'] ?? '',
+        'photo_url' => !empty($stu['photo_path'])
+            ? APP_URL . '/' . $stu['photo_path']
+            : 'https://ui-avatars.com/api/?name=' . urlencode($stu['full_name']) . '&background=1E2A52&color=fff',
+        'already_recorded' => $already,
+        'recorded_label' => $recordedLabel,
+    ];
 }
 
 function lec_att_status(?array $e, string $date, string $today): string
@@ -324,7 +527,11 @@ require __DIR__ . '/../partials/layout_top.php';
 <!-- Module selector -->
 <div class="semas-card p-3 mb-3">
   <?php if (!$visibleModules): ?>
-    <p class="text-muted small mb-0">No ongoing modules assigned to you yet.</p>
+    <p class="text-muted small mb-0">
+      <?= $window
+          ? 'No assigned module matches the current class session window.'
+          : 'No active class session window right now.' ?>
+    </p>
   <?php else: ?>
   <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
     <label class="form-label small fw-semibold mb-0 text-nowrap">My Module:</label>
@@ -390,9 +597,9 @@ require __DIR__ . '/../partials/layout_top.php';
     <a href="<?= APP_URL ?>/lecturer/attendance-sheet-excel.php?module_id=<?= $moduleId ?>" class="btn btn-sm btn-outline-dark">
       <i class="bi bi-file-earmark-excel me-1"></i> Excel
     </a>
-    <button type="button" class="btn btn-sm btn-outline-dark"
-            data-bs-toggle="modal" data-bs-target="#addSessionModal">
-      <i class="bi bi-calendar-plus me-1"></i> Add Session Date
+    <button type="button" class="btn btn-sm btn-semas-gold"
+            data-bs-toggle="modal" data-bs-target="#manualAttendanceModal">
+      <i class="bi bi-person-check me-1"></i> Manual Attendance
     </button>
   </div>
 </div>
@@ -429,7 +636,7 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 
 <!-- CAT/Exam attendance submission -->
-<?php if ($examSubmissions): ?>
+<?php if (false && $examSubmissions): ?>
 <div class="semas-card p-3 mb-3">
   <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.05em;">CAT / Exam Attendance Submission</p>
   <?php foreach ($examSubmissions as $examType => $row): ?>
@@ -467,8 +674,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-4 text-center text-muted small">No students enrolled yet.</div>
 <?php elseif (!$sessions): ?>
   <div class="semas-card p-4 text-center text-muted small">
-    No sessions recorded yet. Students scan the QR code to open the first session,
-    or use <strong>Add Session Date</strong> above.
+    No sessions recorded yet. Open the live QR session or use <strong>Manual Attendance</strong> during the active class window.
   </div>
 <?php else: ?>
 
@@ -597,6 +803,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php endif; // sessions + students ?>
 
 <!-- Add Session Modal -->
+<?php if (false): ?>
 <div class="modal fade" id="addSessionModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -639,6 +846,54 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
   </div>
 </div>
+<?php endif; ?>
+
+<!-- Manual Attendance Modal -->
+<div class="modal fade" id="manualAttendanceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="manualAttendanceForm">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="manual_auto_mark">
+        <input type="hidden" name="module_id" value="<?= $moduleId ?>">
+        <input type="hidden" name="confirmed_user_id" id="manualConfirmedUserId">
+        <div class="modal-header">
+          <h6 class="modal-title display-font">Manual Attendance</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
+          <div class="input-group">
+            <input name="reg_number" id="manualRegNumber" class="form-control" placeholder="e.g. 2401001192" autocomplete="off" required>
+            <button class="btn btn-outline-dark" type="button" id="manualLookupBtn">
+              <i class="bi bi-search me-1"></i> Search
+            </button>
+          </div>
+          <div id="manualFeedback" class="alert alert-danger small py-2 px-3 mt-2 mb-0" style="display:none;"></div>
+          <div id="manualPreview" class="border rounded p-3 mt-3" style="display:none;">
+            <div class="d-flex gap-3 align-items-start">
+              <img id="manualPhoto" src="" alt=""
+                   onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=Student&background=1E2A52&color=fff';"
+                   style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);flex-shrink:0;">
+              <div class="small">
+                <div class="fw-semibold fs-6" id="manualName"></div>
+                <div class="text-muted" id="manualReg"></div>
+                <div class="text-muted" id="manualDept"></div>
+                <div class="mt-2" id="manualStatus"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-dark btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-semas-gold btn-sm" id="manualConfirmBtn" style="display:none;">
+            <i class="bi bi-person-check me-1"></i> Confirm
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <!-- Manual Mark Modal -->
 <div class="modal fade" id="markModal" tabindex="-1">
@@ -676,12 +931,82 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php endif; // $module ?>
 
 <script>
+const manualRoster = <?= json_encode($manualRoster, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+
 function openMark(sid, uid, mid, name) {
     document.getElementById('markSid').value  = sid;
     document.getElementById('markUid').value  = uid;
     document.getElementById('markName').textContent = name;
     new bootstrap.Modal(document.getElementById('markModal')).show();
 }
+
+function manualSetFeedback(message) {
+    const feedback = document.getElementById('manualFeedback');
+    feedback.textContent = message || '';
+    feedback.style.display = message ? '' : 'none';
+}
+
+function manualResetPreview() {
+    document.getElementById('manualPreview').style.display = 'none';
+    document.getElementById('manualConfirmBtn').style.display = 'none';
+    document.getElementById('manualConfirmedUserId').value = '';
+    manualSetFeedback('');
+}
+
+function manualLookupStudent() {
+    const input = document.getElementById('manualRegNumber');
+    const reg = input.value.trim().toLowerCase();
+    manualResetPreview();
+    if (!reg) {
+        manualSetFeedback('Enter a registration number.');
+        return;
+    }
+    const student = manualRoster.find(function (s) {
+        return String(s.reg_number || '').toLowerCase() === reg;
+    });
+    if (!student) {
+        manualSetFeedback('No active enrolled student found with that registration number.');
+        return;
+    }
+
+    document.getElementById('manualConfirmedUserId').value = student.user_id;
+    document.getElementById('manualPhoto').src = student.photo_url || '';
+    document.getElementById('manualName').textContent = student.full_name || '-';
+    document.getElementById('manualReg').textContent = 'Reg. No: ' + (student.reg_number || '-');
+    document.getElementById('manualDept').textContent = student.department || '';
+    document.getElementById('manualPreview').style.display = '';
+
+    if (student.already_recorded) {
+        document.getElementById('manualStatus').innerHTML =
+            '<span class="badge bg-danger">Already scanned</span>' +
+            (student.recorded_label ? ' <span class="text-muted">' + escapeHtml(student.recorded_label) + '</span>' : '');
+        document.getElementById('manualConfirmBtn').style.display = 'none';
+    } else {
+        document.getElementById('manualStatus').innerHTML = '<span class="badge badge-completed">Ready to confirm</span>';
+        document.getElementById('manualConfirmBtn').style.display = '';
+    }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (ch) {
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[ch];
+    });
+}
+
+document.getElementById('manualLookupBtn')?.addEventListener('click', manualLookupStudent);
+document.getElementById('manualRegNumber')?.addEventListener('input', manualResetPreview);
+document.getElementById('manualRegNumber')?.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        manualLookupStudent();
+    }
+});
+document.getElementById('manualAttendanceForm')?.addEventListener('submit', function (event) {
+    if (!document.getElementById('manualConfirmedUserId').value) {
+        event.preventDefault();
+        manualSetFeedback('Search and confirm the student profile first.');
+    }
+});
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

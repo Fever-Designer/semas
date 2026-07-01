@@ -28,6 +28,7 @@ require_once __DIR__ . '/../includes/Module.php';
 require_once __DIR__ . '/../includes/Eligibility.php';
 require_once __DIR__ . '/../includes/IntakeHelper.php';
 require_once __DIR__ . '/../includes/AttendanceSheet.php';
+require_once __DIR__ . '/../includes/SimpleQr.php';
 
 Auth::start();
 Auth::enforceMustChangePassword();

@@ -33,6 +33,47 @@ if (!$lecturer) {
 
 $lecturerId = (int) $lecturer['lecturer_id'];
 
+function assignmentUploadPath(array $file, bool $required): ?string
+{
+    if (empty($file['name']) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        if ($required) {
+            throw new RuntimeException('Assignment file is required.');
+        }
+        return null;
+    }
+
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Upload failed. Please choose the file again.');
+    }
+    if (($file['size'] ?? 0) > 10 * 1024 * 1024) {
+        throw new RuntimeException('Assignment file must be 10 MB or smaller.');
+    }
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    $allowed = [
+        'application/pdf' => 'pdf',
+        'application/zip' => 'zip',
+        'application/x-zip-compressed' => 'zip'
+    ];
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Only PDF or ZIP assignment files are allowed.');
+    }
+
+    $filename = 'assign' . bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
+    $dest = __DIR__ . '/../uploads/assignments/' . $filename;
+    if (!is_dir(dirname($dest))) {
+        mkdir(dirname($dest), 0755, true);
+    }
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        throw new RuntimeException('Could not save the uploaded assignment file.');
+    }
+
+    return 'uploads/assignments/' . $filename;
+}
+
 /**
  * Get module safely
  */
@@ -79,36 +120,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Assignment instructions are fixed globally by SEMAS and not set per assignment.
         $instructions = '';
-        $attachmentPath = null;
-
-        /**
-         * File Upload
-         */
-        if (!empty($_FILES['attachment']['name']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = finfo_file($finfo, $_FILES['attachment']['tmp_name']);
-            finfo_close($finfo);
-
-            $allowed = [
-                'application/pdf' => 'pdf',
-                'application/zip' => 'zip',
-                'application/x-zip-compressed' => 'zip'
-            ];
-
-            if (isset($allowed[$mime]) && $_FILES['attachment']['size'] <= 10 * 1024 * 1024) {
-
-                $filename = 'assign' . bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
-                $dest = __DIR__ . '/../uploads/assignments/' . $filename;
-
-                if (!is_dir(dirname($dest))) {
-                    mkdir(dirname($dest), 0755, true);
-                }
-
-                if (move_uploaded_file($_FILES['attachment']['tmp_name'], $dest)) {
-                    $attachmentPath = 'uploads/assignments/' . $filename;
-                }
-            }
+        try {
+            $attachmentPath = assignmentUploadPath($_FILES['attachment'] ?? [], true);
+        } catch (RuntimeException $e) {
+            flash('error', $e->getMessage());
+            redirect('/lecturer/assignments.php?module_id=' . $moduleId);
         }
 
         /**
@@ -151,6 +167,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Mailer::dispatch();
 
         flash('success', 'Assignment created successfully. Students have been notified.');
+        redirect('/lecturer/assignments.php?module_id=' . $moduleId);
+    }
+
+    /**
+     * EDIT ASSIGNMENT
+     */
+    if ($action === 'edit') {
+
+        $assignmentId = (int) ($_POST['assignment_id'] ?? 0);
+        $title = trim($_POST['title'] ?? '');
+        $deadline = $_POST['deadline'] ?? '';
+
+        if (!$assignmentId || $title === '' || $deadline === '') {
+            flash('error', 'Title and deadline are required.');
+            redirect('/lecturer/assignments.php?module_id=' . $moduleId);
+        }
+
+        $ownStmt = $db->prepare('SELECT attachment_path FROM assignments WHERE assignment_id = :id AND module_id = :mid');
+        $ownStmt->execute(['id' => $assignmentId, 'mid' => $moduleId]);
+        $existingAssignment = $ownStmt->fetch();
+        if (!$existingAssignment) {
+            flash('error', 'Assignment not found.');
+            redirect('/lecturer/assignments.php?module_id=' . $moduleId);
+        }
+
+        try {
+            $newAttachmentPath = assignmentUploadPath($_FILES['attachment'] ?? [], false);
+        } catch (RuntimeException $e) {
+            flash('error', $e->getMessage());
+            redirect('/lecturer/assignments.php?module_id=' . $moduleId);
+        }
+
+        if ($newAttachmentPath) {
+            $db->prepare(
+                'UPDATE assignments SET title = :title, deadline = :deadline, attachment_path = :att WHERE assignment_id = :id AND module_id = :mid'
+            )->execute([
+                'title' => $title,
+                'deadline' => $deadline,
+                'att' => $newAttachmentPath,
+                'id' => $assignmentId,
+                'mid' => $moduleId,
+            ]);
+        } else {
+            $db->prepare(
+                'UPDATE assignments SET title = :title, deadline = :deadline WHERE assignment_id = :id AND module_id = :mid'
+            )->execute([
+                'title' => $title,
+                'deadline' => $deadline,
+                'id' => $assignmentId,
+                'mid' => $moduleId,
+            ]);
+        }
+
+        AuditLog::record(Auth::id(), 'ASSIGNMENT_EDIT', 'assignments', $assignmentId);
+        flash('success', 'Assignment updated.');
         redirect('/lecturer/assignments.php?module_id=' . $moduleId);
     }
 
@@ -246,11 +317,57 @@ if ($assignmentInstructions === '') {
         • <?= (int) $a['submission_count'] ?> submissions
     </p>
 
-    <a href="<?= APP_URL ?>/lecturer/assignment-submissions.php?assignment_id=<?= (int) $a['assignment_id'] ?>&module_id=<?= $moduleId ?>"
-       class="btn btn-sm btn-outline-dark">
-        <i class="bi bi-folder2-open me-1"></i> View / Download Submissions
-    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= APP_URL ?>/lecturer/assignment-submissions.php?assignment_id=<?= (int) $a['assignment_id'] ?>&module_id=<?= $moduleId ?>"
+           class="btn btn-sm btn-outline-dark">
+            <i class="bi bi-folder2-open me-1"></i> View / Download Submissions
+        </a>
+        <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#editAssignment-<?= (int) $a['assignment_id'] ?>">
+            <i class="bi bi-pencil me-1"></i> Edit
+        </button>
+    </div>
 
+</div>
+
+<div class="modal fade" id="editAssignment-<?= (int) $a['assignment_id'] ?>" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font">Edit Assignment</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="edit">
+        <input type="hidden" name="assignment_id" value="<?= (int) $a['assignment_id'] ?>">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small">Assignment Title</label>
+            <input name="title" class="form-control" required value="<?= e($a['title']) ?>">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Deadline</label>
+            <input name="deadline" type="datetime-local" class="form-control" required value="<?= e(date('Y-m-d\TH:i', strtotime((string) $a['deadline']))) ?>">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Instructions</label>
+            <div class="form-control form-control-light small text-muted" style="min-height:120px;">
+              <?= nl2br(e(trim($defaultAssignmentInstructions))) ?>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Replace Attachment</label>
+            <input name="attachment" type="file" class="form-control" accept=".pdf,.zip">
+            <small class="text-muted">Leave empty to keep the current file. PDF or ZIP up to 10 MB.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-dark btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-semas-gold btn-sm">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <?php endforeach; ?>
@@ -285,8 +402,8 @@ if ($assignmentInstructions === '') {
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label small">Optional Attachment</label>
-            <input name="attachment" type="file" class="form-control" accept=".pdf,.zip">
+            <label class="form-label small">Assignment File <span class="text-danger">*</span></label>
+            <input name="attachment" type="file" class="form-control" accept=".pdf,.zip" required>
             <small class="text-muted">Upload PDF or ZIP up to 10 MB.</small>
           </div>
         </div>

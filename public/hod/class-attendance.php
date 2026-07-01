@@ -104,6 +104,25 @@ if ($isCoordinator) {
 $modSql .= " ORDER BY m.module_title";
 $allModules = $db->query($modSql)->fetchAll();
 
+$currentWindow = ClassAttendance::currentWindow();
+$defaultOverallSession = '';
+if ($isCoordinator) {
+    $defaultOverallSession = 'Weekend';
+} elseif ($currentWindow) {
+    if (in_array($currentWindow['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true)) {
+        $defaultOverallSession = 'Weekend';
+    } elseif (in_array($currentWindow['name'], ['Day', 'Evening'], true)) {
+        $defaultOverallSession = $currentWindow['name'];
+    }
+}
+$overallSessionFilter = $_GET['session'] ?? $defaultOverallSession;
+if (!in_array($overallSessionFilter, ['', 'Day', 'Evening', 'Weekend'], true)) {
+    $overallSessionFilter = $defaultOverallSession;
+}
+if ($isCoordinator) {
+    $overallSessionFilter = 'Weekend';
+}
+
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 $module   = null;
 foreach ($allModules as $am) {
@@ -178,7 +197,7 @@ function att_status(?array $e, string $date, string $today): string
 }
 
 // ── Overall Attendance (cross-module, special-case detection) ──────────────
-$viewMode       = ($_GET['view'] ?? 'register') === 'overall' ? 'overall' : 'register';
+$viewMode       = 'overall';
 $detailModuleId = (int) ($_GET['detail_module'] ?? 0);
 $overallRows    = [];
 
@@ -188,18 +207,43 @@ if ($viewMode === 'overall') {
         $allHolidays[$h['holiday_date']] = true;
     }
 
-    foreach ($allModules as $am) {
+    $overallModules = array_values(array_filter($allModules, function ($am) use ($overallSessionFilter) {
+        return $overallSessionFilter === '' || ($am['session_type'] ?? '') === $overallSessionFilter;
+    }));
+
+    $moduleSummary = [];
+    foreach ($overallModules as $am) {
         $amId         = (int) $am['module_id'];
         $excludeDates = array_values(array_filter([$am['cat_date'], $am['exam_date']]));
+
+        $studentCountStmt = $db->prepare('SELECT COUNT(*) FROM module_enrollments WHERE module_id = :mid');
+        $studentCountStmt->execute(['mid' => $amId]);
+        $moduleSummary[$amId] = [
+            'module_id' => $amId,
+            'module' => $am['module_title'],
+            'session_type' => $am['session_type'] ?? '',
+            'weekend_slot' => $am['weekend_slot'] ?? '',
+            'lecturer' => $am['lecturer_name'] ?? 'TBA',
+            'room' => $am['room_name'] ?? '',
+            'students' => (int) $studentCountStmt->fetchColumn(),
+            'sessions' => 0,
+            'p' => 0,
+            'l' => 0,
+            'a' => 0,
+            'total' => 0,
+            'special' => 0,
+            'critical' => 0,
+            'pct' => null,
+        ];
 
         $sessStmt2 = $db->prepare(
             "SELECT session_id, session_date FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
         );
         $sessStmt2->execute(['mid' => $amId]);
-        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates) {
-            return !in_array($s['session_date'], $excludeDates, true);
+        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today) {
+            return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
         }));
-        if (!$amSessions) continue;
+        $moduleSummary[$amId]['sessions'] = count($amSessions);
 
         $stuStmt2 = $db->prepare(
             "SELECT u.user_id, u.full_name, u.reg_number
@@ -208,7 +252,7 @@ if ($viewMode === 'overall') {
         );
         $stuStmt2->execute(['mid' => $amId]);
         $amStudents = $stuStmt2->fetchAll();
-        if (!$amStudents) continue;
+        if (!$amSessions || !$amStudents) continue;
 
         $logStmt2 = $db->prepare(
             "SELECT cal.user_id, cal.session_id, cal.attendance_type, cal.status, cal.verification_method
@@ -258,13 +302,8 @@ if ($viewMode === 'overall') {
     }
 
     // Group into per-module summaries — HoD/Coordinator view modules, not individual students.
-    $moduleSummary = [];
     foreach ($overallRows as $r) {
         $mid = $r['module_id'];
-        if (!isset($moduleSummary[$mid])) {
-            $moduleSummary[$mid] = ['module_id' => $mid, 'module' => $r['module'], 'students' => 0, 'p' => 0, 'l' => 0, 'a' => 0, 'total' => 0, 'special' => 0, 'critical' => 0];
-        }
-        $moduleSummary[$mid]['students']++;
         $moduleSummary[$mid]['p'] += $r['p'];
         $moduleSummary[$mid]['l'] += $r['l'];
         $moduleSummary[$mid]['a'] += $r['a'];
@@ -273,9 +312,14 @@ if ($viewMode === 'overall') {
         elseif ($r['a'] >= 3) { $moduleSummary[$mid]['special']++; }
     }
     foreach ($moduleSummary as &$ms) {
-        $ms['pct'] = $ms['total'] > 0 ? round(($ms['p'] + $ms['l']) / $ms['total'] * 100, 1) : 0;
+        $ms['pct'] = $ms['total'] > 0 ? round(($ms['p'] + $ms['l']) / $ms['total'] * 100, 1) : null;
     }
     unset($ms);
+    if (!empty($_GET['special'])) {
+        $moduleSummary = array_filter($moduleSummary, function ($ms) {
+            return ($ms['special'] + $ms['critical']) > 0;
+        });
+    }
     $moduleSummary = array_values($moduleSummary);
     usort($moduleSummary, function ($x, $y) { return strcmp($x['module'], $y['module']); });
 
@@ -286,27 +330,23 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h4 class="display-font mb-0">Class Attendance Register</h4>
-  <?php if ($module && $viewMode === 'register' && $moduleQrSecret): ?>
-    <a href="<?= APP_URL ?>/hod/module-qr-print.php?module_id=<?= $moduleId ?>"
-       target="_blank" class="btn btn-outline-dark btn-sm">
-      <i class="bi bi-qr-code me-1"></i> Print QR
-    </a>
-  <?php endif; ?>
+  <h4 class="display-font mb-0">Class Attendance Analytics</h4>
 </div>
-
-<ul class="nav nav-tabs mb-3">
-  <li class="nav-item"><a class="nav-link <?= $viewMode === 'register' ? 'active' : '' ?>" href="?view=register<?= $moduleId ? '&module_id=' . $moduleId : '' ?>">Register</a></li>
-  <li class="nav-item"><a class="nav-link <?= $viewMode === 'overall' ? 'active' : '' ?>" href="?view=overall"><i class="bi bi-people me-1"></i>Overall Attendance</a></li>
-</ul>
 
 <?php if ($viewMode === 'overall'): ?>
 
 <?php if ($detailModuleId): ?>
-  <?php $detailModuleTitle = $detailRows[0]['module'] ?? ''; ?>
+  <?php
+    $detailModuleTitle = $detailRows[0]['module'] ?? '';
+    if ($detailModuleTitle === '') {
+        foreach ($moduleSummary as $ms) {
+            if ((int) $ms['module_id'] === $detailModuleId) { $detailModuleTitle = $ms['module']; break; }
+        }
+    }
+  ?>
   <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
     <h6 class="display-font mb-0"><?= e($detailModuleTitle) ?> / Student Breakdown</h6>
-    <a href="?view=overall<?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i> Back to Modules</a>
+    <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i> Back to Modules</a>
   </div>
 
   <?php if (!$detailRows): ?>
@@ -357,40 +397,85 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <?php else: ?>
 
+<?php
+  $modulesShown = count($moduleSummary);
+  $overallTotal = array_sum(array_column($moduleSummary, 'total'));
+  $overallAttended = array_sum(array_column($moduleSummary, 'p')) + array_sum(array_column($moduleSummary, 'l'));
+  $overallRate = $overallTotal > 0 ? round($overallAttended / $overallTotal * 100) : 0;
+  $sessionLabel = $overallSessionFilter !== '' ? $overallSessionFilter : 'All Sessions';
+?>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Ongoing Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= $modulesShown ?></div></div></div>
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Total Sign-Ins Recorded</div><div class="stat-value"><?= $overallTotal ?></div></div></div>
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
+    <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
+  </div></div>
+</div>
+
+<div class="semas-card p-3 mb-3">
+  <form method="GET" class="row g-2 align-items-center">
+    <input type="hidden" name="view" value="overall">
+    <?php if (!empty($_GET['special'])): ?><input type="hidden" name="special" value="1"><?php endif; ?>
+    <div class="col-md-5">
+      <label class="form-label small mb-1">Session</label>
+      <select name="session" class="form-select form-select-sm" onchange="this.form.submit()" <?= $isCoordinator ? 'disabled' : '' ?>>
+        <option value="" <?= $overallSessionFilter === '' ? 'selected' : '' ?>>All Sessions</option>
+        <option value="Day" <?= $overallSessionFilter === 'Day' ? 'selected' : '' ?>>Day</option>
+        <option value="Evening" <?= $overallSessionFilter === 'Evening' ? 'selected' : '' ?>>Evening</option>
+        <option value="Weekend" <?= $overallSessionFilter === 'Weekend' ? 'selected' : '' ?>>Weekend</option>
+      </select>
+      <?php if ($isCoordinator): ?><input type="hidden" name="session" value="Weekend"><?php endif; ?>
+    </div>
+    <div class="col-md-7 text-md-end">
+      <span class="text-muted small">
+        Current session: <?= $currentWindow ? e(ClassAttendance::describeWindow($currentWindow)) : 'No active session window' ?>
+      </span>
+    </div>
+  </form>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
   <div class="d-flex gap-3 flex-wrap" style="font-size:.75rem;">
     <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3+ absences</span> Special Case</span>
     <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical</span>
   </div>
-  <a href="?view=overall<?= empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
+  <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
     <i class="bi bi-funnel me-1"></i> <?= !empty($_GET['special']) ? 'Showing Special Cases Only' : 'Show Special Cases Only' ?>
   </a>
 </div>
 
 <?php if (!$moduleSummary): ?>
-  <div class="semas-card p-4 text-center text-muted small">No attendance data recorded yet across <?= $isCoordinator ? 'Weekend' : '' ?> ongoing modules.</div>
+  <div class="semas-card p-4 text-center text-muted small">No ongoing modules found for <?= e($sessionLabel) ?>.</div>
 <?php else: ?>
 <div class="row g-3">
   <?php foreach ($moduleSummary as $ms): ?>
     <div class="col-md-6 col-lg-4">
       <div class="semas-card p-3 h-100 d-flex flex-column">
         <h6 class="fw-semibold mb-1"><?= e($ms['module']) ?></h6>
-        <p class="text-muted small mb-2"><?= $ms['students'] ?> student(s) with recorded attendance</p>
+        <?php $slotLabel = ($ms['session_type'] === 'Weekend' && $ms['weekend_slot']) ? 'Weekend - ' . $ms['weekend_slot'] : $ms['session_type']; ?>
+        <p class="text-muted small mb-2">
+          <?= (int) $ms['students'] ?> registered student(s) &middot; <?= (int) $ms['sessions'] ?> session(s)<br>
+          <?= e($slotLabel ?: 'Any session') ?><?= $ms['room'] ? ' &middot; ' . e($ms['room']) : '' ?>
+        </p>
         <div class="d-flex gap-3 small mb-2">
           <span style="color:#155724;">P <?= $ms['p'] ?></span>
           <span style="color:#856404;">L <?= $ms['l'] ?></span>
           <span style="color:#721c24;">A <?= $ms['a'] ?></span>
         </div>
         <div class="mb-2">
-          <span class="fw-bold fs-5" style="color:<?= $ms['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format($ms['pct'], 1) ?>%</span>
-          <span class="text-muted small"> avg attendance</span>
+          <?php if ($ms['pct'] === null): ?>
+            <span class="text-muted small">No attendance data yet</span>
+          <?php else: ?>
+            <span class="fw-bold fs-5" style="color:<?= $ms['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format((float) $ms['pct'], 1) ?>%</span>
+            <span class="text-muted small"> avg attendance</span>
+          <?php endif; ?>
         </div>
         <div class="mb-2">
           <?php if ($ms['critical']): ?><span class="badge bg-danger me-1">⛔ <?= $ms['critical'] ?> Critical</span><?php endif; ?>
           <?php if ($ms['special']): ?><span class="badge bg-warning text-dark me-1">⚠ <?= $ms['special'] ?> Special Case</span><?php endif; ?>
           <?php if (!$ms['critical'] && !$ms['special']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
         </div>
-        <a href="?view=overall&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark mt-auto">
+        <a href="?view=overall&session=<?= e($overallSessionFilter) ?>&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark mt-auto">
           <i class="bi bi-people me-1"></i> View More Details
         </a>
       </div>
@@ -470,10 +555,6 @@ require __DIR__ . '/../partials/layout_top.php';
     <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $moduleId ?>" class="btn btn-sm btn-outline-dark">
       <i class="bi bi-file-earmark-excel me-1"></i> Excel
     </a>
-    <button type="button" class="btn btn-sm btn-outline-dark"
-            data-bs-toggle="modal" data-bs-target="#addSessionModal">
-      <i class="bi bi-calendar-plus me-1"></i> Add Session Date
-    </button>
   </div>
 </div>
 
@@ -481,8 +562,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-4 text-center text-muted small">No students enrolled yet.</div>
 <?php elseif (!$sessions): ?>
   <div class="semas-card p-4 text-center text-muted small">
-    No sessions recorded yet. Students scan the QR code to open the first session,
-    or use <strong>Add Session Date</strong> above for manual entry.
+    No sessions recorded yet. Attendance sessions open from live QR scans or active-class manual attendance.
   </div>
 <?php else: ?>
 
@@ -614,6 +694,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php endif; ?>
 
 <!-- Add Session Modal -->
+<?php if (false): ?>
 <div class="modal fade" id="addSessionModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -656,6 +737,7 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 <!-- Manual Mark Modal -->
 <div class="modal fade" id="markModal" tabindex="-1">

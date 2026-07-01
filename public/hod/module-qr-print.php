@@ -21,7 +21,7 @@ if (!$module || !$module['module_qr_secret'] || (Auth::role() === 'Coordinator' 
     die('Module not found or QR not generated.');
 }
 
-$scanUrl = APP_URL . '/student/class-scan.php?module_id=' . $moduleId . '&t=' . urlencode($module['module_qr_secret']);
+$scanUrl = APP_URL . '/student/attendance.php?module_id=' . $moduleId . '&t=' . urlencode($module['module_qr_secret']);
 $brandName = Settings::get('university_name', 'University of Kigali');
 ?>
 <!DOCTYPE html>

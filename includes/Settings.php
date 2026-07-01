@@ -30,10 +30,32 @@ final class Settings
 
     public static function set(string $key, ?string $value, ?int $updatedBy = null): void
     {
-        Database::connection()->prepare(
-            'INSERT INTO system_settings (setting_key, setting_value, updated_by) VALUES (:k, :v, :u)
-             ON DUPLICATE KEY UPDATE setting_value = :v2, updated_by = :u2'
-        )->execute(['k' => $key, 'v' => $value, 'u' => $updatedBy, 'v2' => $value, 'u2' => $updatedBy]);
+        $db = Database::connection();
+        $hasUpdatedBy = false;
+        try {
+            $col = $db->prepare(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = 'system_settings'
+                   AND COLUMN_NAME = 'updated_by'"
+            );
+            $col->execute();
+            $hasUpdatedBy = (int) $col->fetchColumn() > 0;
+        } catch (Throwable $e) {
+            $hasUpdatedBy = false;
+        }
+
+        if ($hasUpdatedBy) {
+            $db->prepare(
+                'INSERT INTO system_settings (setting_key, setting_value, updated_by) VALUES (:k, :v, :u)
+                 ON DUPLICATE KEY UPDATE setting_value = :v2, updated_by = :u2'
+            )->execute(['k' => $key, 'v' => $value, 'u' => $updatedBy, 'v2' => $value, 'u2' => $updatedBy]);
+        } else {
+            $db->prepare(
+                'INSERT INTO system_settings (setting_key, setting_value) VALUES (:k, :v)
+                 ON DUPLICATE KEY UPDATE setting_value = :v2'
+            )->execute(['k' => $key, 'v' => $value, 'v2' => $value]);
+        }
         self::$cache[$key] = $value;
     }
 

@@ -84,17 +84,20 @@ $cipher = openssl_encrypt($payload, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
 $hmac = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
 $b64u = function (string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); };
 $verifyToken = $b64u($iv) . '.' . $b64u($cipher) . '.' . $b64u($hmac);
-$verifyUrl = APP_URL . '/public/verify-slip.php?t=' . $verifyToken;
+$verifyUrl = APP_URL . '/verify-slip.php?t=' . $verifyToken;
 $qrPayload = json_encode([
     'type' => 'semas_slip',
     'slip' => 'entry',
+    'verify_url' => $verifyUrl,
     'module_id' => $moduleId,
     'module_title' => $module['module_title'],
     'user_id' => $me['user_id'],
     'student_name' => $me['full_name'],
+    'reg_number' => $me['reg_number'] ?? '',
     'exam_type' => $examType,
     'exam_date' => $examDate ? date('l, d F Y', strtotime($examDate)) : '',
     'room' => $room,
+    'status' => $eligibilityRow['final_decision'] ?? 'Allowed',
     'time' => $startTime . ' – ' . $endTime,
     'issued_at' => date('c'),
     'sig' => $b64u(hash_hmac('sha256', json_encode([
@@ -106,6 +109,18 @@ $qrPayload = json_encode([
         'time' => $startTime . ' – ' . $endTime,
     ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
 ]);
+$qrSig = substr($b64u(hash_hmac('sha256', $moduleId . '|' . $me['user_id'] . '|' . $examType . '|' . $examDate, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 10);
+$qrPayload = implode('|', [
+    'SEMAS ENTRY',
+    $examType,
+    $examDate ? date('dMy', strtotime($examDate)) : '',
+    'R:' . substr((string) ($me['reg_number'] ?? ''), 0, 12),
+    'N:' . substr((string) $me['full_name'], 0, 12),
+    'M:' . substr((string) $module['module_title'], 0, 12),
+    'RM:' . substr((string) $room, 0, 8),
+    'S:' . $qrSig,
+]);
+$qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,15 +147,16 @@ $qrPayload = json_encode([
   table.info td.label { color: #6B7280; width: 38%; }
   table.info td.value { font-weight: 600; }
 
-  .sig-section { margin-top: 20px; padding-top: 18px; border-top: 1px dashed #E4D6AF; display: flex; flex-wrap: wrap; gap: 16px; }
+  .sig-section { margin-top: 20px; padding-top: 18px; border-top: 1px dashed #E4D6AF; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
   .sig-card { flex: 1 1 240px; background: #FFF7D9; border: 1px solid #F0E3C6; border-radius: 10px; padding: 16px; }
   .sig-card .title { color: #86610B; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
   .sig-card .name { font-size: 16px; font-weight: 700; color: #1E2A52; margin-bottom: 4px; }
   .sig-card .role { color: #6B7280; font-size: 12px; margin-bottom: 8px; }
   .sig-card .note { color: #475569; font-size: 13px; line-height: 1.4; }
 
-  .qr-section { flex: 0 0 130px; text-align: center; min-width: 130px; }
-  .qr-section .qr-box { display: inline-block; padding: 10px; background: #ffffff; border: 1px solid #D4A24C; border-radius: 12px; }
+  .qr-section { flex: 0 0 170px; text-align: center; min-width: 170px; }
+  .qr-section .qr-box { display: inline-block; padding: 8px; background: #ffffff; border: 1px solid #D4A24C; border-radius: 12px; min-width: 156px; min-height: 156px; }
+  .qr-section .qr-box img { width: 140px; height: 140px; display: block; }
   .qr-section .qr-label { margin-top: 10px; font-size: 11px; color: #6B7280; }
 
   .footer { background: #FFF7D9; padding: 14px 28px; border-top: 1px solid #F0E3C6; font-size: 12px; color: #6B7280; text-align: center; }
@@ -203,10 +219,9 @@ $qrPayload = json_encode([
         <div class="name"><?= e($approverName) ?></div>
         <div class="role"><?= e($approverRole) ?></div>
         <div class="note">Approval time: <?= e($approvedAt ?? date('d F Y, h:i A')) ?></div>
-        <div class="note" style="margin-top:10px; font-size:12px; color:#475569;">This entry slip is valid only for this module (<?= e($module['module_title']) ?>). Entry card misuse is prohibited.</div>
       </div>
       <div class="qr-section">
-        <div class="qr-box" id="verifyQr"></div>
+        <div class="qr-box" id="verifyQr"><img src="<?= e($qrImage) ?>" alt="Scan to verify"></div>
         <div class="qr-label">Scan to verify</div>
       </div>
     </div>
@@ -219,15 +234,5 @@ $qrPayload = json_encode([
 
 <div class="no-print" style="margin-top:12px;"><button onclick="window.print()">Print / Save as PDF</button></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
-<script>
-  const qrText = '<?= e(addslashes($qrPayload)) ?>';
-  new QRCode(document.getElementById('verifyQr'), {
-    text: qrText,
-    width: 120, height: 120,
-    colorDark: '#1E2A52', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.H
-  });
-</script>
 </body>
 </html>

@@ -18,6 +18,7 @@ csrf_verify();
 // Sign Out must happen noticeably closer than the general campus radius
 // (right by the classroom), unlike Sign In which uses the full campus radius.
 const SCAN_OUT_RADIUS_METERS = 40;
+const MANUAL_ATTENDANCE_RADIUS_METERS = 10;
 
 $db       = Database::connection();
 $me       = Auth::user();
@@ -26,6 +27,102 @@ $lat      = isset($_POST['latitude'])  && $_POST['latitude']  !== '' ? (float) $
 $lng      = isset($_POST['longitude']) && $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null;
 $deviceId = trim($_POST['device_id'] ?? '') ?: null;
 
+function attendance_security_schema(PDO $db): void
+{
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS attendance_devices (
+            device_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            device_hash CHAR(64) NOT NULL,
+            first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reset_at DATETIME NULL,
+            reset_by INT NULL,
+            UNIQUE KEY uniq_attendance_device_user (user_id),
+            UNIQUE KEY uniq_attendance_device_hash (device_hash),
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            FOREIGN KEY (reset_by) REFERENCES users(user_id) ON DELETE SET NULL
+        ) ENGINE=InnoDB"
+    );
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS attendance_security_logs (
+            security_log_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NULL,
+            module_id INT NULL,
+            session_id INT NULL,
+            device_hash CHAR(64) NULL,
+            ip_address VARCHAR(45) NULL,
+            event_type VARCHAR(80) NOT NULL,
+            message TEXT NULL,
+            latitude DECIMAL(10,7) NULL,
+            longitude DECIMAL(10,7) NULL,
+            distance_meters DECIMAL(8,2) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+            FOREIGN KEY (module_id) REFERENCES modules(module_id) ON DELETE SET NULL,
+            FOREIGN KEY (session_id) REFERENCES class_sessions(session_id) ON DELETE SET NULL
+        ) ENGINE=InnoDB"
+    );
+}
+
+function attendance_security_log(PDO $db, ?int $userId, ?int $moduleId, ?int $sessionId, ?string $deviceHash, string $ip, string $eventType, string $message, ?float $lat = null, ?float $lng = null, ?float $distance = null): void
+{
+    $db->prepare(
+        "INSERT INTO attendance_security_logs (user_id, module_id, session_id, device_hash, ip_address, event_type, message, latitude, longitude, distance_meters)
+         VALUES (:uid, :mid, :sid, :dev, :ip, :type, :msg, :lat, :lng, :dist)"
+    )->execute([
+        'uid' => $userId,
+        'mid' => $moduleId,
+        'sid' => $sessionId,
+        'dev' => $deviceHash,
+        'ip' => $ip,
+        'type' => $eventType,
+        'msg' => $message,
+        'lat' => $lat,
+        'lng' => $lng,
+        'dist' => $distance,
+    ]);
+}
+
+function attendance_device_hash(string $deviceId): string
+{
+    $secret = defined('APP_KEY') && APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
+    return hash_hmac('sha256', $deviceId, $secret);
+}
+
+attendance_security_schema($db);
+
+if ($deviceId === null || strlen($deviceId) < 12) {
+    attendance_security_log($db, (int) $me['user_id'], null, null, null, $ip, 'MISSING_DEVICE_ID', 'Attendance scan without a valid device id.', $lat, $lng);
+    echo json_encode(['ok' => false, 'message' => 'This phone is not registered for attendance. Log in again on your registered phone or request a device reset.']);
+    exit;
+}
+$deviceHash = attendance_device_hash($deviceId);
+
+$otherDevice = $db->prepare('SELECT user_id FROM attendance_devices WHERE device_hash = :hash AND user_id <> :uid LIMIT 1');
+$otherDevice->execute(['hash' => $deviceHash, 'uid' => $me['user_id']]);
+if ($otherDevice->fetchColumn()) {
+    attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'DEVICE_USED_BY_MULTIPLE_ACCOUNTS', 'Device already registered to another student.', $lat, $lng);
+    echo json_encode(['ok' => false, 'message' => 'This device is already registered to another student.']);
+    exit;
+}
+
+$myDevice = $db->prepare('SELECT device_hash FROM attendance_devices WHERE user_id = :uid LIMIT 1');
+$myDevice->execute(['uid' => $me['user_id']]);
+$registeredHash = $myDevice->fetchColumn();
+if ($registeredHash && !hash_equals((string) $registeredHash, $deviceHash)) {
+    attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'UNREGISTERED_DEVICE_FOR_STUDENT', 'Student attempted attendance from a different phone.', $lat, $lng);
+    echo json_encode(['ok' => false, 'message' => 'Attendance is accepted only from your registered phone. Request a device reset from your HoD or Administrator.']);
+    exit;
+}
+if (!$registeredHash) {
+    $db->prepare('INSERT INTO attendance_devices (user_id, device_hash) VALUES (:uid, :hash)')
+       ->execute(['uid' => $me['user_id'], 'hash' => $deviceHash]);
+} else {
+    $db->prepare('UPDATE attendance_devices SET last_seen_at = NOW() WHERE user_id = :uid')
+       ->execute(['uid' => $me['user_id']]);
+}
+
 if ($lat === null || $lng === null) {
     echo json_encode(['ok' => false, 'message' => 'Location is required to record attendance. Please allow location access and try again.']);
     exit;
@@ -33,6 +130,7 @@ if ($lat === null || $lng === null) {
 
 $gps = GpsService::withinCampus($lat, $lng);
 if (!$gps['passed']) {
+    attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'GPS_OUTSIDE_CAMPUS', 'Student outside campus attendance radius.', $lat, $lng, (float) $gps['distance_meters']);
     AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_DENIED_GPS', 'class_sessions', null,
         "distance={$gps['distance_meters']}m radius={$gps['radius_meters']}m");
     echo json_encode([
@@ -120,7 +218,43 @@ $enrolled->execute(['id' => $moduleId, 'uid' => $me['user_id']]);
 $module = $enrolled->fetch();
 
 if (!$module) {
+    attendance_security_log($db, (int) $me['user_id'], $moduleId ?: null, $forcedSessId, $deviceHash, $ip, 'UNREGISTERED_MODULE_SCAN', 'Student scanned for a module they are not registered in or that is not ongoing.', $lat, $lng);
     echo json_encode(['ok' => false, 'message' => 'You are not registered for this module, or it is not ongoing.']);
+    exit;
+}
+
+// Optional classroom-distance enforcement. If the assigned room has
+// coordinates, attendance must be near that room; otherwise campus GPS is
+// used as the fallback.
+try {
+    $db->exec('ALTER TABLE rooms ADD COLUMN latitude DECIMAL(10,7) NULL');
+} catch (PDOException $e) { if (($e->errorInfo[1] ?? 0) !== 1060) throw $e; }
+try {
+    $db->exec('ALTER TABLE rooms ADD COLUMN longitude DECIMAL(10,7) NULL');
+} catch (PDOException $e) { if (($e->errorInfo[1] ?? 0) !== 1060) throw $e; }
+try {
+    $db->exec('ALTER TABLE rooms ADD COLUMN attendance_radius_meters INT NOT NULL DEFAULT 20');
+} catch (PDOException $e) { if (($e->errorInfo[1] ?? 0) !== 1060) throw $e; }
+
+$roomHasCoordinates = false;
+if (!empty($module['room_id'])) {
+    $roomStmt = $db->prepare('SELECT latitude, longitude, attendance_radius_meters FROM rooms WHERE room_id = :id');
+    $roomStmt->execute(['id' => $module['room_id']]);
+    $room = $roomStmt->fetch();
+    if ($room && $room['latitude'] !== null && $room['longitude'] !== null) {
+        $roomHasCoordinates = true;
+        $roomRadius = $isManual ? MANUAL_ATTENDANCE_RADIUS_METERS : (int) ($room['attendance_radius_meters'] ?: 20);
+        $roomGps = GpsService::withinCampus($lat, $lng, (float) $room['latitude'], (float) $room['longitude'], $roomRadius);
+        if (!$roomGps['passed']) {
+            attendance_security_log($db, (int) $me['user_id'], $moduleId, $forcedSessId, $deviceHash, $ip, 'GPS_OUTSIDE_CLASSROOM', 'Student was not physically near the classroom.', $lat, $lng, (float) $roomGps['distance_meters']);
+            echo json_encode(['ok' => false, 'message' => $isManual ? 'Manual attendance requires you to be within 10 metres of the classroom QR code.' : 'You must be physically present near the classroom to record attendance.']);
+            exit;
+        }
+    }
+}
+if ($isManual && !$roomHasCoordinates) {
+    attendance_security_log($db, (int) $me['user_id'], $moduleId, $forcedSessId, $deviceHash, $ip, 'MANUAL_ATTENDANCE_NO_ROOM_GPS', 'Manual attendance blocked because classroom GPS coordinates are not configured.', $lat, $lng);
+    echo json_encode(['ok' => false, 'message' => 'Manual attendance is unavailable until this classroom has QR/GPS coordinates configured. Please scan the QR code instead.']);
     exit;
 }
 
@@ -314,6 +448,7 @@ if (!$hasRealSignIn) {
 $ipAlready = $db->prepare('SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND ip_address = :ip AND attendance_type = :type');
 $ipAlready->execute(['s' => $session['session_id'], 'ip' => $ip, 'type' => $type]);
 if ($ipAlready->fetch()) {
+    attendance_security_log($db, (int) $me['user_id'], $moduleId, (int) $session['session_id'], $deviceHash, $ip, 'DUPLICATE_IP_SCAN', 'Duplicate attendance attempt from the same IP/session.', $lat, $lng, (float) $gps['distance_meters']);
     echo json_encode(['ok' => false, 'message' => 'A ' . $type . ' has already been recorded from this device/network for this session. If this is a shared lab computer, ask your lecturer to mark you manually.']);
     exit;
 }
@@ -325,6 +460,7 @@ if ($deviceId !== null) {
     $devAlready = $db->prepare('SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND device_id = :d AND attendance_type = :type');
     $devAlready->execute(['s' => $session['session_id'], 'd' => $deviceId, 'type' => $type]);
     if ($devAlready->fetch()) {
+        attendance_security_log($db, (int) $me['user_id'], $moduleId, (int) $session['session_id'], $deviceHash, $ip, 'DUPLICATE_DEVICE_SCAN', 'Duplicate attendance attempt from the same registered device.', $lat, $lng, (float) $gps['distance_meters']);
         echo json_encode(['ok' => false, 'message' => 'A ' . $type . ' has already been recorded from this device for this session. If this is a shared device, ask your lecturer to mark you manually.']);
         exit;
     }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['HOD', 'Coordinator']);
+Auth::requireRole(['HOD', 'Coordinator', 'Principal']);
 Module::autoCompleteExpired();
 
 $pageTitle = 'CAT / Exam Eligibility';
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $count = Eligibility::generate($moduleId, $examType);
 
         AuditLog::record(Auth::id(), 'ELIGIBILITY_GENERATE', 'modules', $moduleId, "exam_type=$examType;count=$count");
-        flash('success', "Generated/refreshed $examType eligibility for $count student(s).");
+        flash('success', "Generated/refreshed $examType eligibility for $count student(s). Students at 75%+ were auto-approved; 65-74% remain pending review.");
     } elseif ($action === 'decide' || $action === 'bulk_approve_all') {
         $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
 
@@ -410,20 +410,31 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-3">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Student</th><th>Reg No.</th><th>Missed</th><th>System Decision</th><th>HOD Status</th><th>Final</th><th>Action</th></tr></thead>
+        <thead><tr><th>Student</th><th>Reg No.</th><th>Attendance</th><th>Classes</th><th>P</th><th>L</th><th>Left Early</th><th>A</th><th>System</th><th>Review</th><th>Final</th><th>Action</th></tr></thead>
         <tbody>
           <?php foreach ($list as $row): ?>
+            <?php
+              $pct = isset($row['attendance_percent']) ? (float) $row['attendance_percent'] : 0.0;
+              $review = !empty($row['requires_review']);
+              $systemLabel = $review ? 'Requires HoD Approval' : $row['system_decision'];
+              $systemClass = $row['system_decision'] === 'Allowed' ? 'badge-completed' : ($review ? 'badge-urgent' : 'badge-cancelled');
+            ?>
             <tr>
               <td><?= e($row['full_name']) ?></td>
               <td><?= e($row['reg_number'] ?? '—') ?></td>
+              <td><strong><?= number_format($pct, 1) ?>%</strong></td>
+              <td><?= (int) ($row['total_sessions'] ?? 0) ?></td>
+              <td><?= (int) ($row['present_count'] ?? 0) ?></td>
+              <td><?= (int) ($row['late_count'] ?? 0) ?></td>
+              <td><?= (int) ($row['left_early_count'] ?? 0) ?></td>
               <td><?= (int) $row['absences_count'] ?></td>
-              <td><span class="badge <?= $row['system_decision'] === 'Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['system_decision']) ?></span></td>
+              <td><span class="badge <?= $systemClass ?>"><?= e($systemLabel) ?></span></td>
               <td><span class="badge <?= $row['hod_decision'] === 'Pending' ? 'badge-urgent' : 'bg-secondary' ?>"><?= e($row['hod_decision']) ?></span></td>
               <td><span class="badge <?= $row['final_decision'] === 'Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['final_decision']) ?></span></td>
               <td class="text-nowrap">
                 <?php if ($row['hod_decision'] === 'Pending'): ?>
                   <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="decide"><input type="hidden" name="eligibility_id" value="<?= (int) $row['eligibility_id'] ?>"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
-                    <button class="btn btn-sm btn-outline-dark" name="decision" value="approve">Approve</button>
+                    <button class="btn btn-sm btn-outline-dark" name="decision" value="approve">Keep Not Allowed</button>
                   </form>
                 <?php endif; ?>
                 <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#override-<?= (int) $row['eligibility_id'] ?>">Override</button>
@@ -451,7 +462,7 @@ require __DIR__ . '/../partials/layout_top.php';
               </div>
             </div>
           <?php endforeach; ?>
-          <?php if (!$list): ?><tr><td colspan="7" class="text-muted small text-center py-3">No list generated yet for this module/exam type.</td></tr><?php endif; ?>
+          <?php if (!$list): ?><tr><td colspan="12" class="text-muted small text-center py-3">No list generated yet for this module/exam type.</td></tr><?php endif; ?>
         </tbody>
       </table>
     </div>

@@ -29,6 +29,10 @@ if (!$module) {
 $students   = AttendanceSheet::students($db, $moduleId);
 $classDates = AttendanceSheet::expectedClassDates($module);
 $sessLabel  = AttendanceSheet::sessionLabel($module);
+$effectiveEnd = empty($classDates)
+    ? date('Y-m-d')
+    : end($classDates);
+reset($classDates);
 
 AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
 ?>
@@ -38,16 +42,25 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
 <meta charset="UTF-8">
 <title>Attendance Sheet / <?= e($module['module_title']) ?></title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #1B1F2A; margin: 20px; }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { border: 1px solid #333; padding: 4px 6px; }
+  @page { size: A4 landscape; margin: 8mm; }
+  body { font-family: Arial, sans-serif; font-size: 10px; color: #1B1F2A; margin: 12px; }
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  td, th { border: 1px solid #333; padding: 5px 8px; vertical-align: middle; }
   .hdr-table td { border: none; padding: 2px 6px; font-weight: bold; }
   th { background: #f1f1f1; text-align: center; white-space: nowrap; }
+  .col-no { width: 36px; text-align: center; }
+  .col-name { min-width: 210px; white-space: nowrap; }
+  .col-reg { min-width: 115px; white-space: nowrap; }
+  .col-phone { min-width: 105px; white-space: nowrap; }
+  .date-col { min-width: 58px; width: 58px; text-align: center; }
   .no-print { margin-bottom: 12px; }
-  @media print { .no-print { display: none; } }
+  @media print {
+    .no-print { display: none; }
+    body { margin: 0; }
+  }
 </style>
 </head>
-<body>
+<body onload="window.print()">
 <div class="no-print"><button onclick="window.print()">Print</button></div>
 
 <table class="hdr-table" style="margin-bottom:10px;">
@@ -61,19 +74,19 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
   </tr>
   <tr>
     <td>LECTURER: <?= e($module['lecturer_name'] ?? '') ?></td>
-    <td></td>
+    <td>PRINT RANGE: <?= $module['start_date'] ? e(date('d M Y', strtotime($module['start_date']))) : '' ?> TO <?= e(date('d M Y', strtotime($effectiveEnd))) ?></td>
   </tr>
 </table>
 
 <table>
   <thead>
     <tr>
-      <th>NO</th>
-      <th>STUDENT NAME</th>
-      <th>REG NUMBER</th>
-      <th>PHONE NUMBER</th>
+      <th class="col-no">NO</th>
+      <th class="col-name">STUDENT NAME</th>
+      <th class="col-reg">REG NUMBER</th>
+      <th class="col-phone">PHONE NUMBER</th>
       <?php foreach ($classDates as $d): ?>
-        <th style="min-width:34px;">
+        <th class="date-col">
           <div><?= e(date('d M', strtotime($d))) ?></div>
           <div style="font-weight:400;"><?= e(date('D', strtotime($d))) ?></div>
         </th>
@@ -83,18 +96,18 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
   <tbody>
     <?php $no = 1; foreach ($students as $s): ?>
       <tr>
-        <td style="text-align:center;"><?= $no++ ?></td>
-        <td><?= e($s['full_name']) ?></td>
-        <td><?= e($s['reg_number'] ?? '') ?></td>
-        <td><?= e($s['phone_number'] ?? '') ?></td>
-        <?php foreach ($classDates as $d): ?><td>&nbsp;</td><?php endforeach; ?>
+        <td class="col-no"><?= $no++ ?></td>
+        <td class="col-name"><?= e($s['full_name']) ?></td>
+        <td class="col-reg"><?= e($s['reg_number'] ?? '') ?></td>
+        <td class="col-phone"><?= e($s['phone_number'] ?? '') ?></td>
+        <?php foreach ($classDates as $d): ?><td class="date-col">&nbsp;</td><?php endforeach; ?>
       </tr>
     <?php endforeach; ?>
     <?php for ($extra = 0; $extra < 5; $extra++): ?>
       <tr>
-        <td style="text-align:center;"><?= $no++ ?></td>
+        <td class="col-no"><?= $no++ ?></td>
         <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
-        <?php foreach ($classDates as $d): ?><td>&nbsp;</td><?php endforeach; ?>
+        <?php foreach ($classDates as $d): ?><td class="date-col">&nbsp;</td><?php endforeach; ?>
       </tr>
     <?php endfor; ?>
   </tbody>
