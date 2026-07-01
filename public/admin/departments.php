@@ -72,7 +72,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="modal-header"><h6 class="modal-title display-font">Edit Department</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
               <div class="mb-2"><label class="form-label small">Department Name</label><input name="department_name" class="form-control form-control-sm" value="<?= e($d['department_name']) ?>" required></div>
-              <div class="mb-2"><label class="form-label small">Department Code</label><input name="department_code" class="form-control form-control-sm" value="<?= e($d['department_code']) ?>" required placeholder="e.g. IT"></div>
+              <div class="mb-2"><label class="form-label small">Department Code</label><input name="department_code" class="form-control form-control-sm" value="<?= e($d['department_code']) ?>" required></div>
               <div class="mb-2"><label class="form-label small">Faculty</label>
                 <select name="faculty_id" class="form-select form-select-sm">
                   <?php foreach ($faculties as $f): ?><option value="<?= (int) $f['faculty_id'] ?>" <?= $d['faculty_id'] == $f['faculty_id'] ? 'selected' : '' ?>><?= e($f['faculty_name']) ?></option><?php endforeach; ?>
@@ -96,7 +96,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-header"><h6 class="modal-title display-font">New Department</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label small">Department Name</label><input name="department_name" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Department Code</label><input name="department_code" class="form-control form-control-sm" required placeholder="e.g. IT"></div>
+          <div class="mb-2"><label class="form-label small">Department Code</label><input name="department_code" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Faculty</label>
             <select name="faculty_id" class="form-select form-select-sm" required>
               <option value="">Select faculty</option>

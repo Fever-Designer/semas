@@ -132,7 +132,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
-    <div class="col-md-4"><input name="q" class="form-control form-control-sm" placeholder="Search title, description, location" value="<?= e($search) ?>"></div>
+    <div class="col-md-4"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
     <div class="col-md-2">
       <select name="type" class="form-select form-select-sm">
         <option value="">Lost &amp; Found</option>
@@ -228,14 +228,14 @@ CONTACT: <?= e($me['email'] ?? '') ?>
               <option value="Found">Found / I found something</option>
             </select>
           </div>
-          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="e.g. Black backpack"></div>
+          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Category</label>
             <select name="category" class="form-select form-select-sm">
               <?php foreach ($categories as $c): ?><option><?= e($c) ?></option><?php endforeach; ?>
             </select>
           </div>
           <div class="mb-2"><label class="form-label small">Description</label><textarea name="description" class="form-control form-control-sm" rows="2"></textarea></div>
-          <div class="mb-2"><label class="form-label small">Location</label><input name="location" class="form-control form-control-sm" placeholder="e.g. Library, Block C"></div>
+          <div class="mb-2"><label class="form-label small">Location</label><input name="location" class="form-control form-control-sm"></div>
           <div class="mb-2"><label class="form-label small">Contact Info (optional, defaults to your email)</label><input name="contact_info" class="form-control form-control-sm"></div>
           <div class="mb-2"><label class="form-label small">Photo (optional)</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm"></div>
         </div>

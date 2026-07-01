@@ -55,8 +55,19 @@ function student_payload(PDO $db, array $event, int $userId): array
 if ($mode === 'qr') {
     // Decode the student's PERSONAL QR (built the same way as student/my-qr.php).
     $token = $_POST['token'] ?? $_GET['token'] ?? '';
-    $key = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me', true);
     $secret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
+
+    if (preg_match('/^SEMASU:(\d+):(\d+):([0-9a-f]{8}):([0-9a-f]{20})$/i', $token, $m)) {
+        $expected = substr(hash_hmac('sha256', $m[1] . '|' . $m[2] . '|' . strtolower($m[3]), $secret), 0, 20);
+        if (!hash_equals($expected, strtolower($m[4])) || (int) $m[2] < time()) {
+            echo json_encode(['ok' => false, 'message' => 'This QR code is invalid or has expired. Ask the student to reload their QR page.']);
+            exit;
+        }
+        echo json_encode(student_payload($db, $event, (int) $m[1]));
+        exit;
+    }
+
+    $key = hash('sha256', $secret, true);
 
     $parts = explode('.', $token);
     if (count($parts) !== 3) {

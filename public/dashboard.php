@@ -279,7 +279,6 @@ require __DIR__ . '/partials/layout_top.php';
     <div class="d-flex gap-2 flex-wrap">
       <a href="<?= APP_URL ?>/dean/announcements.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-megaphone-fill me-1"></i> Send Student Announcement</a>
       <a href="<?= APP_URL ?>/admin/events.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-calendar-event me-1"></i> Event Management</a>
-      <a href="<?= APP_URL ?>/reports/index.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-clipboard-check me-1"></i> Compliance Reports</a>
       <a href="<?= APP_URL ?>/campus/lost-found.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-search-heart me-1"></i> Lost &amp; Found</a>
     </div>
   </div>

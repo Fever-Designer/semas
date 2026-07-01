@@ -101,7 +101,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/events.php"><i class="bi bi-calendar-event-fill"></i> Events</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/qr.php"><i class="bi bi-qr-code-scan"></i> Event QR Codes</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/event-participants.php"><i class="bi bi-people-fill"></i> Participants</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'reports' ? 'active' : '' ?>" href="<?= APP_URL ?>/reports/index.php"><i class="bi bi-clipboard-check-fill"></i> Compliance Reports</a>
         <div class="nav-section-label">Lost &amp; Found</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Items Board</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound-claims' ? 'active' : '' ?>" href="<?= APP_URL ?>/dean/lost-found-claims.php"><i class="bi bi-clipboard2-check"></i> Ownership Claims</a>
@@ -112,6 +111,8 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
       <?php if ($roleLabel === 'Lecturer'): ?>
         <div class="nav-section-label">Lost &amp; Found</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Report / Claim Items</a>
+        <div class="nav-section-label">More</div>
+        <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Registrar'): ?>

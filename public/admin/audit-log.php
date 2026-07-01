@@ -57,7 +57,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
-    <div class="col-md-6"><input name="q" class="form-control form-control-sm" placeholder="Search by user name or details" value="<?= e($search) ?>"></div>
+    <div class="col-md-6"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
     <div class="col-md-4">
       <select name="action" class="form-select form-select-sm">
         <option value="">All Actions</option>

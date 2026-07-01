@@ -38,7 +38,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="semas-card p-3">
       <h6 class="display-font mb-2"><i class="bi bi-search me-1"></i> Method 3: Manual Search</h6>
       <form id="searchForm" class="d-flex gap-2 mb-2" onsubmit="return false;">
-        <input id="searchBox" class="form-control" placeholder="Search by name or registration number...">
+        <input id="searchBox" class="form-control">
         <button id="searchBtn" class="btn btn-semas text-nowrap">Search</button>
       </form>
       <div id="searchResults"></div>

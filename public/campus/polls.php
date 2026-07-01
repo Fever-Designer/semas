@@ -231,10 +231,10 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php endif; ?>
           <div class="mb-2"><label class="form-label small">Closes At (optional)</label><input type="datetime-local" name="closes_at" class="form-control form-control-sm"></div>
           <label class="form-label small">Options (at least 2)</label>
-          <input name="options[]" class="form-control form-control-sm mb-1" placeholder="Option 1">
-          <input name="options[]" class="form-control form-control-sm mb-1" placeholder="Option 2">
-          <input name="options[]" class="form-control form-control-sm mb-1" placeholder="Option 3 (optional)">
-          <input name="options[]" class="form-control form-control-sm mb-1" placeholder="Option 4 (optional)">
+          <input name="options[]" class="form-control form-control-sm mb-1">
+          <input name="options[]" class="form-control form-control-sm mb-1">
+          <input name="options[]" class="form-control form-control-sm mb-1">
+          <input name="options[]" class="form-control form-control-sm mb-1">
         </div>
         <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Create Poll</button></div>
       </form>

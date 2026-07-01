@@ -17,7 +17,8 @@ if (!$event) {
 }
 
 $qrToken = $event ? QrService::buildPayload((int) $event['event_id'], $event['qr_secret']) : null;
-$scanUrl = $event ? APP_URL . '/student/scan.php?event_id=' . $event['event_id'] . '&t=' . urlencode($qrToken) : null;
+$scanUrl = $event ? APP_URL . '/student/scan.php?e=' . $event['event_id'] . '&t=' . $qrToken : null;
+$qrImage = $scanUrl ? SimpleQr::pngDataUri($scanUrl, 4, 3) : null;
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -42,18 +43,13 @@ require __DIR__ . '/../partials/layout_top.php';
 
     <div class="qr-frame">
       <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
-      <div id="qr-canvas"></div>
+      <div id="qr-canvas"><?php if ($qrImage): ?><img id="qr-image" src="<?= e($qrImage) ?>" alt="Event check-in QR code" width="200" height="200"><?php endif; ?></div>
     </div>
     <div class="qr-token-label" id="qr-token-label"><?= e($scanUrl) ?></div>
     <?php if ((int) $event['qr_rotation_seconds'] > 0): ?>
       <div class="badge badge-urgent mt-2">Rotating every <?= (int) $event['qr_rotation_seconds'] ?>s — old scans expire automatically</div>
     <?php endif; ?>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
-      const qr = new QRCode(document.getElementById('qr-canvas'), {
-        text: <?= json_encode($scanUrl) ?>,
-        width: 200, height: 200, colorDark: "#1E2A52", colorLight: "#ffffff"
-      });
       const rotationSeconds = <?= (int) $event['qr_rotation_seconds'] ?>;
       if (rotationSeconds > 0) {
         setInterval(function () {
@@ -61,8 +57,7 @@ require __DIR__ . '/../partials/layout_top.php';
             .then(function (r) { return r.json(); })
             .then(function (data) {
               if (!data.ok) return;
-              qr.clear();
-              qr.makeCode(data.scan_url);
+              document.getElementById('qr-image').src = data.qr_data_uri;
               document.getElementById('qr-token-label').textContent = data.scan_url;
             });
         }, rotationSeconds * 1000);

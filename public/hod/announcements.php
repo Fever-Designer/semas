@@ -293,7 +293,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="modal-header"><h6 class="modal-title display-font">Add Holiday / Umuganda</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" required></div>
-            <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="e.g. Liberation Day"></div>
+            <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
             <div class="mb-2">
               <label class="form-label small">Type</label>
               <select name="holiday_type" id="holidayType" class="form-select form-select-sm" onchange="toggleUmuganda()">

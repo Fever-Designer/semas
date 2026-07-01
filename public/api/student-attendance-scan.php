@@ -444,6 +444,33 @@ if (!$hasRealSignIn) {
     }
 }
 
+$sameWindowStmt = $db->prepare(
+    "SELECT m.module_title
+     FROM class_attendance_logs cal
+     JOIN class_sessions cs ON cs.session_id = cal.session_id
+     JOIN modules m ON m.module_id = cs.module_id
+     WHERE cal.user_id = :uid
+       AND cal.attendance_type = :type
+       AND cal.verification_method != 'Auto'
+       AND cs.session_date = :session_date
+       AND cs.window_name = :window_name
+       AND cs.module_id <> :module_id
+     LIMIT 1"
+);
+$sameWindowStmt->execute([
+    'uid' => $me['user_id'],
+    'type' => $type,
+    'session_date' => $session['session_date'],
+    'window_name' => $session['window_name'],
+    'module_id' => $moduleId,
+]);
+$sameWindowModule = $sameWindowStmt->fetchColumn();
+if ($sameWindowModule) {
+    attendance_security_log($db, (int) $me['user_id'], $moduleId, (int) $session['session_id'], $deviceHash, $ip, 'DUPLICATE_WINDOW_SCAN', 'Student attempted attendance for two modules in the same session window.', $lat, $lng, (float) $gps['distance_meters']);
+    echo json_encode(['ok' => false, 'message' => 'You already recorded ' . $type . ' for another module in this same session window: ' . $sameWindowModule . '.']);
+    exit;
+}
+
 // ── IP deduplication ─────────────────────────────────────────────────────
 $ipAlready = $db->prepare('SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND ip_address = :ip AND attendance_type = :type');
 $ipAlready->execute(['s' => $session['session_id'], 'ip' => $ip, 'type' => $type]);

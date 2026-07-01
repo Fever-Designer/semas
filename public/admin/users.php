@@ -74,12 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         flash('error', 'Please enter a valid email address.');
         redirect('/admin/users.php');
     }
-    if ($phone !== null && !preg_match('/^\d{10}$/', preg_replace('/[^0-9]/', '', $phone))) {
+    if ($phone !== null && !preg_match('/^\d{10}$/', $phone)) {
         flash('error', 'Phone number must be exactly 10 digits (e.g., 0764082740).');
         redirect('/admin/users.php');
-    }
-    if ($phone !== null) {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
     }
     $exists = $db->prepare('SELECT user_id FROM users WHERE email = :email');
     $exists->execute(['email' => $email]);
@@ -195,12 +192,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash('error', 'Please enter a valid email address.');
                     redirect('/admin/users.php?action=edit&user_id=' . $targetUserId);
                 }
-                if ($phone !== null && !preg_match('/^\d{10}$/', preg_replace('/[^0-9]/', '', $phone))) {
+                if ($phone !== null && !preg_match('/^\d{10}$/', $phone)) {
                     flash('error', 'Phone number must be exactly 10 digits (e.g., 0764082740).');
                     redirect('/admin/users.php?action=edit&user_id=' . $targetUserId);
-                }
-                if ($phone !== null) {
-                    $phone = preg_replace('/[^0-9]/', '', $phone);
                 }
                 
                 $fields = [
@@ -256,6 +250,8 @@ $params = [];
 if ($myRole === 'Principal') {
     // Principal manages staff roles only; students are managed exclusively by the Registrar
     $where[] = "r.role_name != 'Student'";
+    $where[] = 'u.user_id != :current_user_id';
+    $params['current_user_id'] = (int) $me['user_id'];
 } elseif ($deanUniversityWide) {
     $where[] = "r.role_name = 'Student'"; // Dean: every student in the university, never staff accounts
 } elseif ($scopeDeptIds !== null) {
@@ -342,7 +338,7 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
           <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Email Address</label><input type="email" name="email" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" placeholder="0764082740" pattern="\d{10}" maxlength="10"></div>
+          <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" inputmode="numeric" pattern="\d{10}" maxlength="10"></div>
           <div class="mb-2" id="targetDeptField">
             <label class="form-label small">Department (for HOD / Lecturer)</label>
             <select name="target_department_id" class="form-select form-select-sm">
@@ -352,9 +348,9 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
           <div class="mb-2" id="lecturerExtraFields" style="display:none;">
             <label class="form-label small">Title (optional)</label>
-            <input name="lecturer_title" class="form-control form-control-sm mb-2" placeholder="e.g. Dr., Senior Lecturer">
+            <input name="lecturer_title" class="form-control form-control-sm mb-2">
             <label class="form-label small">Specialization (optional)</label>
-            <input name="lecturer_specialization" class="form-control form-control-sm" placeholder="e.g. Database Systems">
+            <input name="lecturer_specialization" class="form-control form-control-sm">
           </div>
           <div class="mb-2" id="targetFacultyField" style="display:none;">
             <label class="form-label small">Faculty (for Dean)</label>
@@ -386,7 +382,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
-    <div class="col-md-5"><input name="q" class="form-control form-control-sm" placeholder="Search name, email, or reg. number" value="<?= e($search) ?>"></div>
+    <div class="col-md-5"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
     <div class="col-md-3">
       <select name="role" class="form-select form-select-sm">
         <option value="">All Roles</option>
@@ -443,7 +439,7 @@ document.addEventListener('DOMContentLoaded', function () {
                   <div class="modal-body">
                     <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" value="<?= e($u['full_name']) ?>" required></div>
                     <div class="mb-2"><label class="form-label small">Email</label><input type="email" name="email" class="form-control form-control-sm" value="<?= e($u['email']) ?>" required></div>
-                    <div class="mb-2"><label class="form-label small">Phone</label><input name="phone_number" class="form-control form-control-sm" value="<?= e($u['phone_number'] ?? '') ?>" placeholder="0764082740" pattern="\d{10}" maxlength="10"></div>
+                    <div class="mb-2"><label class="form-label small">Phone</label><input name="phone_number" class="form-control form-control-sm" value="<?= e($u['phone_number'] ?? '') ?>" inputmode="numeric" pattern="\d{10}" maxlength="10"></div>
                     <?php if ($myRole === 'Principal'): ?>
                       <div class="mb-2">
                         <label class="form-label small">Department</label>

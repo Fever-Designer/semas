@@ -178,7 +178,6 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="d-flex gap-2 align-items-center flex-wrap">
       <input id="regInput-<?= $sid ?>"
              class="form-control form-control-sm"
-             placeholder="Enter Registration Number…"
              style="max-width:250px;"
              onkeydown="if(event.key==='Enter') triggerLookup(<?= $sid ?>, 'sign_in')">
       <button class="btn btn-sm btn-semas-gold"
@@ -407,8 +406,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div id="submitRosterReview"></div>
         <div class="mt-3">
           <label class="form-label small">General Notes (optional)</label>
-          <textarea id="submissionNotes" class="form-control form-control-sm" rows="2"
-                    placeholder="e.g. Power outage for 10 min at 09:45"></textarea>
+          <textarea id="submissionNotes" class="form-control form-control-sm" rows="2"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -700,7 +698,7 @@ function openSubmitModal(sid, moduleTitle) {
                       </select>
                     </div>
                     <div class="col-7">
-                      <input class="form-control form-control-sm missing-notes" data-uid="${r.user_id}" placeholder="Notes (optional)">
+                      <input class="form-control form-control-sm missing-notes" data-uid="${r.user_id}">
                     </div>
                   </div>
                 </div>`;

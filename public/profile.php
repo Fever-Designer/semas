@@ -24,6 +24,10 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'contact') {
     csrf_verify();
     $phone = trim($_POST['phone_number'] ?? '');
+    if ($phone !== '' && !preg_match('/^\d{10}$/', $phone)) {
+        flash('error', 'Phone number must be exactly 10 digits.');
+        redirect('/profile.php');
+    }
     if ($me['role_name'] === 'Student') {
         // Students: phone only — session and email are managed by Registrar
         $db->prepare('UPDATE users SET phone_number = :phone WHERE user_id = :id')
@@ -183,12 +187,11 @@ require __DIR__ . '/partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="contact">
         <div class="row g-3">
-          <div class="col-md-6"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control" value="<?= e($me['phone_number'] ?? '') ?>" placeholder="+250..."></div>
+          <div class="col-md-6"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control" value="<?= e($me['phone_number'] ?? '') ?>" inputmode="numeric" pattern="\d{10}" maxlength="10"></div>
           <?php if ($me['role_name'] === 'Student'): ?>
           <div class="col-md-6">
             <label class="form-label small">Session</label>
             <div class="form-control bg-light" style="cursor:not-allowed;"><?= e($me['session_type'] ?? 'Not set') ?></div>
-            <div class="form-text"><i class="bi bi-lock-fill me-1"></i>Managed by Registrar</div>
           </div>
           <?php endif; ?>
         </div>
@@ -203,7 +206,7 @@ require __DIR__ . '/partials/layout_top.php';
       <form method="post" class="d-flex gap-2">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="email">
-        <input type="email" name="new_email" class="form-control" placeholder="new.email@uok.ac.rw" required>
+        <input type="email" name="new_email" class="form-control" required>
         <button class="btn btn-semas-gold text-nowrap">Send Confirmation</button>
       </form>
     </div>

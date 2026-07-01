@@ -281,7 +281,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mb-3">
   <form method="GET" class="row g-2">
-    <div class="col-md-8"><input name="q" class="form-control form-control-sm" placeholder="Search module title" value="<?= e($search) ?>"></div>
+    <div class="col-md-8"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
     <div class="col-md-2">
       <select name="session" class="form-select form-select-sm">
         <option value="">All Sessions</option>
@@ -377,7 +377,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <div class="modal-body">
                   <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
                   <div class="input-group">
-                    <input type="text" id="enrollReg-<?= $mId ?>" class="form-control" placeholder="e.g. 2601001192" autocomplete="off">
+                    <input type="text" id="enrollReg-<?= $mId ?>" class="form-control" autocomplete="off">
                     <button type="button" class="btn btn-outline-dark" onclick="lookupStudent(<?= $mId ?>)"><i class="bi bi-search"></i> Search</button>
                   </div>
                   <div id="enrollError-<?= $mId ?>" class="text-danger small mt-2" style="display:none;"></div>
@@ -563,7 +563,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
       <!-- Title -->
       <div class="col-12">
         <label class="form-label small fw-semibold">Module Title <span class="text-danger">*</span></label>
-        <input name="module_title" class="form-control form-control-sm" required value="<?= e($mod['module_title'] ?? '') ?>" placeholder="e.g. Database Systems II">
+        <input name="module_title" class="form-control form-control-sm" required value="<?= e($mod['module_title'] ?? '') ?>">
       </div>
 
       <!-- Department search+add -->
@@ -580,7 +580,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
         </div>
         <div class="position-relative">
           <input type="text" class="form-control form-control-sm dept-search-input" id="deptSearch-<?= $uid ?>"
-            placeholder="Type department name…" autocomplete="off" data-uid="<?= $uid ?>">
+            autocomplete="off" data-uid="<?= $uid ?>">
           <div class="dept-dropdown border rounded bg-white shadow-sm" id="deptDD-<?= $uid ?>"
             style="display:none;position:absolute;z-index:1050;width:100%;max-height:180px;overflow-y:auto;"></div>
         </div>
@@ -660,7 +660,6 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
         <input type="date" name="cat_date" class="form-control form-control-sm" min="<?= $today ?>" required value="<?= e($mod['cat_date'] ?? '') ?>"></div>
       <div class="col-6"><label class="form-label small fw-semibold">Exam Date <span class="text-danger">*</span></label>
         <input type="date" name="exam_date" class="form-control form-control-sm" min="<?= $today ?>" required value="<?= e($mod['exam_date'] ?? '') ?>"></div>
-      <div class="col-12"><div class="form-text" style="font-size:.7rem;">Start ≤ CAT ≤ Exam ≤ End.</div></div>
     </div>
     <?php
     return (string) ob_get_clean();

@@ -442,7 +442,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="semas-card p-3 mb-3">
   <form method="GET" class="row g-2 align-items-end">
     <div class="col-md-4">
-      <input type="search" name="q" class="form-control form-control-sm" placeholder="Search name, email, reg no." value="<?= e($search) ?>">
+      <input type="search" name="q" class="form-control form-control-sm" value="<?= e($search) ?>">
     </div>
     <div class="col-md-3">
       <select name="dept" class="form-select form-select-sm">
@@ -565,8 +565,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
-              <input type="text" name="reg_number" id="fieldRegNumber" class="form-control" required placeholder="e.g. 2401001192">
-              <div class="form-text">Used as default password.</div>
+              <input type="text" name="reg_number" id="fieldRegNumber" class="form-control" required>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Full Name <span class="text-danger">*</span></label>
@@ -578,8 +577,7 @@ require __DIR__ . '/../partials/layout_top.php';
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Phone Number</label>
-              <input type="tel" name="phone_number" id="fieldPhone" class="form-control" placeholder="0780000000" inputmode="numeric" pattern="\d{10}" maxlength="10">
-              <div class="form-text">Use 10 local digits only. Do not include country code.</div>
+              <input type="tel" name="phone_number" id="fieldPhone" class="form-control" inputmode="numeric" pattern="\d{10}" maxlength="10">
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Department</label>

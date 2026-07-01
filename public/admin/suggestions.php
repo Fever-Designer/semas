@@ -7,7 +7,9 @@ $pageTitle = 'Suggestion Box';
 $activeNav = 'suggestions';
 $db = Database::connection();
 $user = Auth::user();
-$isPrincipal = Auth::role() === 'Principal';
+$viewerRole = Auth::role();
+$isPrincipal = $viewerRole === 'Principal';
+$canReply = in_array($viewerRole, ['Principal', 'Dean', 'HOD', 'Registrar', 'Coordinator'], true);
 
 // One-time migration: add resolved_by / resolved_at columns if missing
 try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_by INT NULL'); } catch (PDOException $e) {}
@@ -15,12 +17,25 @@ try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_at DATETIME NULL');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
+    if (($_POST['action'] ?? '') === 'submit') {
+        $category = $_POST['category'] ?? '';
+        $message = trim($_POST['message'] ?? '');
+        if (in_array($category, Suggestion::CATEGORIES, true) && $message !== '') {
+            Suggestion::submit($category, $message, null, Auth::id());
+            AuditLog::record(Auth::id(), 'STAFF_SUGGESTION_SUBMITTED', 'suggestions', null, "category=$category");
+            flash('success', 'Your suggestion has been sent to the Principal.');
+        } else {
+            flash('error', 'Choose a category and write a message.');
+        }
+        redirect('/admin/suggestions.php');
+    }
+
     $id = (int) $_POST['suggestion_id'];
     $action = $_POST['action'] ?? '';
 
     switch ($action) {
         case 'reply':
-            if (!$isPrincipal) { flash('error', 'Only the Principal can reply to suggestions.'); break; }
+            if (!$canReply) { flash('error', 'Your role cannot reply to suggestions.'); break; }
             Suggestion::reply($id, trim($_POST['reply'] ?? ''), Auth::id());
             AuditLog::record(Auth::id(), 'SUGGESTION_REPLIED', 'suggestions', $id);
             $submitterStmt = $db->prepare('SELECT submitted_by_user_id FROM suggestions WHERE suggestion_id = :id');
@@ -32,29 +47,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Reply saved.');
             break;
 
-        case 'archive':
-            if (!$isPrincipal) { flash('error', 'Only the Principal can archive suggestions.'); break; }
-            Suggestion::setStatus($id, 'Archived');
-            AuditLog::record(Auth::id(), 'SUGGESTION_ARCHIVED', 'suggestions', $id);
-            flash('success', 'Archived.');
-            break;
-
-        case 'unarchive':
-            if (!$isPrincipal) { flash('error', 'Only the Principal can unarchive suggestions.'); break; }
-            Suggestion::setStatus($id, 'New');
-            AuditLog::record(Auth::id(), 'SUGGESTION_UNARCHIVED', 'suggestions', $id);
-            flash('success', 'Removed from archive.');
-            break;
     }
     redirect('/admin/suggestions.php');
 }
 
 $scopeDept = Auth::role() === 'HOD' ? $user['department_id'] : null;
-$suggestions = Suggestion::adminList($scopeDept);
+$suggestions = Suggestion::adminList($scopeDept, $viewerRole);
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Suggestion Box</h4>
+
+<?php if (!$isPrincipal): ?>
+<div class="semas-card p-3 mb-3">
+  <form method="post" class="row g-2">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="submit">
+    <div class="col-md-3">
+      <select name="category" class="form-select form-select-sm" required>
+        <?php foreach (Suggestion::CATEGORIES as $c): ?><option><?= e($c) ?></option><?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-7">
+      <textarea name="message" class="form-control form-control-sm" rows="1" required></textarea>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-sm btn-semas-gold w-100"><i class="bi bi-send me-1"></i>Send</button>
+    </div>
+  </form>
+</div>
+<?php endif; ?>
 
 <?php if (!$suggestions): ?>
   <div class="semas-card p-4 text-center text-muted small">No suggestions submitted yet.</div>
@@ -95,21 +117,10 @@ require __DIR__ . '/../partials/layout_top.php';
       </div>
     <?php endif; ?>
 
-    <?php if ($isPrincipal): ?>
+    <?php if ($canReply): ?>
     <div class="d-flex gap-2 flex-wrap mt-2">
       <button class="btn btn-sm btn-outline-dark" data-bs-toggle="collapse" data-bs-target="#reply-<?= (int) $s['suggestion_id'] ?>">Reply</button>
 
-      <?php if ($s['status'] === 'Archived'): ?>
-        <form method="post" class="d-inline">
-          <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
-          <button class="btn btn-sm btn-outline-secondary" name="action" value="unarchive">Remove Archive</button>
-        </form>
-      <?php else: ?>
-        <form method="post" class="d-inline">
-          <?= csrf_field() ?><input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
-          <button class="btn btn-sm btn-outline-dark" name="action" value="archive">Archive</button>
-        </form>
-      <?php endif; ?>
     </div>
 
     <div class="collapse mt-2" id="reply-<?= (int) $s['suggestion_id'] ?>">
@@ -117,7 +128,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
         <input type="hidden" name="action" value="reply">
-        <textarea name="reply" class="form-control form-control-sm mb-2" rows="2" placeholder="Write a reply..."><?= e($s['admin_reply'] ?? '') ?></textarea>
+        <textarea name="reply" class="form-control form-control-sm mb-2" rows="2"><?= e($s['admin_reply'] ?? '') ?></textarea>
         <button class="btn btn-sm btn-semas">Save Reply</button>
       </form>
     </div>

@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Student']);
+if (!Auth::check()) {
+    redirect('/auth/login.php');
+}
 
 $pageTitle = 'Suggestion Box';
 $activeNav = 'suggestions';
 $db = Database::connection();
 $user = Auth::user();
+$isStudent = Auth::role() === 'Student';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -14,10 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = trim($_POST['message'] ?? '');
 
     if (in_array($category, Suggestion::CATEGORIES, true) && $message !== '') {
-        // submitted_by_user_id is stored for internal traceability only — see includes/Suggestion.php.
-        Suggestion::submit($category, $message, $user['department_id'], $user['user_id']);
+        $departmentId = $isStudent ? ($user['department_id'] ?? null) : null;
+        Suggestion::submit($category, $message, $departmentId ? (int) $departmentId : null, $user['user_id']);
         AuditLog::record($user['user_id'], 'SUGGESTION_SUBMITTED', 'suggestions', null, "category=$category");
-        flash('success', 'Thank you — your submission has been sent. It is reviewed anonymously; staff cannot see who sent it.');
+        flash('success', $isStudent ? 'Your submission has been sent.' : 'Your suggestion has been sent to the Principal.');
         redirect('/student/suggestions.php');
     } else {
         flash('error', 'Please choose a category and write a message.');
@@ -34,10 +37,6 @@ $mySubmissions = $myStuff->fetchAll();
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Suggestion Box</h4>
-<p class="text-muted small mb-4">
-  Submit feedback about events, the SEMAS system, or campus life. <strong>Your identity is never shown to staff</strong> —
-  only the category, department, and message are visible to whoever reviews submissions.
-</p>
 
 <div class="row g-3">
   <div class="col-lg-6">
@@ -53,9 +52,9 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="mb-3">
           <label class="form-label small">Message</label>
-          <textarea name="message" class="form-control" rows="5" required placeholder="Describe your suggestion, complaint, bug report, feedback, or request..."></textarea>
+          <textarea name="message" class="form-control" rows="5" required></textarea>
         </div>
-        <button class="btn btn-semas-gold"><i class="bi bi-send me-1"></i> Submit Anonymously</button>
+        <button class="btn btn-semas-gold"><i class="bi bi-send me-1"></i> Submit</button>
       </form>
     </div>
   </div>

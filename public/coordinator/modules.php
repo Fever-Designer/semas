@@ -25,6 +25,20 @@ function coordAvailableRooms(PDO $db, int $excludeModuleId = 0): array
     return $stmt->fetchAll();
 }
 
+function coordRequireWeekendModule(PDO $db, int $moduleId): void
+{
+    if ($moduleId <= 0) {
+        flash('error', 'Invalid module selected.');
+        redirect('/coordinator/modules.php');
+    }
+    $stmt = $db->prepare("SELECT 1 FROM modules WHERE module_id = :id AND session_type = 'Weekend'");
+    $stmt->execute(['id' => $moduleId]);
+    if (!$stmt->fetchColumn()) {
+        flash('error', 'Coordinators can only manage Weekend modules.');
+        redirect('/coordinator/modules.php');
+    }
+}
+
 // ── POST handlers ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -38,6 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lecUserId = (int) ($_POST['lecturer_user_id'] ?? 0);
         $roomId    = (int) ($_POST['room_id'] ?? 0) ?: null;
         $modId     = $action === 'update' ? (int) $_POST['module_id'] : 0;
+        if ($action === 'update') {
+            coordRequireWeekendModule($db, $modId);
+        }
 
         // Resolve user_id → lecturers.lecturer_id (auto-create row for HOD/Coordinator who can teach)
         $lecId = 0;
@@ -130,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'reopen') {
         $modId = (int) $_POST['module_id'];
+        coordRequireWeekendModule($db, $modId);
         $db->prepare("UPDATE modules SET status='Ongoing' WHERE module_id=:id")->execute(['id' => $modId]);
         flash('success', 'Module reopened.');
         redirect('/coordinator/modules.php');
@@ -137,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'enroll_student') {
         $modId  = (int) $_POST['module_id'];
+        coordRequireWeekendModule($db, $modId);
         $regNum = trim($_POST['search_reg_number'] ?? '');
         $stuStmt = $db->prepare("SELECT u.user_id, u.full_name FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' AND u.reg_number=:rn AND u.status='Active'");
         $stuStmt->execute(['rn' => $regNum]);
@@ -157,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'de_register') {
         $modId  = (int) $_POST['module_id'];
         $userId = (int) $_POST['user_id'];
+        coordRequireWeekendModule($db, $modId);
         $db->prepare('DELETE FROM module_enrollments WHERE module_id=:m AND user_id=:u')
            ->execute(['m' => $modId, 'u' => $userId]);
         AuditLog::record(Auth::id(), 'MODULE_UNENROLL', 'modules', $modId, "user_id=$userId");
@@ -215,7 +235,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mb-3">
   <form method="GET" class="row g-2">
-    <div class="col-md-7"><input name="q" class="form-control form-control-sm" placeholder="Search module title" value="<?= e($search) ?>"></div>
+    <div class="col-md-7"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
     <div class="col-md-3">
       <select name="status" class="form-select form-select-sm">
         <option value="">All Statuses</option>
@@ -305,7 +325,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <div class="modal-body">
                   <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
                   <div class="input-group">
-                    <input type="text" id="enrollReg-<?= $mId ?>" class="form-control" placeholder="e.g. 2601001192" autocomplete="off">
+                    <input type="text" id="enrollReg-<?= $mId ?>" class="form-control" autocomplete="off">
                     <button type="button" class="btn btn-outline-dark" onclick="lookupStudent(<?= $mId ?>)"><i class="bi bi-search"></i> Search</button>
                   </div>
                   <div id="enrollError-<?= $mId ?>" class="text-danger small mt-2" style="display:none;"></div>
@@ -397,7 +417,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
       <!-- Title -->
       <div class="col-12">
         <label class="form-label small fw-semibold">Module Title <span class="text-danger">*</span></label>
-        <input name="module_title" class="form-control form-control-sm" required value="<?= e($mod['module_title'] ?? '') ?>" placeholder="e.g. Database Systems II">
+        <input name="module_title" class="form-control form-control-sm" required value="<?= e($mod['module_title'] ?? '') ?>">
       </div>
 
       <!-- Department search+add -->
@@ -414,7 +434,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
         </div>
         <div class="position-relative">
           <input type="text" class="form-control form-control-sm dept-search-input" id="deptSearch-<?= $uid ?>"
-            placeholder="Type department name…" autocomplete="off" data-uid="<?= $uid ?>">
+            autocomplete="off" data-uid="<?= $uid ?>">
           <div class="dept-dropdown border rounded bg-white shadow-sm" id="deptDD-<?= $uid ?>"
             style="display:none;position:absolute;z-index:1050;width:100%;max-height:180px;overflow-y:auto;"></div>
         </div>
@@ -471,7 +491,6 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
         <input type="date" name="cat_date" class="form-control form-control-sm" min="<?= $today ?>" required value="<?= e($mod['cat_date'] ?? '') ?>"></div>
       <div class="col-6"><label class="form-label small fw-semibold">Exam Date <span class="text-danger">*</span></label>
         <input type="date" name="exam_date" class="form-control form-control-sm" min="<?= $today ?>" required value="<?= e($mod['exam_date'] ?? '') ?>"></div>
-      <div class="col-12"><div class="form-text" style="font-size:.7rem;">Start ≤ CAT ≤ Exam ≤ End.</div></div>
     </div>
     <?php
     return (string) ob_get_clean();

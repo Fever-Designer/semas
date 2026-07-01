@@ -96,9 +96,9 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option><?php endforeach; ?>
         </select>
       </div>
-      <div class="col-md-3"><label class="form-label small">Venue Latitude</label><input name="latitude" class="form-control" placeholder="-1.9536"></div>
-      <div class="col-md-3"><label class="form-label small">Venue Longitude</label><input name="longitude" class="form-control" placeholder="30.0947"></div>
-      <div class="col-md-2"><label class="form-label small">Capacity</label><input type="number" min="1" name="capacity" class="form-control" placeholder="Unlimited"></div>
+      <div class="col-md-3"><label class="form-label small">Venue Latitude</label><input name="latitude" class="form-control"></div>
+      <div class="col-md-3"><label class="form-label small">Venue Longitude</label><input name="longitude" class="form-control"></div>
+      <div class="col-md-2"><label class="form-label small">Capacity</label><input type="number" min="1" name="capacity" class="form-control"></div>
       <div class="col-md-4"><label class="form-label small">Registration Deadline</label><input type="datetime-local" name="registration_deadline" class="form-control"></div>
       <div class="col-md-3 d-flex align-items-end">
         <div class="form-check"><input type="checkbox" name="waitlist_enabled" id="waitlist_enabled" class="form-check-input" value="1">

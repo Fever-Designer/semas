@@ -80,6 +80,10 @@ if ($scheduleId) {
     );
     $schedDetail->execute(['id' => $scheduleId]);
     $schedDetail = $schedDetail->fetch();
+    if ($isCoordinator && (!$schedDetail || ($schedDetail['session_type'] ?? '') !== 'Weekend')) {
+        flash('error', 'Selected schedule is not available for Weekend coordinator review.');
+        redirect('/hod/cat-exam-submissions.php');
+    }
 
     $rosterStmt = $db->prepare(
         "SELECT u.full_name, u.reg_number, u.photo_path,
@@ -428,6 +432,5 @@ document.querySelectorAll('.hist-toggle').forEach(function(btn) {
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>
-
 
 

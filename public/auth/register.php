@@ -24,6 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($password !== $passwordConfirm) {
         $errors[] = 'Passwords do not match.';
     }
+    if ($phone !== '' && !preg_match('/^\d{10}$/', $phone)) {
+        $errors[] = 'Phone number must be exactly 10 digits.';
+    }
     if (strlen($password) < 8) {
         $errors[] = 'Password must be at least 8 characters long.';
     }
@@ -89,7 +92,7 @@ require __DIR__ . '/../partials/auth_top.php';
       <div class="mb-3"><label class="form-label small">Full Name</label><input name="full_name" class="form-control" required value="<?= e($_POST['full_name'] ?? '') ?>"></div>
       <div class="mb-3"><label class="form-label small">Email Address</label><input type="email" name="email" class="form-control" required value="<?= e($_POST['email'] ?? '') ?>"></div>
       <div class="mb-3"><label class="form-label small">Registration Number</label><input name="reg_number" class="form-control" value="<?= e($_POST['reg_number'] ?? '') ?>"></div>
-      <div class="mb-3"><label class="form-label small">Phone Number (for SMS notifications)</label><input name="phone_number" class="form-control" placeholder="+250..." value="<?= e($_POST['phone_number'] ?? '') ?>"></div>
+      <div class="mb-3"><label class="form-label small">Phone Number (for SMS notifications)</label><input name="phone_number" class="form-control" inputmode="numeric" pattern="\d{10}" maxlength="10" value="<?= e($_POST['phone_number'] ?? '') ?>"></div>
       <div class="mb-3">
         <label class="form-label small">Department</label>
         <select name="department_id" class="form-select">

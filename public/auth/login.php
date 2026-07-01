@@ -40,7 +40,7 @@ require __DIR__ . '/../partials/auth_top.php';
   <input type="hidden" name="step" value="password">
   <div class="mb-3">
     <label class="form-label small">Username / Email</label>
-    <input type="text" name="email" class="form-control" required autofocus placeholder="Email or Registration Number">
+    <input type="text" name="email" class="form-control" required autofocus>
   </div>
   <div class="mb-3">
     <label class="form-label small">Password</label>

@@ -61,7 +61,6 @@ require __DIR__ . '/../partials/auth_top.php';
   <div class="mb-3">
     <label class="form-label small">New Password <span class="text-danger">*</span></label>
     <input type="password" name="new_password" class="form-control" required minlength="8" autofocus>
-    <div class="form-text">At least 8 characters.</div>
   </div>
   <div class="mb-4">
     <label class="form-label small">Confirm New Password <span class="text-danger">*</span></label>

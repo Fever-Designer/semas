@@ -864,7 +864,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-body">
           <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
           <div class="input-group">
-            <input name="reg_number" id="manualRegNumber" class="form-control" placeholder="e.g. 2401001192" autocomplete="off" required>
+            <input name="reg_number" id="manualRegNumber" class="form-control" autocomplete="off" required>
             <button class="btn btn-outline-dark" type="button" id="manualLookupBtn">
               <i class="bi bi-search me-1"></i> Search
             </button>

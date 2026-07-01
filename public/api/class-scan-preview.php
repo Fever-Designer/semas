@@ -92,8 +92,19 @@ if ($mode === 'qr') {
     // decoded with the global APP_KEY — this is "Method 2" for class attendance, mirroring how
     // admin/scan-student.php scans a student's personal QR for event attendance.
     $token = $_POST['token'] ?? $_GET['token'] ?? '';
-    $key = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me', true);
     $secret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
+
+    if (preg_match('/^SEMASU:(\d+):(\d+):([0-9a-f]{8}):([0-9a-f]{20})$/i', $token, $m)) {
+        $expected = substr(hash_hmac('sha256', $m[1] . '|' . $m[2] . '|' . strtolower($m[3]), $secret), 0, 20);
+        if (!hash_equals($expected, strtolower($m[4])) || (int) $m[2] < time()) {
+            echo json_encode(['ok' => false, 'message' => 'This QR code is invalid or has expired. Ask the student to reload their QR page.']);
+            exit;
+        }
+        echo json_encode(class_student_payload($db, $session, (int) $m[1]));
+        exit;
+    }
+
+    $key = hash('sha256', $secret, true);
 
     $parts = explode('.', $token);
     if (count($parts) !== 3) {

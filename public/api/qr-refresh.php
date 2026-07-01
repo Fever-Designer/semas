@@ -19,6 +19,12 @@ if (!$event) {
 // Rotation window matches events.qr_rotation_seconds (0 = a long-lived token instead).
 $ttl = (int) $event['qr_rotation_seconds'] > 0 ? (int) $event['qr_rotation_seconds'] + 5 : 21600;
 $token = QrService::buildPayload($eventId, $event['qr_secret'], $ttl);
-$scanUrl = APP_URL . '/student/scan.php?event_id=' . $eventId . '&t=' . urlencode($token);
+$scanUrl = APP_URL . '/student/scan.php?e=' . $eventId . '&t=' . $token;
+$qrImage = SimpleQr::pngDataUri($scanUrl, 4, 3);
 
-echo json_encode(['ok' => true, 'scan_url' => $scanUrl, 'rotation_seconds' => (int) $event['qr_rotation_seconds']]);
+echo json_encode([
+    'ok' => true,
+    'scan_url' => $scanUrl,
+    'qr_data_uri' => $qrImage,
+    'rotation_seconds' => (int) $event['qr_rotation_seconds'],
+]);

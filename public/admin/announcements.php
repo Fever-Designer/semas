@@ -145,7 +145,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <?= csrf_field() ?>
     <div class="row g-3">
 
-      <div class="col-md-8"><label class="form-label small">Title</label><input name="title" class="form-control" required placeholder="e.g. Scheduled maintenance this Saturday"></div>
+      <div class="col-md-8"><label class="form-label small">Title</label><input name="title" class="form-control" required></div>
       <div class="col-md-4">
         <label class="form-label small">Priority</label>
         <select name="priority" class="form-select">

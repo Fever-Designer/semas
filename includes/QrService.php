@@ -15,8 +15,11 @@ declare(strict_types=1);
  *      events.qr_expires_at column, which is used to gate whether a NEW
  *      QR may still be displayed/regenerated for that event.
  *
- * The string actually rendered into the QR image is:
- *      base64url(iv) . '.' . base64url(ciphertext) . '.' . base64url(hmac)
+ * The compact string rendered into the QR image is:
+ *      E:event_id:exp:nonce:hmac
+ *
+ * verifyPayload() still accepts the older encrypted token format so
+ * already-open QR pages continue to work until they are refreshed.
  */
 final class QrService
 {
@@ -27,24 +30,31 @@ final class QrService
 
     public static function buildPayload(int $eventId, string $eventSecret, int $ttlSeconds = 21600): string
     {
-        $payload = json_encode([
-            'event_id' => $eventId,
-            'exp'      => time() + $ttlSeconds,
-            'nonce'    => bin2hex(random_bytes(8)),
-        ]);
-
-        $key = hash('sha256', $eventSecret, true); // 32-byte key for AES-256
-        $iv  = random_bytes(16);
-        $cipher = openssl_encrypt($payload, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
-        $hmac = hash_hmac('sha256', $iv . $cipher, $eventSecret, true);
-
-        return self::b64url($iv) . '.' . self::b64url($cipher) . '.' . self::b64url($hmac);
+        $exp = time() + $ttlSeconds;
+        $nonce = bin2hex(random_bytes(2));
+        $sig = substr(hash_hmac('sha256', $eventId . '|' . $exp . '|' . $nonce, $eventSecret), 0, 20);
+        return 'E:' . $eventId . ':' . $exp . ':' . $nonce . ':' . $sig;
     }
 
     /** Verifies and decodes a scanned QR string against the event's stored
      *  secret. Returns ['ok' => bool, 'data' => array|null, 'error' => string|null]. */
     public static function verifyPayload(string $token, string $eventSecret): array
     {
+        if (preg_match('/^(?:E|SEMASE):(\d+):(\d+):([0-9a-f]{4,8}):([0-9a-f]{20})$/i', $token, $m)) {
+            $eventId = (int) $m[1];
+            $exp = (int) $m[2];
+            $nonce = strtolower($m[3]);
+            $sig = strtolower($m[4]);
+            $expected = substr(hash_hmac('sha256', $eventId . '|' . $exp . '|' . $nonce, $eventSecret), 0, 20);
+            if (!hash_equals($expected, $sig)) {
+                return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid - possible tampering.'];
+            }
+            if ($exp < time()) {
+                return ['ok' => false, 'data' => null, 'error' => 'This QR code has expired.'];
+            }
+            return ['ok' => true, 'data' => ['event_id' => $eventId, 'exp' => $exp], 'error' => null];
+        }
+
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
             return ['ok' => false, 'data' => null, 'error' => 'Malformed QR code.'];

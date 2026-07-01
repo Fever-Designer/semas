@@ -7,14 +7,12 @@ $pageTitle = 'Event QR Code';
 $activeNav = 'events';
 $user = Auth::user();
 
-$payload = json_encode(['user_id' => $user['user_id'], 'reg_number' => $user['reg_number'], 'exp' => time() + 3600]);
-$key = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me', true);
-$iv = random_bytes(16);
-$cipher = openssl_encrypt($payload, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
-$hmac = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me', true);
-$qrString = rtrim(strtr(base64_encode($iv), '+/', '-_'), '=') . '.'
-          . rtrim(strtr(base64_encode($cipher), '+/', '-_'), '=') . '.'
-          . rtrim(strtr(base64_encode($hmac), '+/', '-_'), '=');
+$qrExp = time() + 3600;
+$qrNonce = bin2hex(random_bytes(4));
+$qrSecret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
+$qrSig = substr(hash_hmac('sha256', $user['user_id'] . '|' . $qrExp . '|' . $qrNonce, $qrSecret), 0, 20);
+$qrString = 'SEMASU:' . (int) $user['user_id'] . ':' . $qrExp . ':' . $qrNonce . ':' . $qrSig;
+$qrImage = SimpleQr::pngDataUri($qrString, 5, 3);
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -40,14 +38,8 @@ require __DIR__ . '/../partials/layout_top.php';
     <p class="text-muted small text-start mb-3">Reg. No. <?= e($user['reg_number'] ?? '—') ?></p>
     <div class="qr-frame">
       <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
-      <div id="qr-canvas"></div>
+      <div id="qr-canvas"><img src="<?= e($qrImage) ?>" alt="Student event QR code" width="200" height="200"></div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script>
-      new QRCode(document.getElementById('qr-canvas'), {
-        text: <?= json_encode($qrString) ?>, width: 200, height: 200, colorDark: "#1E2A52", colorLight: "#ffffff"
-      });
-    </script>
     <p class="text-muted mt-3" style="font-size:0.72rem;">Expires one hour after page load. Reload to refresh.</p>
   </div>
 </div>

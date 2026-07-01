@@ -95,7 +95,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-header"><h6 class="modal-title display-font"><?= $isCoordinator ? 'Add Umuganda Date' : 'Add Holiday / Umuganda' ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required placeholder="<?= $isCoordinator ? 'e.g. Umuganda' : 'e.g. Liberation Day / Umuganda' ?>"></div>
+          <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
           <?php if ($isCoordinator): ?>
             <input type="hidden" name="holiday_type" value="Umuganda">
           <?php else: ?>

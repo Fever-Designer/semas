@@ -28,7 +28,7 @@ final class Suggestion
     }
 
     /** Admin-safe listing — NEVER includes submitted_by_user_id. */
-    public static function adminList(?int $scopeDepartmentId = null): array
+    public static function adminList(?int $scopeDepartmentId = null, string $viewerRole = ''): array
     {
         $db = Database::connection();
         $sql = "SELECT s.suggestion_id, s.category, s.message, s.status, s.admin_reply,
@@ -40,11 +40,20 @@ final class Suggestion
                 LEFT JOIN users ru         ON ru.user_id         = s.replied_by
                 LEFT JOIN roles rr         ON rr.role_id         = ru.role_id
                 LEFT JOIN users resv       ON resv.user_id       = s.resolved_by
-                LEFT JOIN roles resr       ON resr.role_id       = resv.role_id";
+                LEFT JOIN roles resr       ON resr.role_id       = resv.role_id
+                LEFT JOIN users su         ON su.user_id         = s.submitted_by_user_id
+                LEFT JOIN roles sr         ON sr.role_id         = su.role_id";
         $params = [];
+        $where = [];
+        if ($viewerRole !== 'Principal') {
+            $where[] = "sr.role_name = 'Student'";
+        }
         if ($scopeDepartmentId) {
-            $sql .= ' WHERE s.department_id = :dept';
+            $where[] = 's.department_id = :dept';
             $params['dept'] = $scopeDepartmentId;
+        }
+        if ($where) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= ' ORDER BY s.created_at DESC';
         $stmt = $db->prepare($sql);

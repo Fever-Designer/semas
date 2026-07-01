@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         AuditLog::record(Auth::id(), 'ELIGIBILITY_GENERATE', 'modules', $moduleId, "exam_type=$examType;count=$count");
         flash('success', "Generated/refreshed $examType eligibility for $count student(s). Students at 75%+ were auto-approved; 65-74% remain pending review.");
-    } elseif ($action === 'decide' || $action === 'bulk_approve_all') {
+    } elseif ($action === 'decide') {
         $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
 
         $scheduleStmt = $db->prepare(
@@ -173,65 +173,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $scheduleStmt->execute(['mid' => $moduleId, 'type' => $examType]);
         $schedule = $scheduleStmt->fetch();
 
-        if ($action === 'decide') {
-            $eligibilityId = (int) $_POST['eligibility_id'];
-            $decision = $_POST['decision']; // approve | override_allow | override_deny
-            $row = $db->prepare('SELECT * FROM cat_exam_eligibility WHERE eligibility_id = :id');
-            $row->execute(['id' => $eligibilityId]);
-            $elig = $row->fetch();
-            if ($elig) {
-                if ($decision === 'approve') {
-                    $finalDecision = $elig['system_decision'];
-                    $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Approved', final_decision = system_decision, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
-                       ->execute(['uid' => $me['user_id'], 'id' => $eligibilityId]);
-                } else {
-                    $finalDecision = $decision === 'override_allow' ? 'Allowed' : 'Not Allowed';
-                    $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Overridden', final_decision=:final, override_reason=:reason, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
-                       ->execute(['final' => $finalDecision, 'reason' => trim($_POST['override_reason'] ?? ''), 'uid' => $me['user_id'], 'id' => $eligibilityId]);
-                }
-
-                if ($schedule) {
-                    $studentStmt = $db->prepare('SELECT user_id, full_name, email FROM users WHERE user_id = :id');
-                    $studentStmt->execute(['id' => $elig['user_id']]);
-                    $student = $studentStmt->fetch();
-                    if ($student && !empty($student['email'])) {
-                        Mailer::enqueueEligibilityDecision($student, $schedule, $finalDecision);
-                        Mailer::dispatch();
-                    }
-                }
-
-                AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE', 'cat_exam_eligibility', $eligibilityId, "decision=$decision");
-                flash('success', 'Decision recorded.');
+        $eligibilityId = (int) $_POST['eligibility_id'];
+        $decision = $_POST['decision']; // approve | override_allow | override_deny
+        $row = $db->prepare('SELECT * FROM cat_exam_eligibility WHERE eligibility_id = :id');
+        $row->execute(['id' => $eligibilityId]);
+        $elig = $row->fetch();
+        if ($elig) {
+            if ($decision === 'approve') {
+                $finalDecision = $elig['system_decision'];
+                $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Approved', final_decision = system_decision, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
+                   ->execute(['uid' => $me['user_id'], 'id' => $eligibilityId]);
+            } else {
+                $finalDecision = $decision === 'override_allow' ? 'Allowed' : 'Not Allowed';
+                $db->prepare("UPDATE cat_exam_eligibility SET hod_decision='Overridden', final_decision=:final, override_reason=:reason, decided_by=:uid, decided_at=NOW() WHERE eligibility_id=:id")
+                   ->execute(['final' => $finalDecision, 'reason' => trim($_POST['override_reason'] ?? ''), 'uid' => $me['user_id'], 'id' => $eligibilityId]);
             }
-        } else {
-            $pendingStmt = $db->prepare(
-                "SELECT ce.*, u.full_name, u.email
-                 FROM cat_exam_eligibility ce
-                 JOIN users u ON u.user_id = ce.user_id
-                 WHERE ce.module_id = :mid AND ce.exam_type = :type AND ce.hod_decision = 'Pending'"
-            );
-            $pendingStmt->execute(['mid' => $moduleId, 'type' => $examType]);
-            $pendingRows = $pendingStmt->fetchAll();
 
-            if ($pendingRows) {
-                $db->prepare(
-                    "UPDATE cat_exam_eligibility
-                     SET hod_decision='Approved', final_decision=system_decision, decided_by=:uid, decided_at=NOW()
-                     WHERE module_id = :mid AND exam_type = :type AND hod_decision = 'Pending'"
-                )->execute(['uid' => $me['user_id'], 'mid' => $moduleId, 'type' => $examType]);
-
-                if ($schedule) {
-                    foreach ($pendingRows as $studentRow) {
-                        if (!empty($studentRow['email'])) {
-                            Mailer::enqueueEligibilityDecision($studentRow, $schedule, $studentRow['system_decision']);
-                        }
-                    }
+            if ($schedule) {
+                $studentStmt = $db->prepare('SELECT user_id, full_name, email FROM users WHERE user_id = :id');
+                $studentStmt->execute(['id' => $elig['user_id']]);
+                $student = $studentStmt->fetch();
+                if ($student && !empty($student['email'])) {
+                    Mailer::enqueueEligibilityDecision($student, $schedule, $finalDecision);
                     Mailer::dispatch();
                 }
             }
 
-            AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE_BULK', 'modules', $moduleId, "exam_type=$examType;count=" . count($pendingRows));
-            flash('success', "Approved " . count($pendingRows) . " pending student(s) and queued eligibility emails.");
+            AuditLog::record(Auth::id(), 'ELIGIBILITY_DECIDE', 'cat_exam_eligibility', $eligibilityId, "decision=$decision");
+            flash('success', 'Decision recorded.');
         }
     }
     redirect('/hod/eligibility.php?module_id=' . $moduleId . '&exam_type=' . ($_POST['exam_type'] ?? $_GET['exam_type'] ?? 'CAT'));
@@ -340,8 +309,6 @@ require __DIR__ . '/../partials/layout_top.php';
       <div class="d-flex gap-2 flex-wrap">
         <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="generate"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
           <button class="btn btn-semas-gold btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Generate / Refresh Eligibility List</button></form>
-        <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="bulk_approve_all"><input type="hidden" name="module_id" value="<?= (int) $moduleId ?>"><input type="hidden" name="exam_type" value="<?= e($examType) ?>">
-          <button class="btn btn-outline-success btn-sm"><i class="bi bi-check2-all me-1"></i> Approve Pending All</button></form>
       </div>
     </div>
     <!-- Schedule: room + invigilator + date -->
@@ -454,7 +421,7 @@ require __DIR__ . '/../partials/layout_top.php';
                           <option value="override_deny">Not Allowed (override Allowed)</option>
                         </select>
                       </div>
-                      <div class="mb-2"><label class="form-label small">Reason</label><textarea name="override_reason" class="form-control form-control-sm" rows="3" placeholder="e.g. Medical certificate provided for missed sessions" required></textarea></div>
+                      <div class="mb-2"><label class="form-label small">Reason</label><textarea name="override_reason" class="form-control form-control-sm" rows="3" required></textarea></div>
                     </div>
                     <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Save Override</button></div>
                   </form>

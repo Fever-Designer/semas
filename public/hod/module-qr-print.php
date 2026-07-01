@@ -32,12 +32,12 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Inter', sans-serif; background: #fff; margin: 0; padding: 40px; text-align: center; }
-  h1 { font-family: 'Sora', sans-serif; font-size: 1.5rem; color: #1E2A52; margin-bottom: 4px; }
-  p  { color: #555; font-size: 0.9rem; margin: 4px 0; }
-  .qr-box { border: 3px solid #1E2A52; border-radius: 12px; display: inline-block; padding: 20px; margin: 24px auto; }
-  .instruction { background: #f8f3e8; border-radius: 8px; padding: 12px 20px; display: inline-block; margin-top: 12px; font-size: 0.85rem; color: #333; }
-  .meta { margin-top: 20px; font-size: 0.8rem; color: #888; }
+  body { font-family: 'Inter', sans-serif; background: #fff; margin: 0; padding: 24px; text-align: center; }
+  h1 { font-family: 'Sora', sans-serif; font-size: 1.2rem; color: #1E2A52; margin-bottom: 4px; }
+  p  { color: #555; font-size: 0.8rem; margin: 3px 0; }
+  .qr-box { border: 2px solid #1E2A52; border-radius: 8px; display: inline-block; padding: 10px; margin: 14px auto; }
+  .instruction { background: #f8f3e8; border-radius: 6px; padding: 8px 14px; display: inline-block; margin-top: 8px; font-size: 0.76rem; color: #333; }
+  .meta { margin-top: 12px; font-size: 0.72rem; color: #888; }
   @media print {
     .no-print { display: none; }
     body { padding: 20px; }
@@ -75,7 +75,7 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
 QRCode.toCanvas(document.getElementById('qrCanvas'), <?= json_encode($scanUrl) ?>, {
-  width: 280, margin: 2,
+  width: 180, margin: 1,
   color: { dark: '#1E2A52', light: '#ffffff' }
 }, function (err) { if (err) console.error(err); });
 </script>

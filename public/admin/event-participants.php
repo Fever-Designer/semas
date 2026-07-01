@@ -69,7 +69,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php foreach ($events as $ev): ?><option value="<?= (int) $ev['event_id'] ?>" <?= $eventId === (int) $ev['event_id'] ? 'selected' : '' ?>><?= e($ev['title']) ?> &middot; <?= e($ev['event_date']) ?></option><?php endforeach; ?>
       </select>
     </div>
-    <div class="col-md-4"><input name="q" class="form-control" placeholder="Search by name or reg. number" value="<?= e($_GET['q'] ?? '') ?>"></div>
+    <div class="col-md-4"><input name="q" class="form-control" value="<?= e($_GET['q'] ?? '') ?>"></div>
     <div class="col-md-2"><button class="btn btn-semas w-100">Filter</button></div>
   </form>
 </div>

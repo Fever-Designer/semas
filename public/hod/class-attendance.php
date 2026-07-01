@@ -97,9 +97,9 @@ $modSql = "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, m
            LEFT JOIN users u       ON u.user_id        = lt.user_id
            LEFT JOIN rooms r       ON r.room_id        = m.room_id";
 if ($isCoordinator) {
-    $modSql .= " WHERE m.status = 'Ongoing' AND m.session_type = 'Weekend'";
+    $modSql .= " WHERE m.session_type = 'Weekend'";
 } else {
-    $modSql .= " WHERE m.status = 'Ongoing'";
+    $modSql .= "";
 }
 $modSql .= " ORDER BY m.module_title";
 $allModules = $db->query($modSql)->fetchAll();
@@ -445,7 +445,7 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 
 <?php if (!$moduleSummary): ?>
-  <div class="semas-card p-4 text-center text-muted small">No ongoing modules found for <?= e($sessionLabel) ?>.</div>
+  <div class="semas-card p-4 text-center text-muted small">No modules found for <?= e($sessionLabel) ?>.</div>
 <?php else: ?>
 <div class="row g-3">
   <?php foreach ($moduleSummary as $ms): ?>

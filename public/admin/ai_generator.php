@@ -65,7 +65,7 @@ require __DIR__ . '/../partials/layout_top.php';
       </div>
       <div class="col-md-4"><label class="form-label small">Event Date (optional)</label><input type="date" name="event_date" class="form-control"></div>
       <div class="col-md-4"><label class="form-label small">Venue (optional)</label><input name="venue" class="form-control"></div>
-      <div class="col-md-4"><label class="form-label small">Deadline (optional)</label><input name="deadline" class="form-control" placeholder="e.g. 2026-07-09"></div>
+      <div class="col-md-4"><label class="form-label small">Deadline (optional)</label><input name="deadline" class="form-control"></div>
       <div class="col-12"><label class="form-label small">Message Content</label><textarea name="content" class="form-control" rows="3" required></textarea></div>
     </div>
     <button class="btn btn-semas-gold mt-3"><i class="bi bi-robot me-1"></i> Generate</button>

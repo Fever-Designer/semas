@@ -285,7 +285,6 @@ function calendarFormFields(array $c): string
             <option value="<?= $s ?>" <?= ($c['semester_name'] ?? '') === $s ? 'selected' : '' ?>><?= $s ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="form-text"><i class="bi bi-magic me-1"></i>Intake code is auto-derived from semester + start date year.</div>
       </div>
       <div class="col-md-6">
         <label class="form-label small fw-semibold">Start Date <span class="text-danger">*</span></label>
