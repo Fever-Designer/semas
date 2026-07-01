@@ -146,6 +146,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/registrar/students.php');
     }
 
+    // ---- DELETE STUDENT / SOFT DELETE ----
+    if ($action === 'delete_student') {
+        $userId = (int) $_POST['user_id'];
+        $db->prepare("UPDATE users SET status='Deactivated' WHERE user_id=:id")->execute(['id' => $userId]);
+        AuditLog::record(Auth::id(), 'DELETE_STUDENT', 'users', $userId);
+        Mailer::sendAccountDeactivated($targetUser);
+        flash('success', 'Student account deleted and deactivated.');
+        redirect('/registrar/students.php');
+    }
+
     // ---- BULK IMPORT (CSV / EXCEL) ----
     if ($action === 'import_preview' && isset($_FILES['import_file'])) {
         $file = $_FILES['import_file'];
@@ -483,6 +493,16 @@ require __DIR__ . '/../partials/layout_top.php';
                 <i class="bi bi-<?= $s['status'] === 'Active' ? 'person-dash' : 'person-check' ?>-fill"></i>
               </button>
             </form>
+            <?php if ($s['status'] === 'Active'): ?>
+            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this student account? This will deactivate the user and preserve records.');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="delete_student">
+              <input type="hidden" name="user_id" value="<?= $s['user_id'] ?>">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete">
+                <i class="bi bi-trash-fill"></i>
+              </button>
+            </form>
+            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>

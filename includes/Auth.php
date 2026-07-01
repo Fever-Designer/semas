@@ -157,9 +157,40 @@ final class Auth
         if (!in_array($role, ['HOD', 'Coordinator'], true)) {
             return false;
         }
-        $stmt = Database::connection()->prepare(
-            "SELECT 1 FROM lecturers l JOIN modules m ON m.lecturer_id = l.lecturer_id
-             WHERE l.user_id = :uid AND m.status = 'Ongoing' LIMIT 1"
+
+        $db = Database::connection();
+        $stmt = $db->prepare(
+            "SELECT 1 FROM lecturers l
+             LEFT JOIN modules m ON m.lecturer_id = l.lecturer_id AND m.status = 'Ongoing'
+             LEFT JOIN cat_exam_schedules cs ON cs.invigilator_id = l.lecturer_id
+             WHERE l.user_id = :uid
+               AND (m.module_id IS NOT NULL OR cs.schedule_id IS NOT NULL)
+             LIMIT 1"
+        );
+        $stmt->execute(['uid' => self::id()]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** Returns true when the sidebar should show the teaching navigation. */
+    public static function canAccessTeachingMenu(): bool
+    {
+        if (!self::check()) {
+            return false;
+        }
+        $role = self::role();
+        if ($role === 'Lecturer') {
+            return true;
+        }
+        if (!in_array($role, ['HOD', 'Coordinator'], true)) {
+            return false;
+        }
+
+        $db = Database::connection();
+        $stmt = $db->prepare(
+            "SELECT 1 FROM lecturers l
+             JOIN modules m ON m.lecturer_id = l.lecturer_id AND m.status = 'Ongoing'
+             WHERE l.user_id = :uid
+             LIMIT 1"
         );
         $stmt->execute(['uid' => self::id()]);
         return (bool) $stmt->fetchColumn();

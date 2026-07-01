@@ -60,7 +60,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
       </a>
 
-      <?php if (Auth::canAccessTeaching()): ?>
+      <?php if (Auth::canAccessTeachingMenu()): ?>
         <div class="nav-section-label">My Teaching</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/modules.php"><i class="bi bi-journal-bookmark-fill"></i> My Modules</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/cat-exam-attendance.php"><i class="bi bi-pencil-square"></i> CAT / Exam Attendance</a>

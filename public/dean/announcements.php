@@ -23,16 +23,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $recipients  = [];
     $audienceKey = 'All Students';
-    $scopeLabel  = 'All Students (university-wide)';
+    $scopeLabel  = 'All Students';
 
     if ($who === 'everyone') {
         $audienceKey = 'University Community';
-        $scopeLabel  = 'University-wide / All active users';
+        $scopeLabel  = 'University-wide';
         $recipients  = AudienceResolver::resolve('University Community');
 
     } elseif ($who === 'lecturers') {
         $audienceKey = 'Department Lecturers';
-        $scopeLabel  = 'All Lecturers (university-wide)';
+        $scopeLabel  = 'All Lecturers';
         $stmt = $db->query(
             "SELECT u.* FROM users u JOIN lecturers l ON l.user_id = u.user_id WHERE u.status = 'Active'"
         );
@@ -41,19 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($who === 'students') {
         if ($subScope === 'session' && $sessionT) {
             $audienceKey = $sessionT . ' Students';
-            $scopeLabel  = $sessionT . ' Session / All Students';
+            $scopeLabel  = $sessionT . ' Session';
             $recipients  = AudienceResolver::resolve($sessionT . ' Students');
         } elseif ($subScope === 'first_year') {
             $audienceKey = 'First Year Students';
-            $scopeLabel  = 'First Year Students (university-wide)';
+            $scopeLabel  = 'First Year';
             $recipients  = AudienceResolver::resolve('First Year Students');
         } elseif ($subScope === 'final_year') {
             $audienceKey = 'Final Year Students';
-            $scopeLabel  = 'Final Year Students (university-wide)';
+            $scopeLabel  = 'Final Year';
             $recipients  = AudienceResolver::resolve('Final Year Students');
         } elseif ($subScope === 'year' && $yearVal) {
             $audienceKey = 'All Students';
-            $scopeLabel  = 'Year ' . $yearVal . ' Students (university-wide)';
+            $scopeLabel  = 'Year ' . $yearVal . ' Students';
             $stmt = $db->prepare(
                 "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
                  WHERE r.role_name = 'Student' AND u.status = 'Active' AND u.year_of_study = :year"
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recipients = $stmt->fetchAll();
         } else {
             $audienceKey = 'All Students';
-            $scopeLabel  = 'All Students (university-wide)';
+            $scopeLabel  = 'All Students';
             $recipients  = AudienceResolver::resolve('All Students');
         }
     }

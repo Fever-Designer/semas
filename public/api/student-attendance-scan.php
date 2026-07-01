@@ -79,6 +79,29 @@ $qrToken  = trim($_POST['qr_token'] ?? '');   // legacy static QR path
 // static module QR token was submitted.
 $isManual = ($qrData === '' && $qrToken === '');
 
+// Allow the student scanner to send a dynamic SEMAS payload through the
+// legacy qr_token field, or a printed classroom QR URL directly.
+if ($qrData === '' && $qrToken !== '') {
+    if (preg_match('/^SEMAS:\d+:\d+:[0-9a-f]+$/i', $qrToken)) {
+        $qrData = $qrToken;
+        $qrToken = '';
+    } elseif (filter_var($qrToken, FILTER_VALIDATE_URL)) {
+        $parsed = parse_url($qrToken);
+        if (!empty($parsed['query'])) {
+            parse_str($parsed['query'], $params);
+            if (!empty($params['module_id'])) {
+                $_POST['module_id'] = (int) $params['module_id'];
+                $moduleId = (int) $_POST['module_id'];
+            }
+            if (!empty($params['t'])) {
+                $qrToken = $params['t'];
+            } elseif (!empty($params['qr_token'])) {
+                $qrToken = $params['qr_token'];
+            }
+        }
+    }
+}
+
 // Legacy static module_qr_secret validation
 if ($qrData === '' && $qrToken !== '') {
     $tokenCheck = $db->prepare('SELECT module_id FROM modules WHERE module_id = :id AND module_qr_secret = :t');
@@ -408,7 +431,7 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
             );
         }
         if (!empty($student['phone_number']) && ($student['sms_opt_in'] ?? 1)) {
-            Delivery::sendSms(
+            Sms::send(
                 $student['phone_number'],
                 'SEMAS Alert: You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". Contact your HOD immediately.',
                 $student['user_id']

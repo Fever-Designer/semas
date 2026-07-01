@@ -50,6 +50,15 @@ if (!$sinRecord || !$soutRecord) {
     exit;
 }
 
+$examDate  = date('d F Y', strtotime($schedule['scheduled_date']));
+$sinTime   = date('h:i A', strtotime($sinRecord['recorded_at']));
+$soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
+$dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
+$timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' – ' . date('h:i A', strtotime($schedule['end_time']));
+$issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
+$uniName   = Settings::get('university_name', 'University of Kigali');
+$brandLogo = Settings::get('logo_path');
+
 // Verification QR payload: sign with APP_KEY, expires 365 days (used only for slip authenticity)
 $payload = json_encode(['schedule_id' => $scheduleId, 'user_id' => $me['user_id'], 'exp' => time() + 31536000]);
 $key     = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
@@ -59,14 +68,26 @@ $hmac    = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallba
 $b64u    = function (string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); };
 $verifyToken = $b64u($iv) . '.' . $b64u($cipher) . '.' . $b64u($hmac);
 $verifyUrl   = APP_URL . '/public/verify-slip.php?t=' . $verifyToken;
-
-$examDate  = date('d F Y', strtotime($schedule['scheduled_date']));
-$sinTime   = date('h:i A', strtotime($sinRecord['recorded_at']));
-$soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
-$dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
-$timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' – ' . date('h:i A', strtotime($schedule['end_time']));
-$issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
-$uniName   = Settings::get('university_name', 'University of Kigali');
+$qrPayload   = json_encode([
+    'type' => 'semas_slip',
+    'slip' => 'attendance',
+    'schedule_id' => $scheduleId,
+    'module_title' => $schedule['module_title'],
+    'student_name' => $me['full_name'],
+    'exam_type' => $schedule['exam_type'],
+    'exam_date' => $dayOfWeek . ', ' . $examDate,
+    'room' => $schedule['room'],
+    'time' => $timeRange,
+    'issued_at' => $issuedAt,
+    'sig' => $b64u(hash_hmac('sha256', json_encode([
+        'schedule_id' => $scheduleId,
+        'user_id' => $me['user_id'],
+        'exam_type' => $schedule['exam_type'],
+        'exam_date' => $dayOfWeek . ', ' . $examDate,
+        'room' => $schedule['room'],
+        'time' => $timeRange,
+    ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
+]);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -107,6 +128,8 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
   .qr-section .qr-label { font-size: 10px; color: #9CA3AF; margin-top: 4px; }
 
   .footer { background: #F6F7FB; padding: 10px 28px; font-size: 10px; color: #9CA3AF; text-align: center; border-top: 1px solid #E4E7EF; }
+  .footer a { color: #9CA3AF; text-decoration: none; }
+  .print-meta, .verification-url { display: block; }
 
   .no-print { margin: 16px auto; max-width: 680px; text-align: center; }
   .no-print button { padding: 10px 28px; background: #D4A24C; color: #1E2A52; font-weight: bold; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
@@ -140,15 +163,17 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
 </head>
 <body>
 
-<div class="no-print"><button onclick="window.print()"><i>⊞</i> Print / Save as PDF</button></div>
-
 <div class="page">
   <div class="header">
     <div>
-      <div class="brand">SEM<span>AS</span></div>
-      <div class="uni"><?= e($uniName) ?></div>
+      <div class="brand">
+        <?php if (!empty($brandLogo)): ?>
+          <img src="<?= e(APP_URL . '/' . ltrim($brandLogo, '/')) ?>" alt="SEMAS Logo" style="height:36px; max-height:40px;">
+        <?php else: ?>
+          SEM<span>AS</span>
+        <?php endif; ?>
+      </div>
     </div>
-    <div style="font-size:11px;color:#A9B3CC;text-align:right;">Issued: <?= e($issuedAt) ?></div>
   </div>
 
   <div class="slip-title">
@@ -186,23 +211,20 @@ $uniName   = Settings::get('university_name', 'University of Kigali');
     </div>
   </div>
 
-  <div class="footer">
+  <div class="footer verification-url">
     This slip is permanently stored in SEMAS and can be reprinted at any time.
     Verification URL: <?= e($verifyUrl) ?>
   </div>
 </div>
 
-<div class="no-print" style="margin-top:8px;">
-  <button onclick="window.print()">Print / Save as PDF</button>
-</div>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
 <script>
+  const qrText = '<?= e(addslashes($qrPayload)) ?>';
   new QRCode(document.getElementById('verifyQr'), {
-    text: '<?= e(addslashes($verifyUrl)) ?>',
-    width: 72, height: 72,
+    text: qrText,
+    width: 120, height: 120,
     colorDark: '#1E2A52', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M
+    correctLevel: QRCode.CorrectLevel.H
   });
 </script>
 </body>

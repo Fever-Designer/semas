@@ -50,6 +50,46 @@ $alreadySubmitted = (bool) $submittedStmt->fetch();
 
 // ── Student lookup (search + preview in one call) ────────────────────────
 if ($action === 'lookup') {
+    $cardData = trim($_POST['card_data'] ?? '');
+    if ($cardData !== '') {
+        $card = parse_student_card($cardData);
+        if (!$card) {
+            echo json_encode(['ok' => false, 'message' => 'Invalid student card format.']);
+            exit;
+        }
+        $cardError = validate_student_card($card);
+        if ($cardError !== null) {
+            echo json_encode(['ok' => false, 'message' => $cardError]);
+            exit;
+        }
+
+        $stud = $db->prepare(
+            "SELECT u.user_id, u.full_name, u.reg_number
+             FROM users u
+             JOIN roles r ON r.role_id = u.role_id
+             JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
+             WHERE r.role_name = 'Student' AND u.reg_number = :reg LIMIT 1"
+        );
+        $stud->execute(['mid' => $schedule['module_id'], 'reg' => $card['reg_number']]);
+        $studentRow = $stud->fetch();
+        if (!$studentRow) {
+            echo json_encode(['ok' => false, 'message' => 'This student is not registered for the selected module.']);
+            exit;
+        }
+
+        $normalizedCardName = normalize_name($card['full_name']);
+        $normalizedDbName   = normalize_name($studentRow['full_name']);
+        if ($normalizedCardName !== $normalizedDbName) {
+            echo json_encode(['ok' => false, 'message' => 'Scanned card name does not match the registered student name.']);
+            exit;
+        }
+
+        $payload = cat_student_payload($db, $schedule, $scheduleId, (int) $studentRow['user_id']);
+        $payload['single'] = true;
+        echo json_encode($payload);
+        exit;
+    }
+
     $regNum = trim($_POST['reg_number'] ?? '');
     if ($regNum === '') { echo json_encode(['ok' => false, 'message' => 'Enter a registration number.']); exit; }
 
@@ -91,6 +131,103 @@ if ($action === 'lookup') {
     }
     echo json_encode(['ok' => true, 'single' => false, 'results' => $results]);
     exit;
+}
+
+function parse_student_card(string $raw): ?array
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return null;
+    }
+
+    // Signed JSON payload from the card QR/barcode
+    if (str_starts_with($raw, '{')) {
+        $data = json_decode($raw, true);
+        if (!is_array($data) || empty($data['reg_number']) || empty($data['full_name']) || empty($data['exp'])) {
+            return null;
+        }
+        return [
+            'reg_number' => trim($data['reg_number']),
+            'full_name'  => trim($data['full_name']),
+            'exp'        => trim((string) $data['exp']),
+            'sig'        => trim($data['sig'] ?? ''),
+        ];
+    }
+
+    // Compact signed token format
+    if (preg_match('/^STUDENT_CARD[:|]([^:|]+)[:|]([^:|]+)[:|]([^:|]+)[:|]([0-9a-fA-F]{64})$/', $raw, $matches)) {
+        return [
+            'reg_number' => trim($matches[1]),
+            'full_name'  => trim($matches[2]),
+            'exp'        => trim($matches[3]),
+            'sig'        => trim($matches[4]),
+        ];
+    }
+
+    // Fallback: parse plain university card text from the ID card front.
+    $text = preg_replace('/\s+/', ' ', $raw);
+
+    $name = null;
+    if (preg_match('/(?:Names|Name|Student\s+Name)\s*[:\-]?\s*([^\|\n\r]+?)(?:Campus|Registration|Programme|Date\s+of\s+Issue|Expiry\s+Date|Issue\s+Date|$)/i', $text, $match)) {
+        $name = trim($match[1]);
+    }
+    if (!$name && preg_match('/^([A-Z][A-Za-z\s]{3,})$/m', $raw, $match)) {
+        $name = trim($match[1]);
+    }
+
+    $regNumber = null;
+    if (preg_match('/Registration\s*Number\s*[:\-]?\s*([A-Z0-9\-]+)/i', $raw, $match)) {
+        $regNumber = trim($match[1]);
+    } elseif (preg_match('/Reg(?:istration)?\s*No(?:\.?|\s*):?\s*([A-Z0-9\-]+)/i', $raw, $match)) {
+        $regNumber = trim($match[1]);
+    }
+
+    $expiry = null;
+    if (preg_match('/Expiry\s*Date\s*[:\-]?\s*([0-3]?\d[\/\-][01]?\d[\/\-]\d{4})/i', $raw, $match)) {
+        $expiry = trim($match[1]);
+    } elseif (preg_match('/Exp\s*Date\s*[:\-]?\s*([0-3]?\d[\/\-][01]?\d[\/\-]\d{4})/i', $raw, $match)) {
+        $expiry = trim($match[1]);
+    }
+
+    if ($regNumber && $name && $expiry) {
+        return [
+            'reg_number' => $regNumber,
+            'full_name'  => $name,
+            'exp'        => $expiry,
+            'sig'        => '',
+        ];
+    }
+
+    return null;
+}
+
+function validate_student_card(array $card): ?string
+{
+    $ts = strtotime($card['exp']);
+    if ($ts === false) {
+        return 'Card expiration date is invalid.';
+    }
+    if (time() > $ts) {
+        return 'This student card has expired.';
+    }
+
+    if (empty($card['sig'])) {
+        // If the card payload is plain text from the physical ID card, accept it after expiry validation.
+        return null;
+    }
+
+    $secret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
+    $expected = hash_hmac('sha256', $card['reg_number'] . '|' . $card['full_name'] . '|' . $card['exp'], $secret);
+    if (!hash_equals($expected, $card['sig'])) {
+        return 'Student card validation failed. The card may be invalid or tampered with.';
+    }
+    return null;
+}
+
+function normalize_name(string $name): string
+{
+    $normalized = preg_replace('/\s+/', ' ', trim($name));
+    return mb_strtolower($normalized, 'UTF-8');
 }
 
 // ── Student search (name / reg, returns list only) ────────────────────────

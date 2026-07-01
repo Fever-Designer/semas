@@ -10,26 +10,6 @@ $db        = Database::connection();
 $me        = Auth::user();
 $today     = date('Y-m-d');
 
-// Tracks the lecturer's formal "Submit Module Attendance" step required
-// once HOD/Coordinator schedules a CAT/Exam for a module.
-$db->exec(
-    "CREATE TABLE IF NOT EXISTS module_attendance_submissions (
-        submission_id  INT AUTO_INCREMENT PRIMARY KEY,
-        module_id      INT NOT NULL,
-        exam_type      ENUM('CAT','Exam') NOT NULL,
-        submitted_by   INT NOT NULL,
-        submitted_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        status         ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
-        decided_by     INT NULL,
-        decided_at     DATETIME NULL,
-        decision_note  VARCHAR(255) NULL,
-        UNIQUE KEY uniq_module_exam_type (module_id, exam_type),
-        FOREIGN KEY (module_id) REFERENCES modules(module_id) ON DELETE CASCADE,
-        FOREIGN KEY (submitted_by) REFERENCES users(user_id) ON DELETE CASCADE,
-        FOREIGN KEY (decided_by) REFERENCES users(user_id) ON DELETE SET NULL
-    ) ENGINE=InnoDB"
-);
-
 /** Which exam_type cutoff window (per Eligibility::generate()'s own cutoff
  *  rules) a session date falls under, or null if it's outside both. */
 function attendance_window_for_date(string $sessionDate, ?string $catDate, ?string $examDate): ?string
@@ -44,48 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action   = $_POST['action']    ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
-
-    if ($action === 'submit_attendance') {
-        $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
-
-        $ownCheck = $db->prepare(
-            "SELECT 1 FROM modules m JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
-             WHERE m.module_id = :mid AND lt.user_id = :uid"
-        );
-        $ownCheck->execute(['mid' => $moduleId, 'uid' => $me['user_id']]);
-        if (!$ownCheck->fetch()) {
-            flash('error', 'Module not found or not assigned to you.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
-
-        $schedCheck = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = :type");
-        $schedCheck->execute(['mid' => $moduleId, 'type' => $examType]);
-        if (!$schedCheck->fetch()) {
-            flash('error', "No $examType has been scheduled for this module yet.");
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
-
-        $existingSub = $db->prepare('SELECT status FROM module_attendance_submissions WHERE module_id = :mid AND exam_type = :type');
-        $existingSub->execute(['mid' => $moduleId, 'type' => $examType]);
-        $subStatus = $existingSub->fetchColumn();
-        if ($subStatus === 'Pending' || $subStatus === 'Approved') {
-            flash('error', "$examType attendance has already been submitted and is awaiting/has received HOD review.");
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
-
-        $db->prepare(
-            "INSERT INTO module_attendance_submissions (module_id, exam_type, submitted_by, submitted_at, status)
-             VALUES (:mid, :type, :uid, NOW(), 'Pending')
-             ON DUPLICATE KEY UPDATE submitted_by = :uid2, submitted_at = NOW(), status = 'Pending',
-                                     decided_by = NULL, decided_at = NULL, decision_note = NULL"
-        )->execute(['mid' => $moduleId, 'type' => $examType, 'uid' => $me['user_id'], 'uid2' => $me['user_id']]);
-
-        Eligibility::generate($moduleId, $examType);
-
-        AuditLog::record(Auth::id(), 'MODULE_ATTENDANCE_SUBMIT', 'modules', $moduleId, "exam_type=$examType");
-        flash('success', "$examType attendance submitted for HOD review. The register for this period is now locked.");
-        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-    }
 
     if ($action === 'manual_mark') {
         $sessionId = (int) ($_POST['session_id'] ?? 0);
@@ -246,8 +184,8 @@ if ($module) {
     );
     $sessStmt->execute(['mid' => $moduleId]);
     $allSess = $sessStmt->fetchAll();
-    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates) {
-        return !in_array($s['session_date'], $excludeDates, true);
+    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today) {
+        return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
     }));
 
     foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
@@ -512,7 +450,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php endif; ?>
       </div>
       <?php if ($row['sub_status'] !== 'Pending' && $row['sub_status'] !== 'Approved'): ?>
-        <form method="POST" onsubmit="return confirm('Submitting will freeze the <?= e($examType) ?> attendance register up to this date. Continue?');">
+        <form method="POST">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="submit_attendance">
           <input type="hidden" name="module_id" value="<?= $moduleId ?>">

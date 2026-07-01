@@ -187,6 +187,17 @@ a:hover { color: var(--semas-gold); }
 .badge-completed { background: #E6F4EC; color: var(--semas-success); }
 .badge-cancelled { background: #F4E6E5; color: var(--semas-coral); }
 
+/* ---------- Table action column ---------- */
+.table th:last-child,
+.table td:last-child {
+    white-space: nowrap;
+    width: 1%;
+}
+.table td > .btn,
+.table td > form > .btn {
+    white-space: nowrap;
+}
+
 /* ---------- Notification bell ---------- */
 .notif-bell {
     position: relative;

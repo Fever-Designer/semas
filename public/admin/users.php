@@ -70,6 +70,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         flash('error', 'Full name and email are required.');
         redirect('/admin/users.php');
     }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        flash('error', 'Please enter a valid email address.');
+        redirect('/admin/users.php');
+    }
+    if ($phone !== null && !preg_match('/^\d{10}$/', preg_replace('/[^0-9]/', '', $phone))) {
+        flash('error', 'Phone number must be exactly 10 digits (e.g., 0764082740).');
+        redirect('/admin/users.php');
+    }
+    if ($phone !== null) {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+    }
     $exists = $db->prepare('SELECT user_id FROM users WHERE email = :email');
     $exists->execute(['email' => $email]);
     if ($exists->fetch()) {
@@ -172,10 +183,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Role and department changes are Principal-only to prevent
                 // a Dean/HOD from escalating a user's privileges or moving them
                 // out of the scope the Dean/HOD can even see.
+                $fullName = trim($_POST['full_name']);
+                $email = trim($_POST['email']);
+                $phone = trim($_POST['phone_number']) ?: null;
+                
+                if (empty($fullName) || empty($email)) {
+                    flash('error', 'Name and email cannot be empty.');
+                    redirect('/admin/users.php?action=edit&user_id=' . $targetUserId);
+                }
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    flash('error', 'Please enter a valid email address.');
+                    redirect('/admin/users.php?action=edit&user_id=' . $targetUserId);
+                }
+                if ($phone !== null && !preg_match('/^\d{10}$/', preg_replace('/[^0-9]/', '', $phone))) {
+                    flash('error', 'Phone number must be exactly 10 digits (e.g., 0764082740).');
+                    redirect('/admin/users.php?action=edit&user_id=' . $targetUserId);
+                }
+                if ($phone !== null) {
+                    $phone = preg_replace('/[^0-9]/', '', $phone);
+                }
+                
                 $fields = [
-                    'full_name' => trim($_POST['full_name']),
-                    'email' => trim($_POST['email']),
-                    'phone_number' => trim($_POST['phone_number']) ?: null,
+                    'full_name' => $fullName,
+                    'email' => $email,
+                    'phone_number' => $phone,
                 ];
                 $sql = 'UPDATE users SET full_name=:full_name, email=:email, phone_number=:phone_number';
                 if ($myRole === 'Principal') {
@@ -311,7 +342,7 @@ require __DIR__ . '/../partials/layout_top.php';
           </div>
           <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Email Address</label><input type="email" name="email" class="form-control form-control-sm" required></div>
-          <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" placeholder="+250..."></div>
+          <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" placeholder="0764082740" pattern="\d{10}" maxlength="10"></div>
           <div class="mb-2" id="targetDeptField">
             <label class="form-label small">Department (for HOD / Lecturer)</label>
             <select name="target_department_id" class="form-select form-select-sm">
@@ -412,7 +443,7 @@ document.addEventListener('DOMContentLoaded', function () {
                   <div class="modal-body">
                     <div class="mb-2"><label class="form-label small">Full Name</label><input name="full_name" class="form-control form-control-sm" value="<?= e($u['full_name']) ?>" required></div>
                     <div class="mb-2"><label class="form-label small">Email</label><input type="email" name="email" class="form-control form-control-sm" value="<?= e($u['email']) ?>" required></div>
-                    <div class="mb-2"><label class="form-label small">Phone</label><input name="phone_number" class="form-control form-control-sm" value="<?= e($u['phone_number'] ?? '') ?>"></div>
+                    <div class="mb-2"><label class="form-label small">Phone</label><input name="phone_number" class="form-control form-control-sm" value="<?= e($u['phone_number'] ?? '') ?>" placeholder="0764082740" pattern="\d{10}" maxlength="10"></div>
                     <?php if ($myRole === 'Principal'): ?>
                       <div class="mb-2">
                         <label class="form-label small">Department</label>

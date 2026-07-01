@@ -97,6 +97,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             move_uploaded_file($_FILES['file']['tmp_name'], $dest);
             $relPath = 'uploads/assignments/' . $filename;
 
+            $hash = hash_file('sha256', $dest);
+            $duplicateStmt = $db->prepare(
+                'SELECT s.user_id, s.file_path FROM assignment_submissions s WHERE s.assignment_id = :a AND s.user_id != :u'
+            );
+            $duplicateStmt->execute(['a' => $assignmentId, 'u' => $me['user_id']]);
+            $duplicateFound = false;
+            foreach ($duplicateStmt->fetchAll() as $dup) {
+                $existingPath = __DIR__ . '/../' . ltrim($dup['file_path'], '/');
+                if (is_file($existingPath) && hash_file('sha256', $existingPath) === $hash) {
+                    $duplicateFound = true;
+                    break;
+                }
+            }
+            if ($duplicateFound) {
+                unlink($dest);
+                flash('error', 'An identical submission already exists for this assignment. Please submit your own original work.');
+                redirect('/student/assignments.php?module_id=' . $moduleId);
+            }
+
+            if (preg_match('/\b(?:chatgpt|gpt|openai|copilot|bard|ai_generated|ai|artificial intelligence)\b/i', $filename)) {
+                flash('warning', 'Your file name contains terms commonly associated with AI-generated work. Please ensure this submission is your own original work.');
+            }
+
             $existing = $db->prepare('SELECT submission_id FROM assignment_submissions WHERE assignment_id = :a AND user_id = :u');
             $existing->execute(['a' => $assignmentId, 'u' => $me['user_id']]);
             if ($existing->fetch()) {
@@ -154,10 +177,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <p class="text-muted mb-0" style="font-size:.75rem;">Policy Version: <?= e($defaultAssignmentInstructionsVersion) ?></p>
     </div>
 
-    <!-- 2. Lecturer assignment details -->
-    <p class="small mb-2">Module: <?= e($module['module_title']) ?> &middot; Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?>
-      <?php if ($hasCustomNotes): ?><br><span class="text-muted"><?= nl2br(e($a['instructions'])) ?></span><?php endif; ?>
-    </p>
+    <p class="small mb-2">Module: <?= e($module['module_title']) ?> &middot; Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?></p>
 
     <!-- 3. Attachment download -->
     <?php if ($a['attachment_path']): ?>
@@ -186,7 +206,8 @@ require __DIR__ . '/../partials/layout_top.php';
       <div class="modal-header"><h6 class="modal-title display-font">Confirm Submission</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <p class="small text-muted mb-2">Review your file before submitting. Once confirmed, this will be recorded as your submission.</p>
-        <div id="submitPreviewArea" style="height:60vh; background:#f5f5f5;"></div>
+        <div id="submitPreviewSummary" class="mb-3"></div>
+        <div id="submitPreviewArea" style="height:50vh; background:#f5f5f5;"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-sm btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
@@ -209,11 +230,27 @@ require __DIR__ . '/../partials/layout_top.php';
       if (!fileInput.files.length) { fileInput.reportValidity(); return; }
       var file = fileInput.files[0];
       previewArea.innerHTML = '';
+      var fileName = file.name.replace(/[<>]/g, '');
+      var fileSize = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+      var warnings = [];
+      if (/\b(?:gpt|chatgpt|openai|copilot|bard|ai_generated|ai|artificial intelligence)\b/i.test(fileName)) {
+        warnings.push('The filename contains terms commonly associated with AI-generated work. Please ensure this submission is your own original work.');
+      }
+      if (/\b(?:copy|duplicate)\b/i.test(fileName)) {
+        warnings.push('The filename suggests a duplicate file. Double-check that this is your original work.');
+      }
+      var summaryHtml = '<p><strong>File:</strong> ' + fileName + '</p>' +
+                        '<p><strong>Size:</strong> ' + fileSize + '</p>' +
+                        '<p class="small text-muted mb-2">SEMAS will also compare this submission against existing assignment submissions for exact duplicates.</p>';
+      if (warnings.length) {
+        summaryHtml += '<div class="alert alert-warning small">' + warnings.join('<br>') + '</div>';
+      }
+      document.getElementById('submitPreviewSummary').innerHTML = summaryHtml;
       if (file.type === 'application/pdf') {
         var url = URL.createObjectURL(file);
         previewArea.innerHTML = '<embed src="' + url + '" type="application/pdf" width="100%" height="100%">';
       } else {
-        previewArea.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-file-earmark-zip display-4"></i><p class="mt-2 mb-0">' + file.name.replace(/[<>]/g, '') + '</p><p class="small">Preview is only available for PDF files. The ZIP will still be uploaded as-is.</p></div>';
+        previewArea.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-file-earmark-zip display-4"></i><p class="mt-2 mb-0">' + fileName + '</p><p class="small">Preview is only available for PDF files. The ZIP will still be uploaded as-is.</p></div>';
       }
       pendingForm = form;
       previewModal.show();
@@ -226,6 +263,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
   previewModalEl.addEventListener('hidden.bs.modal', function () {
     previewArea.innerHTML = '';
+    document.getElementById('submitPreviewSummary').innerHTML = '';
     pendingForm = null;
   });
 })();

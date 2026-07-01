@@ -176,7 +176,15 @@ document.querySelectorAll('.scan-btn').forEach(function (btn) {
     modal.show();
     html5QrCode = new Html5Qrcode('reader');
     html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, function (decodedText) {
-      html5QrCode.stop().then(function () { html5QrCode = null; submitAttendance(activeModuleId, decodedText); });
+      const parsed = normalizeScannedQr(decodedText);
+      if (!parsed) {
+        document.getElementById('scanMsg').innerHTML = '<div class="alert alert-warning small mt-2">Unrecognised QR code. Scan the lecturer\'s live session QR or the printed classroom QR.</div>';
+        return;
+      }
+      if (parsed.moduleId) {
+        activeModuleId = parsed.moduleId;
+      }
+      html5QrCode.stop().then(function () { html5QrCode = null; submitAttendance(activeModuleId, parsed); });
     }).catch(function () {
       document.getElementById('reader').innerHTML = '<p class="text-muted small text-center mt-2">Camera not available. Use manual check-in below.</p>';
     });
@@ -186,6 +194,33 @@ document.querySelectorAll('.scan-btn').forEach(function (btn) {
 document.getElementById('manualCheckinBtn').addEventListener('click', function () {
   submitAttendance(activeModuleId, null);
 });
+
+function normalizeScannedQr(rawText) {
+  rawText = (rawText || '').trim();
+  if (!rawText) return null;
+
+  // Accept the printed classroom QR as a URL containing module_id and token.
+  try {
+    const parsedUrl = new URL(rawText, window.location.href);
+    const moduleId = parsedUrl.searchParams.get('module_id');
+    const token = parsedUrl.searchParams.get('t') || parsedUrl.searchParams.get('qr_token');
+    if (moduleId && token) {
+      return { moduleId: moduleId, qrToken: token };
+    }
+  } catch (e) {
+    // Not a URL; continue parsing.
+  }
+
+  if (/^SEMAS:\d+:\d+:[0-9a-f]+$/i.test(rawText)) {
+    return { qrData: rawText };
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(rawText)) {
+    return { qrToken: rawText };
+  }
+
+  return null;
+}
 
 // Persisted per-browser device token — stronger than IP alone for catching
 // "a friend scans for me" since it survives across networks.
@@ -213,7 +248,7 @@ function submitAttendance(moduleId, qrToken) {
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
-function doSubmitAttendance(moduleId, qrToken, lat, lng) {
+function doSubmitAttendance(moduleId, qrPayload, lat, lng) {
   const params = new URLSearchParams({
     module_id: moduleId,
     csrf_token: CSRF,
@@ -221,7 +256,25 @@ function doSubmitAttendance(moduleId, qrToken, lat, lng) {
     longitude: lng,
     device_id: getDeviceId(),
   });
-  if (qrToken) params.set('qr_token', qrToken);
+  if (qrPayload) {
+    if (typeof qrPayload === 'string') {
+      // Legacy page-load URL or direct token string
+      if (/^SEMAS:\d+:\d+:[0-9a-f]+$/i.test(qrPayload)) {
+        params.set('qr_data', qrPayload);
+      } else {
+        params.set('qr_token', qrPayload);
+      }
+    } else {
+      if (qrPayload.qrData) {
+        params.set('qr_data', qrPayload.qrData);
+      } else if (qrPayload.qrToken) {
+        params.set('qr_token', qrPayload.qrToken);
+      }
+      if (qrPayload.moduleId) {
+        params.set('module_id', qrPayload.moduleId);
+      }
+    }
+  }
   fetch(APP_URL + '/api/student-attendance-scan.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

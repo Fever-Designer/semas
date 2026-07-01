@@ -189,6 +189,14 @@ require __DIR__ . '/../partials/layout_top.php';
               onclick="triggerLookup(<?= $sid ?>, 'sign_out')">
         <i class="bi bi-box-arrow-right me-1"></i>Sign Out
       </button>
+      <button class="btn btn-sm btn-outline-semas"
+              onclick="openCardScanModal(<?= $sid ?>, 'sign_in')">
+        <i class="bi bi-credit-card me-1"></i>Scan Card Sign In
+      </button>
+      <button class="btn btn-sm btn-outline-secondary"
+              onclick="openCardScanModal(<?= $sid ?>, 'sign_out')">
+        <i class="bi bi-credit-card me-1"></i>Scan Card Sign Out
+      </button>
     </div>
     <div id="inputFeedback-<?= $sid ?>" class="small mt-1"></div>
   </div>
@@ -315,6 +323,30 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <?php endif; // !$moduleOptions ?>
 
+<!-- ── Card Scan Modal (invigilator fast path) ───────────────────────────── -->
+<div class="modal fade" id="cardScanModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title display-font">Scan Student Card</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="stopCardScanner()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Point your camera at the student ID card barcode or QR code.</p>
+        <div id="cardReader" style="width:100%;min-height:240px;position:relative;"></div>
+        <!-- Canvas for capturing card image -->
+        <canvas id="cardCaptureCanvas" style="display:none;"></canvas>
+        <div id="cardScanStatus" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-semas-gold" id="checkCardBtn" style="display:none;" onclick="captureCardImage()">
+          <i class="bi bi-check-circle me-1"></i>Check Card
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Preview / Confirm Modal (shared) ──────────────────────────────────── -->
 <div class="modal fade" id="previewModal" tabindex="-1">
   <div class="modal-dialog">
@@ -389,6 +421,7 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 const APP_URL = window.SEMAS_BASE_URL;
 const CSRF    = '<?= csrf_token() ?>';
@@ -715,6 +748,84 @@ function postApi(sid, action, extra, cb) {
             console.error(err);
             cb({ ok: false, message: 'Network or session error. Please refresh the page and try again.' });
         });
+}
+
+let cardScanState = { scheduleId: 0, action: '' };
+let cardScanner = null;
+let cardScanPaused = false;
+let currentCardScannedData = null;
+
+function openCardScanModal(sid, action) {
+    cardScanState = { scheduleId: sid, action };
+    cardScanPaused = false;
+    currentCardScannedData = null;
+    const cardModalEl = document.getElementById('cardScanModal');
+    const cardModal = bootstrap.Modal.getOrCreateInstance(cardModalEl);
+    document.getElementById('cardScanStatus').innerHTML = '<div class="text-muted small">Starting camera… Position the card in the center of the frame, then click "Check Card".</div>';
+    document.getElementById('checkCardBtn').style.display = 'none';
+    cardModal.show();
+    startCardScanner();
+}
+
+function stopCardScanner() {
+    cardScanPaused = false;
+    if (cardScanner) {
+        cardScanner.stop().catch(() => {});
+        cardScanner = null;
+    }
+}
+
+function startCardScanner() {
+    stopCardScanner();
+    cardScanner = new Html5Qrcode('cardReader');
+    const config = {
+        fps: 15,
+        qrbox: { width: 320, height: 220 },
+        aspectRatio: 1.2,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    };
+    cardScanner.start(
+        { facingMode: 'environment' },
+        config,
+        function(decodedText) {
+            if (cardScanPaused) return;
+            currentCardScannedData = decodedText;
+            cardScanPaused = true;
+            document.getElementById('cardScanStatus').innerHTML = '<div class="alert alert-info small">Card detected! Click "Check Card" button to proceed.</div>';
+            document.getElementById('checkCardBtn').style.display = '';
+        },
+        function(errorMessage) {
+            document.getElementById('cardScanStatus').innerHTML = '<div class="text-muted small">Scanning… keep the card in view.</div>';
+        }
+    ).catch(function(err) {
+        document.getElementById('cardScanStatus').innerHTML = '<div class="alert alert-danger small">Camera error: ' + err + '</div>';
+    });
+}
+
+function captureCardImage() {
+    if (!currentCardScannedData) {
+        alert('No card detected. Please scan again.');
+        return;
+    }
+    
+    // Process the scanned card data
+    document.getElementById('cardScanStatus').innerHTML = '<div class="text-muted small">Processing card… please wait.</div>';
+    document.getElementById('checkCardBtn').style.display = 'none';
+    
+    postApi(cardScanState.scheduleId, 'lookup', { card_data: currentCardScannedData }, function(data) {
+        if (!data.ok) {
+            currentCardScannedData = null;
+            cardScanPaused = false;
+            document.getElementById('cardScanStatus').innerHTML = '<div class="alert alert-danger small">' + data.message + '</div>';
+            document.getElementById('checkCardBtn').style.display = '';
+            return;
+        }
+        stopCardScanner();
+        bootstrap.Modal.getInstance(document.getElementById('cardScanModal'))?.hide();
+        confirmState = { scheduleId: cardScanState.scheduleId, studentId: data.student.user_id, action: cardScanState.action };
+        openPreviewModal(cardScanState.action);
+        populatePreview(data, cardScanState.scheduleId, cardScanState.action);
+    });
 }
 
 function fmtTime(dt) {

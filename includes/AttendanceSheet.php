@@ -33,8 +33,10 @@ final class AttendanceSheet
         $isWeekendSession = ($module['session_type'] ?? '') === 'Weekend';
         $cursor = new DateTime($module['start_date']);
         $end    = new DateTime($module['end_date']);
+        $today  = new DateTime('today');
+        $effectiveEnd = $end < $today ? $end : $today;
         $dates  = [];
-        while ($cursor <= $end) {
+        while ($cursor <= $effectiveEnd) {
             $dateStr      = $cursor->format('Y-m-d');
             $isWeekendDay = ((int) $cursor->format('N')) >= 6;
             $dayMatches   = $isWeekendSession ? $isWeekendDay : !$isWeekendDay;

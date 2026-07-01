@@ -77,11 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/lecturer/assignments.php?module_id=' . $moduleId);
         }
 
-        $instructions = trim($_POST['instructions'] ?? '');
-        if ($instructions === '') {
-            $instructions = $defaultAssignmentInstructions;
-        }
-
+        // Assignment instructions are fixed globally by SEMAS and not set per assignment.
+        $instructions = '';
         $attachmentPath = null;
 
         /**
@@ -133,7 +130,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         AuditLog::record(Auth::id(), 'ASSIGNMENT_CREATE', 'assignments', $assignmentId);
 
-        flash('success', 'Assignment created successfully.');
+        // Notify enrolled students of the new assignment.
+        $studentStmt = $db->prepare(
+            'SELECT u.* FROM users u
+             JOIN module_enrollments e ON e.user_id = u.user_id
+             WHERE e.module_id = :mid AND u.status = :status'
+        );
+        $studentStmt->execute(['mid' => $moduleId, 'status' => 'Active']);
+        $students = $studentStmt->fetchAll();
+        $assignmentPayload = [
+            'assignment_id'   => $assignmentId,
+            'title'           => $title,
+            'instructions'    => $instructions,
+            'attachment_path' => $attachmentPath,
+            'deadline'        => $deadline,
+        ];
+        foreach ($students as $student) {
+            Mailer::enqueueAssignmentNotification($student, $assignmentPayload, $module, $me['full_name']);
+        }
+        Mailer::dispatch();
+
+        flash('success', 'Assignment created successfully. Students have been notified.');
         redirect('/lecturer/assignments.php?module_id=' . $moduleId);
     }
 
@@ -241,5 +258,45 @@ if ($assignmentInstructions === '') {
 <?php if (!$assignments): ?>
 <div class="semas-card p-3 text-center text-muted">No assignments found.</div>
 <?php endif; ?>
+
+<div class="modal fade" id="newAssignmentModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font">New Assignment</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="create">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small">Assignment Title</label>
+            <input name="title" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Deadline</label>
+            <input name="deadline" type="datetime-local" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Instructions</label>
+            <div class="form-control form-control-light small text-muted" style="min-height:120px;">
+              <?= nl2br(e(trim($defaultAssignmentInstructions))) ?>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Optional Attachment</label>
+            <input name="attachment" type="file" class="form-control" accept=".pdf,.zip">
+            <small class="text-muted">Upload PDF or ZIP up to 10 MB.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-dark btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-semas-gold btn-sm">Create Assignment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

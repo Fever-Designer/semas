@@ -126,8 +126,8 @@ if ($module) {
     );
     $sessStmt->execute(['mid' => $moduleId]);
     $allSess = $sessStmt->fetchAll();
-    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates) {
-        return !in_array($s['session_date'], $excludeDates, true);
+    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today) {
+        return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
     }));
 
     foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
