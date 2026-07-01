@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $count = Eligibility::generate($moduleId, $examType);
 
         AuditLog::record(Auth::id(), 'ELIGIBILITY_GENERATE', 'modules', $moduleId, "exam_type=$examType;count=$count");
-        flash('success', "Generated/refreshed $examType eligibility for $count student(s). Students at 75%+ were auto-approved; 65-74% remain pending review.");
+        flash('success', "Generated/refreshed $examType eligibility for $count student(s). 0-2 missed attendance days are Allowed; 2 missed days triggers a warning email; 3+ missed days are Not Allowed.");
     } elseif ($action === 'decide') {
         $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
 
@@ -377,7 +377,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-3">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Student</th><th>Reg No.</th><th>Attendance</th><th>Classes</th><th>P</th><th>L</th><th>Left Early</th><th>A</th><th>System</th><th>Review</th><th>Final</th><th>Action</th></tr></thead>
+        <thead><tr><th>Student</th><th>Reg No.</th><th>Attendance</th><th>Days</th><th>P</th><th>L</th><th>Left Early</th><th>Missed</th><th>System</th><th>Review</th><th>Final</th><th>Action</th></tr></thead>
         <tbody>
           <?php foreach ($list as $row): ?>
             <?php

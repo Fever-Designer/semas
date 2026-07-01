@@ -91,20 +91,19 @@ $qrPayload   = json_encode([
         'time' => $timeRange,
     ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
 ]);
-$qrSig = substr($b64u(hash_hmac('sha256', $scheduleId . '|' . $me['user_id'] . '|' . $sinTime . '|' . $soutTime, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 10);
+$qrSig = substr($b64u(hash_hmac('sha256', $scheduleId . '|' . $me['user_id'] . '|' . $sinTime . '|' . $soutTime, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 12);
 $qrPayload = implode('|', [
-    'SEMAS ATT',
-    (string) $schedule['exam_type'],
-    date('dMy', strtotime($schedule['scheduled_date'])),
-    'R:' . substr((string) ($me['reg_number'] ?? ''), 0, 12),
-    'N:' . substr((string) $me['full_name'], 0, 12),
-    'M:' . substr((string) $schedule['module_title'], 0, 12),
-    'RM:' . substr((string) $schedule['room'], 0, 8),
-    'I:' . $sinTime,
-    'O:' . $soutTime,
-    'S:' . $qrSig,
+    'SA',
+    (string) $scheduleId,
+    (string) $me['user_id'],
+    strtoupper(substr((string) $schedule['exam_type'], 0, 1)),
+    date('ymd', strtotime($schedule['scheduled_date'])),
+    substr(preg_replace('/\s+/', '', (string) ($me['reg_number'] ?? '')), 0, 12),
+    date('Hi', strtotime($sinRecord['recorded_at'])),
+    date('Hi', strtotime($soutRecord['recorded_at'])),
+    $qrSig,
 ]);
-$qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
+$qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -140,10 +139,10 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
   .sig-info .name { font-weight: bold; font-size: 14px; color: #1E2A52; }
   .sig-line { margin-top: 12px; border-top: 1px solid #333; padding-top: 3px; font-size: 11px; color: #6B7280; }
 
-  .qr-section { margin-top: 0; text-align: center; flex: 0 0 170px; min-width: 170px; }
-  .qr-section #verifyQr { display: inline-block; padding: 8px; background: #ffffff; border: 1px solid #1E2A52; border-radius: 8px; min-width: 156px; min-height: 156px; }
-  .qr-section canvas, .qr-section img { margin: 0 auto; display: block; }
-  .qr-section .qr-label { font-size: 10px; color: #9CA3AF; margin-top: 4px; }
+  .qr-section { margin-top: 0; text-align: center; flex: 0 0 205px; min-width: 205px; }
+  .qr-section #verifyQr { display: inline-block; padding: 10px; background: #ffffff; border: 2px solid #1E2A52; border-radius: 8px; width: 198px; height: 198px; }
+  .qr-section canvas, .qr-section img { width: 174px; height: 174px; margin: 0 auto; display: block; image-rendering: pixelated; }
+  .qr-section .qr-label { font-size: 11px; color: #374151; margin-top: 6px; font-weight: bold; }
 
   .footer { background: #F6F7FB; padding: 10px 28px; font-size: 10px; color: #9CA3AF; text-align: center; border-top: 1px solid #E4E7EF; }
   .footer a { color: #9CA3AF; text-decoration: none; }
@@ -174,7 +173,7 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
     .sig-photo { width: 54px; height: 54px; }
     .sig-info .name { font-size: 12px; }
     .sig-info { font-size: 10px; }
-    .qr-section { flex: 0 0 150px; min-width: 150px; }
+    .qr-section { flex: 0 0 190px; min-width: 190px; }
     .footer { padding: 6px 18px; font-size: 9px; }
   }
 </style>

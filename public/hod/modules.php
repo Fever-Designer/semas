@@ -25,7 +25,7 @@ try {
 
 function hodAvailableRooms(PDO $db, string $sessionType = '', int $excludeModuleId = 0): array
 {
-    if ($sessionType === '') {
+    if ($sessionType === '' || $sessionType === 'Weekend') {
         return $db->query('SELECT room_id, room_name FROM rooms ORDER BY room_name')->fetchAll();
     }
 
@@ -86,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!in_array($sessionType, $sessionTypes, true)) { $formError('A valid session must be selected.'); }
         if ($isCoordinator && $sessionType !== 'Weekend')  { $formError('Coordinators may only create or edit Weekend modules.'); }
+        if ($sessionType === 'Weekend' && !in_array($weekendSlot, ['Morning', 'Afternoon'], true)) { $formError('Weekend modules must use either Morning or Afternoon.'); }
         if (!$lecId)         { $formError('A lecturer must be assigned.'); }
         if (!$primaryDeptId) { $formError('At least one department is required.'); }
         if (!$startDate || !$endDate || !$catDate || !$examDate) { $formError('All dates are required.'); }
@@ -95,19 +96,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Validate intakes
         $intakes = array_filter($_POST['intakes'] ?? [], 'isValidIntakeCode');
 
-        // Lecturer session constraint (Ongoing modules in the same session)
-        $lc = $db->prepare("SELECT COUNT(*) FROM modules WHERE lecturer_id=:lec AND session_type=:session AND status='Ongoing' AND module_id!=:mid");
-        $lc->execute(['lec' => $lecId, 'session' => $sessionType, 'mid' => $modId]);
-        if ((int) $lc->fetchColumn() > 0) {
-            $formError('This lecturer already has an Ongoing ' . $sessionType . ' module. One lecturer per session type.');
+        // Lecturer session constraint. Weekend Morning and Weekend Afternoon are separate sessions.
+        $lecturerConflict = Module::lecturerOngoingSessionConflict($db, $lecId, $sessionType, $weekendSlot, $modId);
+        if ($lecturerConflict) {
+            $formError('This lecturer already has an Ongoing ' . Module::sessionLabel($lecturerConflict) . ' module.');
         }
 
         // Room conflict
         if ($roomId) {
-            $rc = $db->prepare("SELECT COUNT(*) FROM modules WHERE room_id=:r AND session_type=:session AND status='Ongoing' AND module_id!=:mid");
-            $rc->execute(['r' => $roomId, 'session' => $sessionType, 'mid' => $modId]);
-            if ((int) $rc->fetchColumn() > 0) {
-                $formError('This room is already assigned to another Ongoing ' . $sessionType . ' module.');
+            $roomSql = "SELECT module_title, session_type, weekend_slot FROM modules
+                        WHERE room_id=:r AND session_type=:session AND status='Ongoing' AND module_id!=:mid";
+            $roomParams = ['r' => $roomId, 'session' => $sessionType, 'mid' => $modId];
+            if ($sessionType === 'Weekend') {
+                $roomSql .= " AND (COALESCE(weekend_slot, '') = :slot OR COALESCE(weekend_slot, '') = '')";
+                $roomParams['slot'] = (string) $weekendSlot;
+            }
+            $roomSql .= ' LIMIT 1';
+            $rc = $db->prepare($roomSql);
+            $rc->execute($roomParams);
+            $roomConflict = $rc->fetch();
+            if ($roomConflict) {
+                $formError('This room is already assigned to another Ongoing ' . Module::sessionLabel($roomConflict) . ' module.');
             }
         }
 
@@ -183,6 +192,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $completedTitle = $completedStmt->fetchColumn();
             if ($completedTitle && !in_array($exceptionType, ['Retake', 'Special'], true)) {
                 flash('error', $stu['full_name'] . ' already completed "' . $completedTitle . '". Enrollment is allowed only as Retake or Special case.');
+                redirect('/hod/modules.php');
+            }
+            if (!Module::canAddOngoingEnrollment((int) $stu['user_id'], $modId)) {
+                flash('error', Module::ongoingEnrollmentLimitMessage($stu['full_name']));
+                redirect('/hod/modules.php');
+            }
+            $sessionConflict = Module::studentOngoingSessionConflict($db, (int) $stu['user_id'], $modId);
+            if ($sessionConflict) {
+                flash('error', $stu['full_name'] . ' is already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session.');
                 redirect('/hod/modules.php');
             }
             try {
@@ -856,6 +874,16 @@ function lookupStudent(modId) {
                 + '<div><div class="fw-semibold">' + escHtml(s.full_name) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.reg_number) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '—' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
+            if (!data.enrolled && data.ongoing_limit_reached) {
+                errEl.textContent = data.ongoing_limit_message || 'This student already has the maximum number of ongoing modules.';
+                errEl.style.display = '';
+                return;
+            }
+            if (!data.enrolled && data.session_conflict) {
+                errEl.textContent = data.session_conflict_message || 'This student is already registered in the same session.';
+                errEl.style.display = '';
+                return;
+            }
             document.getElementById('enrollSearch-' + modId).style.display = 'none';
             if (data.enrolled) {
                 document.getElementById('enrollAlreadyCard-' + modId).innerHTML = cardHtml;

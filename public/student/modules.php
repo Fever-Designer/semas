@@ -57,22 +57,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('error', 'You already completed "' . $module['module_title'] . '". Contact your HoD if this must be registered as a retake or special case.');
                 redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
             }
+            if (!Module::canAddOngoingEnrollment((int) $me['user_id'], $moduleId)) {
+                flash('error', 'You already have ' . Module::MAX_ONGOING_ENROLLMENTS . ' ongoing modules. Complete one module before registering for another.');
+                redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
+            }
 
-            // Block if already has an ongoing module in the same session type
+            // Block if already has an ongoing module in the same session slot.
             $conflict = false;
-            if ($module['session_type']) {
-                $chk = $db->prepare(
-                    "SELECT m.module_title FROM modules m
-                     JOIN module_enrollments e ON e.module_id = m.module_id AND e.user_id = :uid
-                     WHERE m.status = 'Ongoing' AND m.session_type = :stype AND m.module_id != :mid
-                     LIMIT 1"
-                );
-                $chk->execute(['uid' => $me['user_id'], 'stype' => $module['session_type'], 'mid' => $moduleId]);
-                $existingTitle = $chk->fetchColumn();
-                if ($existingTitle) {
-                    $conflict = true;
-                    flash('error', 'You are already registered for "' . $existingTitle . '" in the same ' . $module['session_type'] . ' session. Contact your HoD if you need an exception.');
-                }
+            $sessionConflict = Module::studentOngoingSessionConflict($db, (int) $me['user_id'], $moduleId);
+            if ($sessionConflict) {
+                $conflict = true;
+                flash('error', 'You are already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session. Contact your HoD if you need an exception.');
             }
             if (!$conflict) {
                 try {
@@ -143,19 +138,27 @@ $completedTitlesStmt = $db->prepare(
 $completedTitlesStmt->execute(['uid' => $me['user_id']]);
 $myCompletedTitles = $completedTitlesStmt->fetchAll(PDO::FETCH_COLUMN);
 
-// Session types the student is already enrolled in (for ongoing modules)
+// Session slots the student is already enrolled in (for ongoing modules).
 $enrolledSessionsStmt = $db->prepare(
-    "SELECT DISTINCT m.session_type FROM modules m
+    "SELECT DISTINCT
+        CASE
+          WHEN m.session_type = 'Weekend' THEN CONCAT('Weekend:', COALESCE(m.weekend_slot, ''))
+          ELSE m.session_type
+        END AS session_key
+     FROM modules m
      JOIN module_enrollments e ON e.module_id = m.module_id
      WHERE e.user_id = :uid AND m.status = 'Ongoing' AND m.session_type IS NOT NULL"
 );
 $enrolledSessionsStmt->execute(['uid' => $me['user_id']]);
-$enrolledSessionTypes = $enrolledSessionsStmt->fetchAll(PDO::FETCH_COLUMN);
+$enrolledSessionKeys = $enrolledSessionsStmt->fetchAll(PDO::FETCH_COLUMN);
 
 $grouped = [];
 foreach ($browseModules as $m) {
     $alreadyEnrolled = in_array((int) $m['module_id'], $myEnrolledIds, true);
-    $sessionTaken    = $m['session_type'] && in_array($m['session_type'], $enrolledSessionTypes, true) && !$alreadyEnrolled;
+    $sessionKey = ($m['session_type'] ?? '') === 'Weekend'
+        ? 'Weekend:' . (string) ($m['weekend_slot'] ?? '')
+        : (string) ($m['session_type'] ?? '');
+    $sessionTaken = $sessionKey !== '' && in_array($sessionKey, $enrolledSessionKeys, true) && !$alreadyEnrolled;
     if ($sessionTaken) continue; // student already has a module in this session
     if (!$alreadyEnrolled && in_array($m['module_title'], $myCompletedTitles, true)) continue; // already completed this module
     $grouped[$m['department_name'] ?? 'Unassigned'][] = $m;
@@ -207,14 +210,14 @@ require __DIR__ . '/../partials/layout_top.php';
             <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
             <p class="text-muted small mb-2">
               Lecturer: <?= e($m['lecturer_name'] ?? 'TBA') ?><br>
-              <?= e($m['session_type'] ?? 'Any session') ?>
+              <?= e(Module::sessionLabel($m)) ?>
               <?= $m['room'] ? ' &middot; Room ' . e($m['room']) : '' ?>
             </p>
             <?php if ($isEnrolled): ?>
               <span class="badge badge-completed">Registered</span>
             <?php else: ?>
               <button class="btn btn-sm btn-semas-gold"
-                onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= e(json_encode($m['module_title'])) ?>, <?= e(json_encode($m['lecturer_name'] ?? 'TBA')) ?>, <?= e(json_encode($m['session_type'] ?? '')) ?>)">
+                onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= e(json_encode($m['module_title'])) ?>, <?= e(json_encode($m['lecturer_name'] ?? 'TBA')) ?>, <?= e(json_encode(Module::sessionLabel($m))) ?>)">
                 Register
               </button>
             <?php endif; ?>

@@ -21,7 +21,15 @@ if (!$module || !$module['module_qr_secret'] || (Auth::role() === 'Coordinator' 
     die('Module not found or QR not generated.');
 }
 
-$scanUrl = APP_URL . '/student/attendance.php?module_id=' . $moduleId . '&t=' . urlencode($module['module_qr_secret']);
+$b64u = function (string $binary): string {
+    return rtrim(strtr(base64_encode($binary), '+/', '-_'), '=');
+};
+$secret = (string) $module['module_qr_secret'];
+$shortToken = ctype_xdigit($secret)
+    ? $b64u(hex2bin($secret) ?: $secret)
+    : $secret;
+$scanPayload = 'SM:' . $moduleId . ':' . $shortToken;
+$qrImage = SimpleQr::pngDataUri($scanPayload, 10, 2);
 $brandName = Settings::get('university_name', 'University of Kigali');
 ?>
 <!DOCTYPE html>
@@ -29,55 +37,54 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 <head>
 <meta charset="UTF-8">
 <title>Module QR / <?= e($module['module_title']) ?></title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Inter', sans-serif; background: #fff; margin: 0; padding: 24px; text-align: center; }
-  h1 { font-family: 'Sora', sans-serif; font-size: 1.2rem; color: #1E2A52; margin-bottom: 4px; }
-  p  { color: #555; font-size: 0.8rem; margin: 3px 0; }
-  .qr-box { border: 2px solid #1E2A52; border-radius: 8px; display: inline-block; padding: 10px; margin: 14px auto; }
-  .instruction { background: #f8f3e8; border-radius: 6px; padding: 8px 14px; display: inline-block; margin-top: 8px; font-size: 0.76rem; color: #333; }
-  .meta { margin-top: 12px; font-size: 0.72rem; color: #888; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; margin: 0; padding: 18px; text-align: center; color: #111827; }
+  .sheet { min-height: calc(100vh - 36px); border: 8px solid #1E2A52; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
+  .brand { color:#6B7280; font-size: 24px; font-weight: 700; margin: 0 0 8px; }
+  h1 { font-size: 48px; line-height: 1.05; color: #1E2A52; margin: 8px 0 14px; text-transform: uppercase; }
+  .info { font-size: 30px; font-weight: 700; margin: 8px 0; }
+  .info span { color: #6B7280; font-weight: 600; }
+  .qr-box { border: 6px solid #1E2A52; border-radius: 10px; display: inline-block; padding: 16px; margin: 22px auto; background:#fff; }
+  .qr-box img { width: 430px; height: 430px; display:block; image-rendering: pixelated; }
+  .instruction { background: #f8f3e8; border: 3px solid #D4A24C; border-radius: 8px; padding: 16px 24px; display: inline-block; margin-top: 8px; font-size: 24px; color: #1f2937; font-weight: 700; }
+  .meta { margin-top: 16px; font-size: 20px; color: #4B5563; font-weight: 700; }
+  .payload { margin-top: 6px; font-size: 11px; color: #9CA3AF; word-break: break-all; }
   @media print {
     .no-print { display: none; }
-    body { padding: 20px; }
+    @page { size: A4 portrait; margin: 8mm; }
+    body { padding: 0; }
+    .sheet { min-height: calc(100vh - 16mm); }
   }
 </style>
 </head>
 <body>
-<p style="color:#888;font-size:0.8rem;"><?= e($brandName) ?></p>
-<h1><?= e($module['module_title']) ?></h1>
-<p><?= e($module['department_name'] ?? '') ?> &middot; <?= e($module['session_type'] ?? 'Any Session') ?></p>
-<?php if ($module['room']): ?>
-  <p><strong>Room:</strong> <?= e($module['room']) ?></p>
-<?php endif; ?>
-<p>Lecturer: <?= e($module['lecturer_name'] ?? '—') ?></p>
+<div class="sheet">
+  <div>
+    <p class="brand"><?= e($brandName) ?></p>
+    <h1><?= e($module['module_title']) ?></h1>
+    <div class="info"><?= e($module['department_name'] ?? '') ?></div>
+    <div class="info"><span>Session:</span> <?= e($module['session_type'] ?? 'Any Session') ?></div>
+    <?php if ($module['room']): ?>
+      <div class="info"><span>Room:</span> <?= e($module['room']) ?></div>
+    <?php endif; ?>
+    <div class="info"><span>Lecturer:</span> <?= e($module['lecturer_name'] ?? '-') ?></div>
+  </div>
 
-<div class="qr-box">
-  <canvas id="qrCanvas"></canvas>
+  <div>
+    <div class="qr-box">
+      <img src="<?= e($qrImage) ?>" alt="Class attendance QR code">
+    </div>
+    <div class="instruction">Students: scan this QR to mark class attendance.</div>
+    <div class="meta">CAT: <?= e($module['cat_date'] ?? '-') ?> &nbsp;|&nbsp; Exam: <?= e($module['exam_date'] ?? '-') ?></div>
+    <div class="payload"><?= e($scanPayload) ?></div>
+  </div>
 </div>
 
-<div class="instruction">
-  <strong>Students:</strong> Scan this QR code with your phone camera to mark your attendance.<br>
-  Sign in within the first 10 minutes to be marked <strong>Present</strong>
-</div>
-
-<div class="meta">
-  CAT: <?= e($module['cat_date'] ?? '—') ?> &nbsp;|&nbsp; Exam: <?= e($module['exam_date'] ?? '—') ?>
-</div>
-
-<p class="mt-4 no-print">
-  <button onclick="window.print()" style="padding:8px 24px;background:#D4A24C;color:#fff;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">
+<p class="no-print">
+  <button onclick="window.print()" style="padding:10px 28px;background:#D4A24C;color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer;">
     Print / Save as PDF
   </button>
 </p>
-
-<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-<script>
-QRCode.toCanvas(document.getElementById('qrCanvas'), <?= json_encode($scanUrl) ?>, {
-  width: 180, margin: 1,
-  color: { dark: '#1E2A52', light: '#ffffff' }
-}, function (err) { if (err) console.error(err); });
-</script>
 </body>
 </html>

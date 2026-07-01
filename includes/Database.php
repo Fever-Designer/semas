@@ -18,4 +18,10 @@ final class Database
         }
         return self::$instance;
     }
+
+    public static function reconnect(): PDO
+    {
+        self::$instance = null;
+        return self::connection();
+    }
 }

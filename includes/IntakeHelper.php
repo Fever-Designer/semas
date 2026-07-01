@@ -26,14 +26,16 @@ function availableIntakes(int $startYear = 2024): array
         }
     }
 
-    // Also include any intake codes already in use by real student records —
-    // covers a cohort registered ahead of its calendar date (e.g. a SEPT
-    // intake added in June) so it shows up immediately everywhere intakes are
-    // selected/filtered (module creation, semester calendar, student filters),
-    // not just once the date naturally catches up to it.
+    // Also include any intake codes already in use or published through the
+    // semester calendar, so new cohorts show up immediately everywhere intakes
+    // are selected/filtered.
     try {
         $used = Database::connection()
-            ->query("SELECT DISTINCT intake FROM users WHERE intake IS NOT NULL AND intake != ''")
+            ->query(
+                "SELECT DISTINCT intake FROM users WHERE intake IS NOT NULL AND intake != ''
+                 UNION
+                 SELECT DISTINCT intake FROM semester_calendars WHERE intake IS NOT NULL AND intake != ''"
+            )
             ->fetchAll(PDO::FETCH_COLUMN);
         foreach ($used as $code) {
             if (isValidIntakeCode((string) $code) && !in_array($code, $intakes, true)) {

@@ -122,9 +122,9 @@ require __DIR__ . '/../partials/layout_top.php';
           <label class="form-label small fw-semibold">Intake</label>
           <select name="intake" class="form-select">
             <option value="">— Select —</option>
-            <option value="JAN">January (JAN)</option>
-            <option value="MAY">May (MAY)</option>
-            <option value="SEPT">September (SEPT)</option>
+            <?php foreach (availableIntakes() as $intakeCode): ?>
+              <option value="<?= e($intakeCode) ?>"><?= e($intakeCode) ?></option>
+            <?php endforeach; ?>
           </select>
         </div>
 

@@ -20,12 +20,51 @@ function academicYearOptions(): array
     return $years;
 }
 
+function ensureYearCodedIntakes(PDO $db): void
+{
+    try {
+        $columns = $db->query(
+            "SELECT TABLE_NAME, COLUMN_TYPE
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME IN ('users','module_intakes','semester_calendars')
+               AND COLUMN_NAME = 'intake'"
+        )->fetchAll();
+
+        foreach ($columns as $column) {
+            if (stripos((string) $column['COLUMN_TYPE'], 'enum(') === false) {
+                continue;
+            }
+
+            if ($column['TABLE_NAME'] === 'users') {
+                $db->exec('ALTER TABLE users MODIFY COLUMN intake VARCHAR(10) NULL');
+            } elseif ($column['TABLE_NAME'] === 'module_intakes') {
+                $db->exec('ALTER TABLE module_intakes MODIFY COLUMN intake VARCHAR(10) NOT NULL');
+            } elseif ($column['TABLE_NAME'] === 'semester_calendars') {
+                $db->exec('ALTER TABLE semester_calendars MODIFY COLUMN intake VARCHAR(10) NOT NULL');
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[SemesterCalendar] intake column compatibility check failed: ' . $e->getMessage());
+    }
+}
+
+function semesterIntakeCode(string $semesterName, string $startDate): ?string
+{
+    $semPrefixMap = ['SEMESTER I' => 'JAN', 'SEMESTER II' => 'MAY', 'SEMESTER III' => 'SEPT'];
+    $intakePrefix = $semPrefixMap[$semesterName] ?? null;
+    return ($intakePrefix && $startDate) ? ($intakePrefix . date('y', strtotime($startDate))) : null;
+}
+
+ensureYearCodedIntakes($db);
+
 // ── POST handlers ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save') {
+        $calendarId   = (int) ($_POST['calendar_id'] ?? 0);
         $academicYear = trim($_POST['academic_year'] ?? '');
         $semName      = trim($_POST['semester_name'] ?? '');
         $startDate    = trim($_POST['start_date'] ?? '');
@@ -33,11 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes        = null;
 
         // Derive intake code from semester + year of start_date (e.g. SEMESTER I + 2026 → JAN26)
-        $semPrefixMap = ['SEMESTER I' => 'JAN', 'SEMESTER II' => 'MAY', 'SEMESTER III' => 'SEPT'];
-        $intakePrefix = $semPrefixMap[$semName] ?? null;
-        $intake = ($intakePrefix && $startDate) ? ($intakePrefix . date('y', strtotime($startDate))) : null;
+        $intake = semesterIntakeCode($semName, $startDate);
 
-        if (!$academicYear || !$intakePrefix || !$startDate || !$endDate) {
+        if (!$academicYear || !$intake || !$startDate || !$endDate) {
             flash('error', 'All fields except Notes are required.');
             redirect('/registrar/semester-calendar.php');
         }
@@ -53,29 +90,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/registrar/semester-calendar.php');
         }
 
-        // Upsert: one semester calendar per academic_year + intake
-        $db->prepare(
-            'INSERT INTO semester_calendars (academic_year, intake, semester_name, start_date, end_date, notes, created_by)
-             VALUES (:yr, :intake, :name, :start, :end, :notes, :uid)
-             ON DUPLICATE KEY UPDATE semester_name=:name2, start_date=:start2, end_date=:end2, notes=:notes2, created_by=:uid2'
-        )->execute([
-            'yr'     => $academicYear,
-            'intake' => $intake,
-            'name'   => $semName,
-            'start'  => $startDate,
-            'end'    => $endDate,
-            'notes'  => $notes,
-            'uid'    => $me['user_id'],
-            'name2'  => $semName,
-            'start2' => $startDate,
-            'end2'   => $endDate,
-            'notes2' => $notes,
-            'uid2'   => $me['user_id'],
-        ]);
+        $dupStmt = $db->prepare(
+            'SELECT id FROM semester_calendars WHERE academic_year = :yr AND intake = :intake AND id <> :id LIMIT 1'
+        );
+        $dupStmt->execute(['yr' => $academicYear, 'intake' => $intake, 'id' => $calendarId]);
+        $duplicateCalendarId = (int) $dupStmt->fetchColumn();
+        if ($duplicateCalendarId > 0) {
+            if ($calendarId > 0) {
+                flash('error', "A calendar already exists for {$academicYear} / {$intake}. Please edit that calendar instead.");
+                redirect('/registrar/semester-calendar.php');
+            }
+            $calendarId = $duplicateCalendarId;
+        }
 
-        AuditLog::record(Auth::id(), 'SEMESTER_CALENDAR_SAVE', 'semester_calendars', 0, "year=$academicYear;intake=$intake");
+        if ($calendarId > 0) {
+            $existingStmt = $db->prepare('SELECT end_date FROM semester_calendars WHERE id = :id');
+            $existingStmt->execute(['id' => $calendarId]);
+            $existingEndDate = $existingStmt->fetchColumn();
+            if ($existingEndDate && $existingEndDate <= $today) {
+                flash('error', 'Completed semester calendars are history records and cannot be edited.');
+                redirect('/registrar/semester-calendar.php');
+            }
 
-        // Notify ALL active students
+            $db->prepare(
+                'UPDATE semester_calendars
+                 SET academic_year = :yr, intake = :intake, semester_name = :name,
+                     start_date = :start, end_date = :end, notes = :notes, created_by = :uid
+                 WHERE id = :id'
+            )->execute([
+                'yr'     => $academicYear,
+                'intake' => $intake,
+                'name'   => $semName,
+                'start'  => $startDate,
+                'end'    => $endDate,
+                'notes'  => $notes,
+                'uid'    => $me['user_id'],
+                'id'     => $calendarId,
+            ]);
+        } else {
+            $db->prepare(
+                'INSERT INTO semester_calendars (academic_year, intake, semester_name, start_date, end_date, notes, created_by)
+                 VALUES (:yr, :intake, :name, :start, :end, :notes, :uid)
+                 ON DUPLICATE KEY UPDATE semester_name=:name2, start_date=:start2, end_date=:end2, notes=:notes2, created_by=:uid2'
+            )->execute([
+                'yr'     => $academicYear,
+                'intake' => $intake,
+                'name'   => $semName,
+                'start'  => $startDate,
+                'end'    => $endDate,
+                'notes'  => $notes,
+                'uid'    => $me['user_id'],
+                'name2'  => $semName,
+                'start2' => $startDate,
+                'end2'   => $endDate,
+                'notes2' => $notes,
+                'uid2'   => $me['user_id'],
+            ]);
+            $calendarId = (int) $db->lastInsertId();
+        }
+
+        AuditLog::record(Auth::id(), 'SEMESTER_CALENDAR_SAVE', 'semester_calendars', $calendarId, "year=$academicYear;intake=$intake");
+
+        // Notify every active student when the Registrar publishes or updates a calendar.
         $studentsStmt = $db->query(
             "SELECT u.user_id, u.full_name, u.email FROM users u
              JOIN roles r ON r.role_id = u.role_id
@@ -103,13 +179,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/registrar/semester-calendar.php');
     }
 
-    if ($action === 'delete') {
-        $id = (int) $_POST['calendar_id'];
-        $db->prepare('DELETE FROM semester_calendars WHERE id = :id')->execute(['id' => $id]);
-        AuditLog::record(Auth::id(), 'SEMESTER_CALENDAR_DELETE', 'semester_calendars', $id);
-        flash('success', 'Semester calendar entry deleted.');
-        redirect('/registrar/semester-calendar.php');
-    }
 }
 
 // ── Fetch calendars ────────────────────────────────────────────────────
@@ -117,7 +186,9 @@ $calendars = $db->query(
     "SELECT sc.*, u.full_name AS created_by_name
      FROM semester_calendars sc
      LEFT JOIN users u ON u.user_id = sc.created_by
-     ORDER BY sc.academic_year DESC, FIELD(sc.intake,'JAN','MAY','SEPT')"
+     ORDER BY sc.academic_year DESC,
+              CAST(RIGHT(sc.intake, 2) AS UNSIGNED) DESC,
+              FIELD(LEFT(sc.intake, CHAR_LENGTH(sc.intake) - 2), 'JAN','MAY','SEPT')"
 )->fetchAll();
 
 // Count students per intake for display
@@ -130,6 +201,16 @@ $icStmt = $db->query(
 );
 foreach ($icStmt->fetchAll() as $row) {
     $intakeCounts[$row['intake']] = (int) $row['cnt'];
+}
+
+$currentCalendars = [];
+$completedCalendars = [];
+foreach ($calendars as $calendar) {
+    if ($calendar['end_date'] <= $today) {
+        $completedCalendars[] = $calendar;
+    } else {
+        $currentCalendars[] = $calendar;
+    }
 }
 
 require __DIR__ . '/../partials/layout_top.php';
@@ -163,6 +244,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php if (!$calendars): ?>
   <div class="semas-card p-4 text-center text-muted small">No semester calendars set yet. Click "Add / Update Calendar" to publish one.</div>
 <?php else: ?>
+<?php if ($currentCalendars): ?>
 <div class="semas-card p-0">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -170,12 +252,11 @@ require __DIR__ . '/../partials/layout_top.php';
         <tr><th>Academic Year</th><th>Intake</th><th>Semester</th><th>Start</th><th>End</th><th>Duration</th><th>Notes</th><th>Set By</th><th>Actions</th></tr>
       </thead>
       <tbody>
-      <?php foreach ($calendars as $c):
+      <?php foreach ($currentCalendars as $c):
         $weeks = (int) round((strtotime($c['end_date']) - strtotime($c['start_date'])) / 604800);
-        $isPast = $c['end_date'] < $today;
-        $isActive = $c['start_date'] <= $today && $c['end_date'] >= $today;
+        $isActive = $c['start_date'] <= $today && $c['end_date'] > $today;
       ?>
-        <tr class="<?= $isActive ? 'table-success' : ($isPast ? 'text-muted' : '') ?>">
+        <tr class="<?= $isActive ? 'table-success' : '' ?>">
           <td class="fw-semibold"><?= e($c['academic_year']) ?></td>
           <td><span class="badge bg-primary"><?= e($c['intake']) ?></span></td>
           <td><?= e($c['semester_name']) ?></td>
@@ -183,7 +264,6 @@ require __DIR__ . '/../partials/layout_top.php';
           <td><?= date('d M Y', strtotime($c['end_date'])) ?></td>
           <td><small><?= $weeks ?> wks</small>
             <?php if ($isActive): ?><span class="badge badge-completed ms-1">Active</span><?php endif; ?>
-            <?php if ($isPast): ?><span class="badge bg-secondary ms-1">Past</span><?php endif; ?>
           </td>
           <td><small class="text-muted"><?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '…' : '') : '—' ?></small></td>
           <td><small><?= e($c['created_by_name'] ?? '—') ?></small></td>
@@ -191,12 +271,6 @@ require __DIR__ . '/../partials/layout_top.php';
             <button class="btn btn-sm btn-outline-dark"
               data-bs-toggle="modal" data-bs-target="#editCal-<?= $c['id'] ?>"
               title="Edit"><i class="bi bi-pencil"></i></button>
-            <form method="POST" class="d-inline">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="delete">
-              <input type="hidden" name="calendar_id" value="<?= $c['id'] ?>">
-              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this semester calendar?')" title="Delete"><i class="bi bi-trash"></i></button>
-            </form>
           </td>
         </tr>
 
@@ -207,6 +281,7 @@ require __DIR__ . '/../partials/layout_top.php';
               <form method="POST" id="editCalForm-<?= $c['id'] ?>">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="save">
+                <input type="hidden" name="calendar_id" value="<?= (int) $c['id'] ?>">
                 <div class="modal-header">
                   <h6 class="modal-title display-font">Edit / <?= e($c['semester_name']) ?></h6>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -229,6 +304,42 @@ require __DIR__ . '/../partials/layout_top.php';
     </table>
   </div>
 </div>
+<?php endif; ?>
+<?php if (!$currentCalendars && $completedCalendars): ?>
+  <div class="semas-card p-4 text-center text-muted small mb-3">No current or upcoming semester calendars. Completed calendars are shown in history below.</div>
+<?php endif; ?>
+<?php if ($completedCalendars): ?>
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+  <h6 class="display-font mb-0">Completed History</h6>
+  <span class="badge bg-secondary"><?= count($completedCalendars) ?> completed</span>
+</div>
+<div class="semas-card p-0">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Academic Year</th><th>Intake</th><th>Semester</th><th>Start</th><th>End</th><th>Duration</th><th>Notes</th><th>Set By</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+      <?php foreach ($completedCalendars as $c):
+        $weeks = (int) round((strtotime($c['end_date']) - strtotime($c['start_date'])) / 604800);
+      ?>
+        <tr class="text-muted">
+          <td class="fw-semibold"><?= e($c['academic_year']) ?></td>
+          <td><span class="badge bg-secondary"><?= e($c['intake']) ?></span></td>
+          <td><?= e($c['semester_name']) ?></td>
+          <td><?= date('d M Y', strtotime($c['start_date'])) ?></td>
+          <td><?= date('d M Y', strtotime($c['end_date'])) ?></td>
+          <td><small><?= $weeks ?> wks</small></td>
+          <td><small class="text-muted"><?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '...' : '') : '-' ?></small></td>
+          <td><small><?= e($c['created_by_name'] ?? '-') ?></small></td>
+          <td><span class="badge bg-secondary">Completed</span></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 <!-- Add Calendar Modal -->

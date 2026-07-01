@@ -183,6 +183,16 @@ if ($qrData === '' && $qrToken !== '') {
     if (preg_match('/^SEMAS:\d+:\d+:[0-9a-f]+$/i', $qrToken)) {
         $qrData = $qrToken;
         $qrToken = '';
+    } elseif (preg_match('/^SM:(\d+):([A-Za-z0-9_-]+)$/', $qrToken, $m)) {
+        $_POST['module_id'] = (int) $m[1];
+        $moduleId = (int) $_POST['module_id'];
+        $tokenBody = $m[2];
+        $pad = strlen($tokenBody) % 4;
+        if ($pad) {
+            $tokenBody .= str_repeat('=', 4 - $pad);
+        }
+        $decoded = base64_decode(strtr($tokenBody, '-_', '+/'), true);
+        $qrToken = $decoded !== false ? bin2hex($decoded) : $m[2];
     } elseif (filter_var($qrToken, FILTER_VALIDATE_URL)) {
         $parsed = parse_url($qrToken);
         if (!empty($parsed['query'])) {
@@ -583,14 +593,19 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
         );
         // Send email + SMS for 3rd+ absence
         if (!empty($student['email'])) {
+            $body = 'You have missed ' . $absences . ' attendance session(s) of "' . $module['module_title'] . '". Please contact your Head of Department immediately.';
             Mailer::send(
                 $student['email'],
-                $student['full_name'],
                 'Attendance Warning / ' . $module['module_title'],
-                '<p>Dear ' . htmlspecialchars($student['full_name']) . ',</p>' .
-                '<p>You have exceeded the permitted absences for <strong>' . htmlspecialchars($module['module_title']) . '</strong>. ' .
-                'You have missed <strong>' . $absences . ' sessions</strong>.</p>' .
-                '<p>Please contact your Head of Department immediately.</p>'
+                'attendance_warning',
+                [
+                    'full_name' => $student['full_name'],
+                    'module_title' => $module['module_title'],
+                    'exam_type' => 'CAT/Exam',
+                    'missed_days' => $absences,
+                    'body' => $body,
+                ],
+                (int) $student['user_id']
             );
         }
         if (!empty($student['phone_number']) && ($student['sms_opt_in'] ?? 1)) {

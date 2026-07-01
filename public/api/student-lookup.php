@@ -45,6 +45,9 @@ $photoUrl = $student['photo_path']
 
 $enrolled = false;
 $completedSameTitle = false;
+$ongoingCount = 0;
+$ongoingLimitReached = false;
+$sessionConflict = null;
 if ($moduleId && isset($student['user_id'])) {
     $enrollStmt = $db->prepare('SELECT 1 FROM module_enrollments WHERE module_id=:mid AND user_id=:uid');
     $enrollStmt->execute(['mid' => $moduleId, 'uid' => $student['user_id']]);
@@ -60,12 +63,24 @@ if ($moduleId && isset($student['user_id'])) {
     );
     $completedStmt->execute(['mid' => $moduleId, 'uid' => $student['user_id']]);
     $completedSameTitle = (bool) $completedStmt->fetchColumn();
+
+    $ongoingCount = Module::ongoingEnrollmentCount((int) $student['user_id'], $moduleId);
+    $ongoingLimitReached = !Module::canAddOngoingEnrollment((int) $student['user_id'], $moduleId);
+    $sessionConflict = Module::studentOngoingSessionConflict($db, (int) $student['user_id'], $moduleId);
 }
 
 echo json_encode([
     'ok'       => true,
     'enrolled' => $enrolled,
     'completed_same_title' => $completedSameTitle,
+    'ongoing_count' => $ongoingCount,
+    'ongoing_limit' => Module::MAX_ONGOING_ENROLLMENTS,
+    'ongoing_limit_reached' => $ongoingLimitReached,
+    'ongoing_limit_message' => $ongoingLimitReached ? Module::ongoingEnrollmentLimitMessage($student['full_name']) : '',
+    'session_conflict' => (bool) $sessionConflict,
+    'session_conflict_message' => $sessionConflict
+        ? $student['full_name'] . ' is already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session.'
+        : '',
     'student'  => [
         'user_id'         => (int) $student['user_id'],
         'full_name'       => $student['full_name'],

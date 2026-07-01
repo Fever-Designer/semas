@@ -11,18 +11,15 @@ $me         = Auth::user();
 $today      = date('Y-m-d');
 $intakeList = availableIntakes();
 
+try {
+    $db->exec('ALTER TABLE modules ADD COLUMN weekend_slot VARCHAR(20) NULL DEFAULT NULL');
+} catch (PDOException $e) {
+    if (($e->errorInfo[1] ?? 0) !== 1060) throw $e;
+}
+
 function coordAvailableRooms(PDO $db, int $excludeModuleId = 0): array
 {
-    $stmt = $db->prepare(
-        "SELECT r.room_id, r.room_name FROM rooms r
-         WHERE r.room_id NOT IN (
-             SELECT m.room_id FROM modules m
-             WHERE m.session_type='Weekend' AND m.status='Ongoing'
-               AND m.room_id IS NOT NULL AND m.module_id != :mid
-         ) ORDER BY r.room_name"
-    );
-    $stmt->execute(['mid' => $excludeModuleId]);
-    return $stmt->fetchAll();
+    return $db->query('SELECT room_id, room_name FROM rooms ORDER BY room_name')->fetchAll();
 }
 
 function coordRequireWeekendModule(PDO $db, int $moduleId): void
@@ -52,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lecUserId = (int) ($_POST['lecturer_user_id'] ?? 0);
         $roomId    = (int) ($_POST['room_id'] ?? 0) ?: null;
         $modId     = $action === 'update' ? (int) $_POST['module_id'] : 0;
+        $weekendSlot = in_array($_POST['weekend_slot'] ?? '', ['Morning', 'Afternoon'], true) ? $_POST['weekend_slot'] : null;
         if ($action === 'update') {
             coordRequireWeekendModule($db, $modId);
         }
@@ -76,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $extraDeptIds  = array_slice($deptIds, 1);
 
         if (!$lecId)          { flash('error', 'A lecturer must be assigned.');   redirect('/coordinator/modules.php'); }
+        if (!$weekendSlot)    { flash('error', 'Weekend modules must use either Morning or Afternoon.'); redirect('/coordinator/modules.php'); }
         if (!$primaryDeptId)  { flash('error', 'At least one department is required.'); redirect('/coordinator/modules.php'); }
         if (!$startDate || !$endDate || !$catDate || !$examDate) { flash('error', 'All dates are required.'); redirect('/coordinator/modules.php'); }
         if ($startDate < $today && $action === 'create') { flash('error', 'Start date cannot be in the past.'); redirect('/coordinator/modules.php'); }
@@ -84,22 +83,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Validate intakes
         $intakes = array_filter($_POST['intakes'] ?? [], 'isValidIntakeCode');
 
-        // Lecturer session constraint (Ongoing Weekend modules)
-        if ($action === 'create') {
-            $lc = $db->prepare("SELECT COUNT(*) FROM modules WHERE lecturer_id=:lec AND session_type='Weekend' AND status='Ongoing'");
-            $lc->execute(['lec' => $lecId]);
-            if ((int) $lc->fetchColumn() > 0) {
-                flash('error', 'This lecturer already has an Ongoing Weekend module.');
-                redirect('/coordinator/modules.php');
-            }
+        // Lecturer session constraint. Weekend Morning and Weekend Afternoon are separate sessions.
+        $lecturerConflict = Module::lecturerOngoingSessionConflict($db, $lecId, 'Weekend', $weekendSlot, $modId);
+        if ($lecturerConflict) {
+            flash('error', 'This lecturer already has an Ongoing ' . Module::sessionLabel($lecturerConflict) . ' module.');
+            redirect('/coordinator/modules.php');
         }
 
         // Room conflict
         if ($roomId) {
-            $rc = $db->prepare("SELECT COUNT(*) FROM modules WHERE room_id=:r AND session_type='Weekend' AND status='Ongoing' AND module_id!=:mid");
-            $rc->execute(['r' => $roomId, 'mid' => $modId]);
-            if ((int) $rc->fetchColumn() > 0) {
-                flash('error', 'This room is already assigned to another Ongoing Weekend module.');
+            $rc = $db->prepare(
+                "SELECT module_title, session_type, weekend_slot FROM modules
+                 WHERE room_id=:r AND session_type='Weekend'
+                   AND (COALESCE(weekend_slot, '')=:slot OR COALESCE(weekend_slot, '')='')
+                   AND status='Ongoing' AND module_id!=:mid
+                 LIMIT 1"
+            );
+            $rc->execute(['r' => $roomId, 'slot' => $weekendSlot, 'mid' => $modId]);
+            $roomConflict = $rc->fetch();
+            if ($roomConflict) {
+                flash('error', 'This room is already assigned to another Ongoing ' . Module::sessionLabel($roomConflict) . ' module.');
                 redirect('/coordinator/modules.php');
             }
         }
@@ -107,12 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'create') {
             $qrSecret = bin2hex(random_bytes(32));
             $db->prepare(
-                'INSERT INTO modules (module_title, department_id, lecturer_id, session_type, room_id,
+                'INSERT INTO modules (module_title, department_id, lecturer_id, session_type, weekend_slot, room_id,
                  cat_date, exam_date, module_qr_secret, start_date, end_date, created_by)
-                 VALUES (:title, :dept, :lec, :session, :room, :cat, :exam, :qr, :start, :end, :uid)'
+                 VALUES (:title, :dept, :lec, :session, :wslot, :room, :cat, :exam, :qr, :start, :end, :uid)'
             )->execute([
                 'title' => trim($_POST['module_title']), 'dept' => $primaryDeptId, 'lec' => $lecId,
-                'session' => 'Weekend', 'room' => $roomId,
+                'session' => 'Weekend', 'wslot' => $weekendSlot, 'room' => $roomId,
                 'cat' => $catDate, 'exam' => $examDate, 'qr' => $qrSecret,
                 'start' => $startDate, 'end' => $endDate, 'uid' => $me['user_id'],
             ]);
@@ -120,11 +123,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $db->prepare(
                 'UPDATE modules SET module_title=:title, department_id=:dept, lecturer_id=:lec,
-                 room_id=:room, cat_date=:cat, exam_date=:exam, start_date=:start, end_date=:end
+                 weekend_slot=:wslot, room_id=:room, cat_date=:cat, exam_date=:exam, start_date=:start, end_date=:end
                  WHERE module_id=:id'
             )->execute([
                 'title' => trim($_POST['module_title']), 'dept' => $primaryDeptId, 'lec' => $lecId,
-                'room' => $roomId, 'cat' => $catDate, 'exam' => $examDate,
+                'wslot' => $weekendSlot, 'room' => $roomId, 'cat' => $catDate, 'exam' => $examDate,
                 'start' => $startDate, 'end' => $endDate, 'id' => $modId,
             ]);
         }
@@ -163,6 +166,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$stu) {
             flash('error', "No active student found with reg number: {$regNum}");
         } else {
+            if (!Module::canAddOngoingEnrollment((int) $stu['user_id'], $modId)) {
+                flash('error', Module::ongoingEnrollmentLimitMessage($stu['full_name']));
+                redirect('/coordinator/modules.php');
+            }
+            $sessionConflict = Module::studentOngoingSessionConflict($db, (int) $stu['user_id'], $modId);
+            if ($sessionConflict) {
+                flash('error', $stu['full_name'] . ' is already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session.');
+                redirect('/coordinator/modules.php');
+            }
             try {
                 $db->prepare('INSERT INTO module_enrollments (module_id, user_id) VALUES (:m,:u)')->execute(['m' => $modId, 'u' => $stu['user_id']]);
                 flash('success', $stu['full_name'] . ' enrolled successfully.');
@@ -251,7 +263,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light">
-        <tr><th>Module</th><th>Department</th><th>Lecturer</th><th>Room</th><th>Intakes</th><th>CAT</th><th>Exam</th><th>Students</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>Module</th><th>Session</th><th>Department</th><th>Lecturer</th><th>Room</th><th>Intakes</th><th>CAT</th><th>Exam</th><th>Students</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
       <?php foreach ($modules as $m):
@@ -268,6 +280,7 @@ require __DIR__ . '/../partials/layout_top.php';
       ?>
         <tr>
           <td class="fw-semibold"><?= e($m['module_title']) ?></td>
+          <td><?= e(Module::sessionLabel($m)) ?></td>
           <td><?= e($m['department_name'] ?? '—') ?></td>
           <td><?= e($m['lecturer_name'] ?? '—') ?></td>
           <td><?= e($m['room_name'] ?? '—') ?></td>
@@ -371,7 +384,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
       <?php endforeach; ?>
       <?php if (!$modules): ?>
-        <tr><td colspan="10" class="text-muted small text-center py-3">No Weekend modules yet.</td></tr>
+        <tr><td colspan="11" class="text-muted small text-center py-3">No Weekend modules yet.</td></tr>
       <?php endif; ?>
       </tbody>
     </table>
@@ -448,6 +461,16 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
           <?php foreach ($lecturers as $l): ?>
             <option value="<?= $l['user_id'] ?>" <?= ($mod['lecturer_user_id'] ?? 0)==$l['user_id']?'selected':'' ?>><?= e($l['full_name']) ?><?= $l['role_name'] !== 'Lecturer' ? ' (' . e($l['role_name']) . ')' : '' ?></option>
           <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small fw-semibold">Weekend Session <span class="text-danger">*</span></label>
+        <?php $currentSlot = $mod['weekend_slot'] ?? ''; ?>
+        <select name="weekend_slot" class="form-select form-select-sm" required>
+          <option value="">Select slot</option>
+          <option value="Morning" <?= $currentSlot === 'Morning' ? 'selected' : '' ?>>Weekend Morning</option>
+          <option value="Afternoon" <?= $currentSlot === 'Afternoon' ? 'selected' : '' ?>>Weekend Afternoon</option>
         </select>
       </div>
 
@@ -622,6 +645,16 @@ function lookupStudent(modId) {
                 + '<div><div class="fw-semibold">' + escHtml(s.full_name) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.reg_number) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '—' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
+            if (!data.enrolled && data.ongoing_limit_reached) {
+                errEl.textContent = data.ongoing_limit_message || 'This student already has the maximum number of ongoing modules.';
+                errEl.style.display = '';
+                return;
+            }
+            if (!data.enrolled && data.session_conflict) {
+                errEl.textContent = data.session_conflict_message || 'This student is already registered in the same session.';
+                errEl.style.display = '';
+                return;
+            }
             document.getElementById('enrollSearch-' + modId).style.display = 'none';
             if (data.enrolled) {
                 document.getElementById('enrollAlreadyCard-' + modId).innerHTML = cardHtml;

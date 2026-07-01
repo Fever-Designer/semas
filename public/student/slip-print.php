@@ -109,18 +109,17 @@ $qrPayload = json_encode([
         'time' => $startTime . ' – ' . $endTime,
     ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
 ]);
-$qrSig = substr($b64u(hash_hmac('sha256', $moduleId . '|' . $me['user_id'] . '|' . $examType . '|' . $examDate, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 10);
+$qrSig = substr($b64u(hash_hmac('sha256', $moduleId . '|' . $me['user_id'] . '|' . $examType . '|' . $examDate, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 12);
 $qrPayload = implode('|', [
-    'SEMAS ENTRY',
-    $examType,
-    $examDate ? date('dMy', strtotime($examDate)) : '',
-    'R:' . substr((string) ($me['reg_number'] ?? ''), 0, 12),
-    'N:' . substr((string) $me['full_name'], 0, 12),
-    'M:' . substr((string) $module['module_title'], 0, 12),
-    'RM:' . substr((string) $room, 0, 8),
-    'S:' . $qrSig,
+    'SE',
+    (string) $moduleId,
+    (string) $me['user_id'],
+    strtoupper(substr($examType, 0, 1)),
+    $examDate ? date('ymd', strtotime($examDate)) : '',
+    substr(preg_replace('/\s+/', '', (string) ($me['reg_number'] ?? '')), 0, 12),
+    $qrSig,
 ]);
-$qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
+$qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -154,10 +153,10 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 5, 3);
   .sig-card .role { color: #6B7280; font-size: 12px; margin-bottom: 8px; }
   .sig-card .note { color: #475569; font-size: 13px; line-height: 1.4; }
 
-  .qr-section { flex: 0 0 170px; text-align: center; min-width: 170px; }
-  .qr-section .qr-box { display: inline-block; padding: 8px; background: #ffffff; border: 1px solid #D4A24C; border-radius: 12px; min-width: 156px; min-height: 156px; }
-  .qr-section .qr-box img { width: 140px; height: 140px; display: block; }
-  .qr-section .qr-label { margin-top: 10px; font-size: 11px; color: #6B7280; }
+  .qr-section { flex: 0 0 205px; text-align: center; min-width: 205px; }
+  .qr-section .qr-box { display: inline-block; padding: 10px; background: #ffffff; border: 2px solid #D4A24C; border-radius: 10px; width: 198px; height: 198px; }
+  .qr-section .qr-box img { width: 174px; height: 174px; display: block; image-rendering: pixelated; }
+  .qr-section .qr-label { margin-top: 8px; font-size: 11px; color: #1E2A52; font-weight: bold; }
 
   .footer { background: #FFF7D9; padding: 14px 28px; border-top: 1px solid #F0E3C6; font-size: 12px; color: #6B7280; text-align: center; }
   .footer a { color: #1E2A52; text-decoration: none; font-weight: 700; }

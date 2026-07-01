@@ -44,6 +44,14 @@ function validateRegistrarStudentContact(string $email, ?string $phone, array &$
     }
 }
 
+function registrarMysqlConnectionDropped(PDOException $e): bool
+{
+    $driverCode = isset($e->errorInfo[1]) ? (int) $e->errorInfo[1] : 0;
+    return in_array($driverCode, [2006, 2013], true)
+        || stripos($e->getMessage(), 'server has gone away') !== false
+        || stripos($e->getMessage(), 'lost connection') !== false;
+}
+
 // One-time migration: upgrade old 3-char intake codes (JAN/MAY/SEPT) to year-coded (JAN24/MAY24/SEPT24)
 (function () use ($db): void {
     $rows = $db->query(
@@ -174,13 +182,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/registrar/students.php');
     }
 
-    // ---- DELETE STUDENT / SOFT DELETE ----
+    // ---- DELETE STUDENT ----
     if ($action === 'delete_student') {
-        $userId = (int) $_POST['user_id'];
-        $db->prepare("UPDATE users SET status='Deactivated' WHERE user_id=:id")->execute(['id' => $userId]);
-        AuditLog::record(Auth::id(), 'DELETE_STUDENT', 'users', $userId);
-        Mailer::sendAccountDeactivated($targetUser);
-        flash('success', 'Student account deleted and deactivated.');
+        $userId = (int) ($_POST['user_id'] ?? 0);
+        $stmt = $db->prepare('SELECT * FROM users WHERE user_id = :id AND role_id = :role_id');
+        $stmt->execute(['id' => $userId, 'role_id' => $studentRoleId]);
+        $targetUser = $stmt->fetch();
+
+        if (!$targetUser) {
+            flash('error', 'Student account not found.');
+            redirect('/registrar/students.php');
+        }
+
+        try {
+            $db->beginTransaction();
+            $db->prepare('DELETE FROM users WHERE user_id = :id AND role_id = :role_id')
+               ->execute(['id' => $userId, 'role_id' => $studentRoleId]);
+            AuditLog::record(Auth::id(), 'DELETE_STUDENT', 'users', $userId, 'reg_number=' . ($targetUser['reg_number'] ?? ''));
+            $db->commit();
+            flash('success', 'Student account deleted.');
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('[Registrar] delete student failed: ' . $e->getMessage());
+            flash('error', 'Student account could not be deleted because it is still linked to existing records.');
+        }
         redirect('/registrar/students.php');
     }
 
@@ -343,8 +370,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $showPreview = isset($_GET['import_preview']) && !empty($_SESSION['import_rows']);
 $importRows  = $showPreview ? ($_SESSION['import_rows'] ?? []) : [];
 
-$departments = $db->query('SELECT d.*, f.faculty_name FROM departments d JOIN faculties f ON f.faculty_id=d.faculty_id ORDER BY f.faculty_name, d.department_name')->fetchAll();
-
 // Search / filter
 $search    = trim($_GET['q'] ?? '');
 $filterDept= (int) ($_GET['dept'] ?? 0);
@@ -374,9 +399,22 @@ $sql = "SELECT u.*, d.department_name, d.department_code, f.faculty_name
         LEFT JOIN faculties f ON f.faculty_id=d.faculty_id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY u.created_at DESC";
-$stmt = $db->prepare($sql);
-$stmt->execute($params);
-$students = $stmt->fetchAll();
+
+for ($attempt = 0; $attempt < 2; $attempt++) {
+    try {
+        $departments = $db->query('SELECT d.*, f.faculty_name FROM departments d JOIN faculties f ON f.faculty_id=d.faculty_id ORDER BY f.faculty_name, d.department_name')->fetchAll();
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $students = $stmt->fetchAll();
+        break;
+    } catch (PDOException $e) {
+        if ($attempt === 0 && registrarMysqlConnectionDropped($e)) {
+            $db = Database::reconnect();
+            continue;
+        }
+        throw $e;
+    }
+}
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -528,8 +566,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <i class="bi bi-<?= $s['status'] === 'Active' ? 'person-dash' : 'person-check' ?>-fill"></i>
               </button>
             </form>
-            <?php if ($s['status'] === 'Active'): ?>
-            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this student account? This will deactivate the user and preserve records.');">
+            <form method="POST" class="d-inline" onsubmit="return confirm('Permanently delete this student account? This cannot be undone.');">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="delete_student">
               <input type="hidden" name="user_id" value="<?= $s['user_id'] ?>">
@@ -537,7 +574,6 @@ require __DIR__ . '/../partials/layout_top.php';
                 <i class="bi bi-trash-fill"></i>
               </button>
             </form>
-            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>

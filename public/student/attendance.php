@@ -468,6 +468,10 @@ function normalizeScannedQr(rawText) {
   if (/^SEMAS:\d+:\d+:[0-9a-f]+$/i.test(rawText)) {
     return { qrData: rawText };
   }
+  const staticMatch = rawText.match(/^SM:(\d+):([A-Za-z0-9_-]+)$/);
+  if (staticMatch) {
+    return { moduleId: staticMatch[1], qrToken: rawText };
+  }
   if (/^[0-9a-f]{64}$/i.test(rawText)) {
     return { qrToken: rawText };
   }

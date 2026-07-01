@@ -13,7 +13,7 @@ $sessionType  = trim($_GET['session_type'] ?? '');
 $excludeModId = (int) ($_GET['module_id'] ?? 0);
 $db = Database::connection();
 
-if (!$sessionType) {
+if (!$sessionType || $sessionType === 'Weekend') {
     $rooms = $db->query('SELECT room_id, room_name FROM rooms ORDER BY room_name')->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'rooms' => $rooms]);
     exit;
