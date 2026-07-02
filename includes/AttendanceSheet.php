@@ -72,7 +72,9 @@ final class AttendanceSheet
             return $metrics;
         }
 
-        $sessionIds = array_map(static fn($s) => (int) $s['session_id'], $sessions);
+        $sessionIds = array_map(static function ($s) {
+            return (int) $s['session_id'];
+        }, $sessions);
         $placeholders = implode(',', array_fill(0, count($sessionIds), '?'));
         $logStmt = $db->prepare(
             "SELECT session_id, user_id, attendance_type, status, verification_method
