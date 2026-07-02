@@ -61,7 +61,6 @@ require __DIR__ . '/../partials/layout_top.php';
     <a href="<?= APP_URL ?>/coordinator/modules.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-journal-plus me-1"></i> Manage Weekend Modules</a>
     <a href="<?= APP_URL ?>/coordinator/announcements.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-megaphone me-1"></i> Announcements</a>
     <a href="<?= APP_URL ?>/admin/suggestions.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-chat-left-text-fill me-1"></i> Suggestion Box</a>
-    <a href="<?= APP_URL ?>/campus/lost-found.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-search-heart me-1"></i> Lost &amp; Found</a>
   </div>
 </div>
 

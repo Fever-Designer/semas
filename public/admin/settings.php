@@ -115,9 +115,6 @@ require __DIR__ . '/../partials/layout_top.php';
             ['feature' => 'Holidays & Umuganda', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Take/record class attendance', 'Principal' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => true, 'Student' => 'Self-scan'],
             ['feature' => 'Register for modules', 'Principal' => false, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => true],
-            ['feature' => 'Lost & Found: report/claim', 'Principal' => false, 'HOD' => true, 'Dean' => true, 'Lecturer' => true, 'Student' => true],
-            ['feature' => 'Lost & Found: approve claims', 'Principal' => false, 'HOD' => false, 'Dean' => true, 'Lecturer' => false, 'Student' => false],
-            ['feature' => 'Lost & Found: view statistics', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Module & attendance reports (read-only)', 'Principal' => true, 'HOD' => 'Own academic scope', 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Audit log', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
         ];

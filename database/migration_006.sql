@@ -5,9 +5,8 @@
 --   2. Sign In / Sign Out class attendance with one-scan-per-IP dedup
 --   3. CAT/Exam eligibility engine + HOD approval workflow
 --   4. Public Holidays & Umuganda
---   5. Lost & Found claims workflow (Dean-approved)
---   6. System Settings / University Branding (key-value store)
---   7. Invigilator field on modules
+--   5. System Settings / University Branding (key-value store)
+--   6. Invigilator field on modules
 -- ---------------------------------------------------------------------
 --   mysql -u root -p semas < database/migration_006.sql
 -- =====================================================================
@@ -93,27 +92,7 @@ CREATE TABLE IF NOT EXISTS holidays (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 5. Lost & Found claims workflow (Dean-approved).
--- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lost_found_claims (
-    claim_id          INT AUTO_INCREMENT PRIMARY KEY,
-    item_id           INT NOT NULL,
-    claimant_id       INT NOT NULL,
-    claim_message     TEXT NULL,
-    status            ENUM('Pending','Approved','Rejected','Returned') NOT NULL DEFAULT 'Pending',
-    receiver_name     VARCHAR(150) NULL,
-    receiver_reg_number VARCHAR(50) NULL,
-    verification_notes TEXT NULL,
-    decided_by        INT NULL,
-    decided_at        DATETIME NULL,
-    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (item_id) REFERENCES lost_found_items(item_id) ON DELETE CASCADE,
-    FOREIGN KEY (claimant_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (decided_by) REFERENCES users(user_id) ON DELETE SET NULL
-) ENGINE=InnoDB;
-
--- ---------------------------------------------------------------------
--- 6. System Settings / University Branding — simple key-value store.
+-- 5. System Settings / University Branding — simple key-value store.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_key   VARCHAR(100) PRIMARY KEY,
@@ -131,14 +110,14 @@ INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES
     ('current_semester', '');
 
 -- ---------------------------------------------------------------------
--- 7. Umuganda needs two extra window_name values beyond the normal four
+-- 6. Umuganda needs two extra window_name values beyond the normal four
 --    (see includes/ClassAttendance.php's holiday-aware currentWindow()).
 -- ---------------------------------------------------------------------
 ALTER TABLE class_sessions
     MODIFY COLUMN window_name ENUM('Day','Evening','WeekendMorning','WeekendAfternoon','UmugandaMorning','UmugandaAfternoon') NULL;
 
 -- ---------------------------------------------------------------------
--- 8. Invigilator (must be a lecturer) per module — used for both the
+-- 7. Invigilator (must be a lecturer) per module — used for both the
 --    module record and CAT/Exam scheduling.
 -- ---------------------------------------------------------------------
 ALTER TABLE modules
@@ -146,7 +125,7 @@ ALTER TABLE modules
     ADD CONSTRAINT fk_modules_invigilator FOREIGN KEY (invigilator_id) REFERENCES lecturers(lecturer_id) ON DELETE SET NULL;
 
 -- ---------------------------------------------------------------------
--- 9. Backfill announcement_recipients for historical announcements sent
+-- 8. Backfill announcement_recipients for historical announcements sent
 --    before this migration existed. Deliberately placed LAST: it's a
 --    best-effort convenience (anyone who has a notification tied to an
 --    announcement counts as a recipient), not a structural requirement —

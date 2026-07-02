@@ -226,11 +226,6 @@ and an HOD had no way to see Dean accounts at all. Both are now role-aware.
   by HOD/Dean's "by year" announcement scope. `Final Year` is approximated as
   `AudienceResolver::FINAL_YEAR_THRESHOLD` (default 4) since programme length varies — adjust if needed.
 
-**Campus-life additions (not in the original spec, added because they're generically useful for a
-university announcement/event system):**
-- `public/campus/lost-found.php` — Lost & Found board open to every role. Post a lost/found item with
-  optional photo and location, search/filter by type/category/status, mark resolved or delete (the
-  reporter or any staff role can do either).
 - ~~Polls & Surveys~~ — replaced in increment 11 below by Class Attendance, per product decision.
 
 **Left as a lighter scaffold:**
@@ -335,7 +330,7 @@ and `index.php` needed no changes — the URL didn't move, only what's rendered 
 `admin/events.php`, `admin/ai_generator.php`, `admin/qr.php`, `admin/event-participants.php`,
 `admin/scan-student.php`, `reports/*` (all switched from `Auth::requireRole(['Administrator', ...])`
 to `['HOD', 'Dean']` only) and their nav links/dashboard cards. Kept: Users & Roles, Audit Log,
-Suggestion Box, Lost & Found — none of those are "academic operations." The Administrator's
+Suggestion Box — none of those are "academic operations." The Administrator's
 dashboard now shows only users-by-role/status/signup-trend charts and a recent-staff list.
 
 **Event Management — grouped, HOD + Dean only.** The pages didn't move (still under `public/admin/`,
@@ -427,7 +422,7 @@ This replaces the previous "lecturer clicks Start, a 2-hour window opens from th
   let them set `hod_user_id` directly (that's still done via `admin/users.php`'s staff-creation flow,
   unchanged from increment 11) — keeping "who is whose HOD" in one place rather than two.
 
-## 13. Feature Increment: Announcement Scoping, Sign-In/Out Attendance, CAT/Exam Eligibility, Lost & Found Claims, Settings
+## 13. Feature Increment: Announcement Scoping, Sign-In/Out Attendance, CAT/Exam Eligibility, Settings
 
 Run `database/migration_006.sql` after `migration_005.sql`:
 
@@ -502,7 +497,6 @@ announcement to one module's students, which was explicitly called out as wrong.
   (Administrator-only). HOD still sees departments (read-only, via the dropdown in
   `hod/modules.php`) but can no longer create or edit one.
 - New HOD pages: `hod/eligibility.php` (above), `hod/holidays.php` (below).
-- New Dean page: `dean/lost-found-claims.php` (below).
 - `modules.invigilator_id` (FK to `lecturers`) is now wired into `hod/modules.php`'s create/edit forms
   and shown on the printed slip — "Assign invigilators (must be selected from lecturers)" from both
   the Manage Modules and CAT/Exam sections of the spec map to this one field.
@@ -513,17 +507,6 @@ announcement to one module's students, which was explicitly called out as wrong.
 - An **Umuganda** date replaces the normal Saturday/Sunday windows with its own override hours
   (default 13:30–16:30 / 17:00–20:30, editable per date) and automatically sends an announcement to
   every Active Weekend-session student via the same `Announcement::create()` path as everything else.
-
-**Lost & Found is now a claims workflow, not self-service resolution**
-(`campus/lost-found.php`, `dean/lost-found-claims.php`, `lost_found_claims` table):
-- Students/HOD/Lecturers/Dean can still report an item, but can no longer mark their own post
-  "Resolved" directly — they submit a claim ("This is mine") instead, and track its status
-  (Pending/Approved/Rejected/Returned) inline on the board.
-- Only the **Dean** approves/rejects a claim and records the handover (receiver's name, reg/staff ID,
-  verification notes) when marking it Returned — which is also the only thing that flips the
-  underlying item to `Resolved`. This creates the audit trail the spec asked for.
-- The **Principal** sees `campus/lost-found.php` in a view-only mode (stats cards only: Open/Resolved
-  items, Pending/Returned claims) — no report/claim/approve actions render for that role at all.
 
 **Principal (Administrator) dashboard expanded** to the full requested stat set: Total
 Students/Lecturers/HODs/Deans/Departments/Modules, Active Users, Pending Accounts, Storage Usage
@@ -553,9 +536,6 @@ since System Announcements exist as their own page). Plus three brand-new Admini
 - `student/assignments.php` gained a no-`module_id` landing view (every assignment across every
   registered module) so the sidebar can link to one flat "Assignments" item instead of forcing a
   module choice first.
-- Lecturer sidebar gained a "Lost & Found" group (report/claim only, same restriction as everyone
-  except Dean).
-
 **Left as a lighter scaffold:**
 - No automated "Umuganda is next Saturday" reminder — an HOD must add the date manually (one day
   before, per the spec) rather than the system auto-detecting "last Saturday of the month."
@@ -573,7 +553,7 @@ since System Announcements exist as their own page). Plus three brand-new Admini
 which don't exist (the real columns are `notifications.category` and
 `notifications.related_announcement_id`). On a strict SQL client this stopped the whole script after
 the first statement, silently skipping every table/column change that came after it (`holidays`,
-`cat_exam_eligibility`, `lost_found_claims`, the `class_attendance_logs` attendance-type/IP columns,
+`cat_exam_eligibility`, the `class_attendance_logs` attendance-type/IP columns,
 `modules.invigilator_id`). Fixed and moved to the very end of the file, so even if it fails again for
 any reason, every structural change above it has already been committed. **If you already ran the
 broken version, just re-run the corrected `migration_006.sql` from this download — every statement in

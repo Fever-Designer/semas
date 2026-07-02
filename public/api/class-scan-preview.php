@@ -91,7 +91,16 @@ if ($mode === 'qr') {
     // Lecturer scans the STUDENT's own personal QR (the same one shown on student/my-qr.php),
     // decoded with the global APP_KEY — this is "Method 2" for class attendance, mirroring how
     // admin/scan-student.php scans a student's personal QR for event attendance.
-    $token = $_POST['token'] ?? $_GET['token'] ?? '';
+    $token = trim((string) ($_POST['token'] ?? $_GET['token'] ?? ''));
+    if (filter_var($token, FILTER_VALIDATE_URL)) {
+        $query = [];
+        parse_str((string) (parse_url($token, PHP_URL_QUERY) ?? ''), $query);
+        if (!empty($query['u'])) {
+            $token = (string) $query['u'];
+        } elseif (!empty($query['student_qr'])) {
+            $token = (string) $query['student_qr'];
+        }
+    }
     $secret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
 
     if (preg_match('/^SEMASU:(\d+):(\d+):([0-9a-f]{8}):([0-9a-f]{20})$/i', $token, $m)) {

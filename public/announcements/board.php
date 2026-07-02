@@ -26,8 +26,9 @@ $where = [
 ];
 $params = ['me' => $me['user_id']];
 if ($search !== '') {
-    $where[] = '(a.title LIKE :q OR a.message LIKE :q)';
-    $params['q'] = "%$search%";
+    $where[] = '(a.title LIKE :q_title OR a.message LIKE :q_message)';
+    $params['q_title'] = "%$search%";
+    $params['q_message'] = "%$search%";
 }
 if ($category !== '') {
     $where[] = 'a.category = :cat';

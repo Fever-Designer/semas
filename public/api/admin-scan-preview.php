@@ -54,7 +54,16 @@ function student_payload(PDO $db, array $event, int $userId): array
 
 if ($mode === 'qr') {
     // Decode the student's PERSONAL QR (built the same way as student/my-qr.php).
-    $token = $_POST['token'] ?? $_GET['token'] ?? '';
+    $token = trim((string) ($_POST['token'] ?? $_GET['token'] ?? ''));
+    if (filter_var($token, FILTER_VALIDATE_URL)) {
+        $query = [];
+        parse_str((string) (parse_url($token, PHP_URL_QUERY) ?? ''), $query);
+        if (!empty($query['u'])) {
+            $token = (string) $query['u'];
+        } elseif (!empty($query['student_qr'])) {
+            $token = (string) $query['student_qr'];
+        }
+    }
     $secret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
 
     if (preg_match('/^SEMASU:(\d+):(\d+):([0-9a-f]{8}):([0-9a-f]{20})$/i', $token, $m)) {

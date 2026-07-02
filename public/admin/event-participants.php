@@ -7,7 +7,7 @@ $pageTitle = 'Event Participants';
 $activeNav = 'events';
 $db = Database::connection();
 
-$eventId = (int) ($_GET['event_id'] ?? 0);
+$eventId = (int) ($_GET['event_id'] ?? ($_POST['event_id'] ?? 0));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -48,8 +48,9 @@ if ($eventId) {
             WHERE er.event_id = :eid";
     $params = ['eid' => $eventId];
     if ($search !== '') {
-        $sql .= ' AND (u.full_name LIKE :q OR u.reg_number LIKE :q)';
-        $params['q'] = "%$search%";
+        $sql .= ' AND (u.full_name LIKE :q_name OR u.reg_number LIKE :q_reg)';
+        $params['q_name'] = "%$search%";
+        $params['q_reg'] = "%$search%";
     }
     $sql .= " ORDER BY er.status, u.full_name";
     $stmt = $db->prepare($sql);

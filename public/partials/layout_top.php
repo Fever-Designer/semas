@@ -4,7 +4,7 @@
  * Bootstrap 5 + Bootstrap Icons + the "Indigo Ink / Campus Gold" SEMAS theme.
  * Include at the top of any authenticated page, after setting:
  *   $pageTitle   (string)  - shown in the top bar and <title>
- *   $activeNav   (string)  - one of: dashboard, users, auditlog, suggestions, lostfound,
+ *   $activeNav   (string)  - one of: dashboard, users, auditlog, suggestions,
  *                            modules, departments, announcements, reports, events, class-attendance
  * Then include partials/layout_bottom.php at the end of the page.
  */
@@ -79,7 +79,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/announcements.php"><i class="bi bi-megaphone-fill"></i> System Announcements</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found (stats)</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'HOD'): ?>
@@ -91,7 +90,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements &amp; Holidays</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Dean'): ?>
@@ -101,16 +99,11 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/events.php"><i class="bi bi-calendar-event-fill"></i> Events</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/qr.php"><i class="bi bi-qr-code-scan"></i> Event QR Codes</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/event-participants.php"><i class="bi bi-people-fill"></i> Participants</a>
-        <div class="nav-section-label">Lost &amp; Found</div>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Items Board</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound-claims' ? 'active' : '' ?>" href="<?= APP_URL ?>/dean/lost-found-claims.php"><i class="bi bi-clipboard2-check"></i> Ownership Claims</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Lecturer'): ?>
-        <div class="nav-section-label">Lost &amp; Found</div>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Report / Claim Items</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
       <?php endif; ?>
@@ -122,7 +115,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <div class="nav-section-label">Communication</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/registrar/announcements.php"><i class="bi bi-megaphone-fill"></i> Student Announcements</a>
         <div class="nav-section-label">More</div>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
       <?php endif; ?>
 
@@ -136,7 +128,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'holidays' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/holidays.php"><i class="bi bi-calendar-x-fill"></i> Umuganda</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
       <?php endif; ?>
 
       <?php if ($roleLabel === 'Student'): ?>
@@ -150,7 +141,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'events' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/my-qr.php"><i class="bi bi-qr-code"></i> Event QR &amp; Check-in</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/student/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'lostfound' ? 'active' : '' ?>" href="<?= APP_URL ?>/campus/lost-found.php"><i class="bi bi-search-heart"></i> Lost &amp; Found</a>
       <?php endif; ?>
 
       <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'board.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/announcements/board.php">

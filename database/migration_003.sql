@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SEMAS — Migration 003: Role-Based User Management & Announcement
---          Module + Campus Life features (Lost & Found, Polls)
+--          Module + Campus Polls
 -- ADDITIVE ONLY — does not drop or redefine any existing table/column
 -- in a way that loses data. Run once against your existing database:
 --   mysql -u root -p semas < database/migration_003.sql
@@ -50,30 +50,7 @@ ALTER TABLE users
     ADD CONSTRAINT fk_users_created_by FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL;
 
 -- ---------------------------------------------------------------------
--- 4. Lost & Found board — campus-life feature. Any authenticated user
---    (student, HOD, Dean, Administrator) can report a lost or found
---    item; the reporter or any staff role can mark it resolved.
--- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lost_found_items (
-    item_id        INT AUTO_INCREMENT PRIMARY KEY,
-    item_type      ENUM('Lost','Found') NOT NULL,
-    title          VARCHAR(150) NOT NULL,
-    description    TEXT NULL,
-    category       ENUM('Electronics','Documents/ID','Books/Stationery','Clothing/Accessories','Keys','Bag','Other') NOT NULL DEFAULT 'Other',
-    location       VARCHAR(150) NULL,
-    photo_path     VARCHAR(255) NULL,
-    contact_info   VARCHAR(150) NULL,
-    status         ENUM('Open','Resolved') NOT NULL DEFAULT 'Open',
-    reported_by    INT NOT NULL,
-    resolved_by    INT NULL,
-    resolved_at    DATETIME NULL,
-    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (reported_by) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (resolved_by) REFERENCES users(user_id) ON DELETE SET NULL
-) ENGINE=InnoDB;
-
--- ---------------------------------------------------------------------
--- 5. Campus Polls & Surveys — Administrator, Dean, and HOD can create a
+-- 4. Campus Polls & Surveys — Administrator, Dean, and HOD can create a
 --    poll targeted to the same audience scopes they're permitted to use
 --    for announcements; students vote once per poll.
 -- ---------------------------------------------------------------------

@@ -73,7 +73,6 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="d-flex gap-2 flex-wrap">
     <a href="<?= APP_URL ?>/registrar/students.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-person-plus-fill me-1"></i> Manage Students</a>
     <a href="<?= APP_URL ?>/registrar/announcements.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-megaphone-fill me-1"></i> Send Announcement</a>
-    <a href="<?= APP_URL ?>/campus/lost-found.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-search-heart me-1"></i> Lost &amp; Found</a>
     <a href="<?= APP_URL ?>/admin/suggestions.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-chat-left-text-fill me-1"></i> Suggestion Box</a>
     <a href="<?= APP_URL ?>/announcements/board.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-megaphone me-1"></i> Announcement Board</a>
   </div>

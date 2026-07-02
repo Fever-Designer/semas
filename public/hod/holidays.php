@@ -8,6 +8,7 @@ $activeNav = 'holidays';
 $db = Database::connection();
 $me = Auth::user();
 $isCoordinator = Auth::role() === 'Coordinator';
+$today = date('Y-m-d');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -15,12 +16,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         // Coordinators can only add Umuganda (no Public Holidays in Weekend)
         $type = $isCoordinator ? 'Umuganda' : ($_POST['holiday_type'] === 'Umuganda' ? 'Umuganda' : 'Public Holiday');
+        $holidayDate = trim((string) ($_POST['holiday_date'] ?? ''));
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $dateValue = DateTime::createFromFormat('Y-m-d', $holidayDate);
+
+        if (!$dateValue || $dateValue->format('Y-m-d') !== $holidayDate) {
+            flash('error', 'Please choose a valid date.');
+            redirect('/hod/holidays.php');
+        }
+        if ($holidayDate < $today) {
+            flash('error', ucfirst($type) . ' date cannot be in the past.');
+            redirect('/hod/holidays.php');
+        }
+        if ($title === '') {
+            flash('error', 'Title is required.');
+            redirect('/hod/holidays.php');
+        }
+
         try {
             $db->prepare(
                 'INSERT INTO holidays (holiday_date, title, holiday_type, override_morning_start, override_morning_end, override_afternoon_start, override_afternoon_end, notes, created_by)
                  VALUES (:date, :title, :type, :ms, :me_, :as_, :ae, :notes, :uid)'
             )->execute([
-                'date' => $_POST['holiday_date'], 'title' => trim($_POST['title']), 'type' => $type,
+                'date' => $holidayDate, 'title' => $title, 'type' => $type,
                 'ms' => $type === 'Umuganda' ? ($_POST['override_morning_start'] ?: '13:30') : null,
                 'me_' => $type === 'Umuganda' ? ($_POST['override_morning_end'] ?: '16:30') : null,
                 'as_' => $type === 'Umuganda' ? ($_POST['override_afternoon_start'] ?: '17:00') : null,
@@ -36,9 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE r.role_name = 'Student' AND u.session_type = 'Weekend' AND u.status = 'Active'"
                 )->fetchAll();
                 $result = Announcement::create([
-                    'title' => 'Umuganda Schedule Change / ' . $_POST['holiday_date'],
+                    'title' => 'Umuganda Schedule Change / ' . $holidayDate,
                     'category' => 'General Notice', 'priority' => 'High', 'target_audience' => 'Weekend Students',
-                    'message' => "Umuganda falls on {$_POST['holiday_date']}. Weekend classes are rescheduled: Morning session 13:30–16:30, Afternoon session 17:00–20:30.",
+                    'message' => "Umuganda falls on {$holidayDate}. Weekend classes are rescheduled: Morning session 13:30–16:30, Afternoon session 17:00–20:30.",
                     'status' => 'Published', 'recipients' => $weekendStudents,
                 ], $me, 'Head of Department', 'University-wide (Weekend students)', false);
             }
@@ -94,7 +112,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?><input type="hidden" name="action" value="create">
         <div class="modal-header"><h6 class="modal-title display-font"><?= $isCoordinator ? 'Add Umuganda Date' : 'Add Holiday / Umuganda' ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" required></div>
+          <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" min="<?= e($today) ?>" required></div>
           <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
           <?php if ($isCoordinator): ?>
             <input type="hidden" name="holiday_type" value="Umuganda">

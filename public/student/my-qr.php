@@ -12,7 +12,8 @@ $qrNonce = bin2hex(random_bytes(4));
 $qrSecret = APP_KEY !== '' ? APP_KEY : 'fallback-key-change-me';
 $qrSig = substr(hash_hmac('sha256', $user['user_id'] . '|' . $qrExp . '|' . $qrNonce, $qrSecret), 0, 20);
 $qrString = 'SEMASU:' . (int) $user['user_id'] . ':' . $qrExp . ':' . $qrNonce . ':' . $qrSig;
-$qrImage = SimpleQr::pngDataUri($qrString, 5, 3);
+$qrUrl = APP_URL . '/s.php?u=' . $qrString;
+$qrImage = SimpleQr::pngDataUri($qrUrl, 5, 3);
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
