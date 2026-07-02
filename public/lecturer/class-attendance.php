@@ -8,7 +8,7 @@ $pageTitle = 'Class Attendance';
 $activeNav = 'class-attendance';
 $db        = Database::connection();
 $me        = Auth::user();
-$today     = date('Y-m-d');
+$today     = ClassAttendance::now()->format('Y-m-d');
 
 /** Which exam_type cutoff window (per Eligibility::generate()'s own cutoff
  *  rules) a session date falls under, or null if it's outside both. */
@@ -172,18 +172,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
 
+        $todayForAttendance = ClassAttendance::now()->format('Y-m-d');
         $find = $db->prepare(
-            'SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win LIMIT 1'
+            'SELECT * FROM class_sessions
+             WHERE module_id = :mid AND session_date = :today AND window_name = :win
+             ORDER BY session_id DESC LIMIT 1'
         );
-        $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+        $find->execute(['mid' => $moduleId, 'today' => $todayForAttendance, 'win' => $window['name']]);
         $session = $find->fetch();
         if (!$session) {
             try {
                 $db->prepare(
                     'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, status, created_by)
-                     VALUES (:mid, CURDATE(), :win, :start, :end, :secret, "Open", :uid)'
+                     VALUES (:mid, :today, :win, :start, :end, :secret, "Open", :uid)'
                 )->execute([
                     'mid' => $moduleId,
+                    'today' => $todayForAttendance,
                     'win' => $window['name'],
                     'start' => $window['start']->format('Y-m-d H:i:s'),
                     'end' => $window['end']->format('Y-m-d H:i:s'),
@@ -199,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (PDOException $e) {
                 // Session may have been opened by a QR scan at the same moment.
             }
-            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $find->execute(['mid' => $moduleId, 'today' => $todayForAttendance, 'win' => $window['name']]);
             $session = $find->fetch();
         }
 
@@ -209,23 +213,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $uid = (int) $student['user_id'];
-        $alreadyToday = $db->prepare(
-            "SELECT cal.attendance_type, cal.status, cal.verification_method, cal.checkin_time
-             FROM class_attendance_logs cal
-             JOIN class_sessions cs ON cs.session_id = cal.session_id
-             WHERE cs.module_id = :mid
-               AND cs.session_date = CURDATE()
-               AND cal.user_id = :uid
-               AND cal.verification_method <> 'Auto'
-             ORDER BY cal.checkin_time DESC, cal.attendance_id DESC
-             LIMIT 1"
-        );
-        $alreadyToday->execute(['mid' => $moduleId, 'uid' => $uid]);
-        if ($alreadyToday->fetch()) {
-            flash('error', 'Attendance has already been recorded for this student today.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
-
         $signedOut = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign Out'");
         $signedOut->execute(['sid' => $session['session_id'], 'uid' => $uid]);
         if ($signedOut->fetchColumn()) {
@@ -233,38 +220,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
 
-        $realSignIn = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method <> 'Auto'");
+        $realSignIn = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method IN ('QR','Manual')");
         $realSignIn->execute(['sid' => $session['session_id'], 'uid' => $uid]);
         if ($realSignIn->fetchColumn()) {
             flash('error', 'Attendance has already been recorded.');
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
 
-        $status = ClassAttendance::statusFor((string) $session['start_time']);
-        if ($status === 'Absent') {
-            flash('error', 'The sign-in window has closed. The student remains marked Absent.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
+        $status = 'Present';
 
         $manualSignInUpdate = $db->prepare(
             "UPDATE class_attendance_logs
-             SET status = :status, verification_method = 'Manual', confirmed_by = :by, checkin_time = NOW()
-             WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method = 'Auto'"
+             SET status = :status, verification_method = 'Manual', confirmed_by = :by, checkin_time = :signin_time
+             WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In'
+               AND verification_method NOT IN ('QR','Manual')"
         );
-        $manualSignInUpdate->execute(['status' => $status, 'by' => $me['user_id'], 'sid' => $session['session_id'], 'uid' => $uid]);
+        $manualSignInUpdate->execute([
+            'status' => $status,
+            'by' => $me['user_id'],
+            'signin_time' => $session['start_time'],
+            'sid' => $session['session_id'],
+            'uid' => $uid,
+        ]);
         if ($manualSignInUpdate->rowCount() === 0) {
             $exists = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In'");
             $exists->execute(['sid' => $session['session_id'], 'uid' => $uid]);
             if (!$exists->fetchColumn()) {
                 $db->prepare(
                     "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
-                     VALUES (:sid, :uid, 'Sign In', :status, 'Manual', :by, NOW())"
-                )->execute(['sid' => $session['session_id'], 'uid' => $uid, 'status' => $status, 'by' => $me['user_id']]);
+                     VALUES (:sid, :uid, 'Sign In', :status, 'Manual', :by, :signin_time)"
+                )->execute([
+                    'sid' => $session['session_id'],
+                    'uid' => $uid,
+                    'status' => $status,
+                    'by' => $me['user_id'],
+                    'signin_time' => $session['start_time'],
+                ]);
             }
         }
 
+        $db->prepare(
+            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
+             VALUES (:sid, :uid, 'Sign Out', 'Present', 'Manual', :by, :signout_time)
+             ON DUPLICATE KEY UPDATE status = VALUES(status), verification_method = VALUES(verification_method),
+                 confirmed_by = VALUES(confirmed_by), checkin_time = VALUES(checkin_time)"
+        )->execute([
+            'sid' => $session['session_id'],
+            'uid' => $uid,
+            'by' => $me['user_id'],
+            'signout_time' => $session['end_time'],
+        ]);
+
         AuditLog::record(Auth::id(), 'MANUAL_SIGNIN_ATTENDANCE', 'class_sessions', (int) $session['session_id'], "user={$uid};status={$status}");
-        flash('success', $student['full_name'] . ' signed in manually and marked ' . $status . '.');
+        flash('success', $student['full_name'] . ' signed manually as Present with class start/end times.');
         redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
     }
 
@@ -356,8 +364,10 @@ if ($module) {
     );
     $sessStmt->execute(['mid' => $moduleId]);
     $allSess = $sessStmt->fetchAll();
-    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today) {
-        return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
+    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today, $module) {
+        return $s['session_date'] <= $today
+            && !in_array($s['session_date'], $excludeDates, true)
+            && lecturer_module_matches_window($module, ['name' => (string) $s['window_name']]);
     }));
 
     foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
@@ -389,7 +399,7 @@ if ($module) {
         }
         if ($log['attendance_type'] === 'Sign In') {
             $attMap[$sid][$uid]['in_status'] = $log['status'];
-            $isAuto = ($log['verification_method'] === 'Auto');
+            $isAuto = !in_array((string) $log['verification_method'], ['QR', 'Manual'], true);
             $attMap[$sid][$uid]['is_auto'] = $isAuto;
             if (!$isAuto) {
                 $attMap[$sid][$uid]['in_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
@@ -406,7 +416,7 @@ foreach ($students as $stu) {
     $already = false;
     $recordedLabel = '';
     foreach ($sessions as $s) {
-        if ($s['session_date'] !== $today) {
+        if ($s['session_date'] !== $today || !$window || $s['window_name'] !== $window['name']) {
             continue;
         }
         $entry = $attMap[(int) $s['session_id']][$uid] ?? null;

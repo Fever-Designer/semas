@@ -35,6 +35,7 @@ if (!$module) {
 $students   = AttendanceSheet::students($db, $moduleId);
 $classDates = AttendanceSheet::expectedClassDates($module);
 $sessLabel  = AttendanceSheet::sessionLabel($module);
+$metrics    = AttendanceSheet::currentMetrics($db, $moduleId, $module);
 $effectiveEnd = empty($classDates) ? date('Y-m-d') : end($classDates);
 reset($classDates);
 
@@ -63,7 +64,7 @@ $sheet->getStyle('D1:D2')->getFont()->setBold(true);
 
 $headerRow = 5;
 $colIdx = 1;
-foreach (['NO', 'STUDENT NAME', 'REG NUMBER', 'PHONE NUMBER'] as $c) {
+foreach (['NO', 'STUDENT NAME', 'REG NUMBER', 'PHONE NUMBER', 'P', 'L', 'A', 'TOT', '%'] as $c) {
     $sheet->setCellValueByColumnAndRow($colIdx, $headerRow, $c);
     $colIdx++;
 }
@@ -84,6 +85,12 @@ foreach ($students as $s) {
     $sheet->setCellValueByColumnAndRow(2, $row, $s['full_name']);
     $sheet->setCellValueByColumnAndRow(3, $row, $s['reg_number'] ?? '');
     $sheet->setCellValueByColumnAndRow(4, $row, $s['phone_number'] ?? '');
+    $m = $metrics[(int) $s['user_id']] ?? ['present' => 0, 'late' => 0, 'absent' => 0, 'total' => 0, 'percent' => 0];
+    $sheet->setCellValueByColumnAndRow(5, $row, (int) $m['present']);
+    $sheet->setCellValueByColumnAndRow(6, $row, (int) $m['late']);
+    $sheet->setCellValueByColumnAndRow(7, $row, (int) $m['absent']);
+    $sheet->setCellValueByColumnAndRow(8, $row, (int) $m['total']);
+    $sheet->setCellValueByColumnAndRow(9, $row, number_format((float) $m['percent'], 1) . '%');
     $sheet->getStyleByColumnAndRow(1, $row, $lastCol, $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
     $row++;
 }

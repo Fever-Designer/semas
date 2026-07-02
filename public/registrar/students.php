@@ -52,6 +52,138 @@ function registrarMysqlConnectionDropped(PDOException $e): bool
         || stripos($e->getMessage(), 'lost connection') !== false;
 }
 
+function registrarImportHeaderKey(string $header): string
+{
+    return strtolower(preg_replace('/[^a-z0-9]+/i', '', trim($header)));
+}
+
+function registrarImportCanonicalHeader(string $header): ?string
+{
+    $aliases = [
+        'regnumber' => 'reg_number',
+        'registrationnumber' => 'reg_number',
+        'studentnumber' => 'reg_number',
+        'studentid' => 'reg_number',
+        'regno' => 'reg_number',
+        'reg' => 'reg_number',
+        'reg_number' => 'reg_number',
+        'fullname' => 'full_name',
+        'studentname' => 'full_name',
+        'name' => 'full_name',
+        'names' => 'full_name',
+        'full_name' => 'full_name',
+        'email' => 'email',
+        'emailaddress' => 'email',
+        'studentemail' => 'email',
+        'phone' => 'phone',
+        'phonenumber' => 'phone',
+        'telephone' => 'phone',
+        'mobile' => 'phone',
+        'phone_number' => 'phone',
+        'departmentcode' => 'department_code',
+        'deptcode' => 'department_code',
+        'department' => 'department_code',
+        'department_code' => 'department_code',
+        'session' => 'session_type',
+        'sessiontype' => 'session_type',
+        'studyingsession' => 'session_type',
+        'session_type' => 'session_type',
+        'intake' => 'intake',
+        'year' => 'year_of_study',
+        'yearofstudy' => 'year_of_study',
+        'level' => 'year_of_study',
+        'year_of_study' => 'year_of_study',
+    ];
+    return $aliases[registrarImportHeaderKey($header)] ?? null;
+}
+
+function registrarImportNormalizeSession(string $session): ?string
+{
+    $session = strtolower(trim($session));
+    if ($session === '') {
+        return null;
+    }
+    if (in_array($session, ['day', 'd'], true)) {
+        return 'Day';
+    }
+    if (in_array($session, ['evening', 'eve', 'e'], true)) {
+        return 'Evening';
+    }
+    if (in_array($session, ['weekend', 'week-end', 'w'], true)) {
+        return 'Weekend';
+    }
+    return null;
+}
+
+function registrarImportNormalizeRow(array $row, int $sourceLine, array $deptCodes, array &$errors): ?array
+{
+    $clean = [];
+    foreach ($row as $header => $value) {
+        $canonical = registrarImportCanonicalHeader((string) $header);
+        if ($canonical !== null && !array_key_exists($canonical, $clean)) {
+            $clean[$canonical] = trim((string) $value);
+        }
+    }
+
+    $regNum = preg_replace('/\s+/', '', (string) ($clean['reg_number'] ?? ''));
+    $name = trim((string) ($clean['full_name'] ?? ''));
+    $email = trim((string) ($clean['email'] ?? ''));
+    $phone = normalizeRegistrarPhone($clean['phone'] ?? '');
+    $dept = strtoupper(trim((string) ($clean['department_code'] ?? '')));
+    $session = registrarImportNormalizeSession((string) ($clean['session_type'] ?? ''));
+    $intake = strtoupper(trim((string) ($clean['intake'] ?? '')));
+    $year = trim((string) ($clean['year_of_study'] ?? ''));
+
+    $rowErrors = [];
+    if (!preg_match('/^\d{10}$/', $regNum)) {
+        $rowErrors[] = 'registration number must be exactly 10 digits';
+    }
+    if ($name === '' || !preg_match('/[A-Za-z]/', $name) || preg_match('/\b(note|assignment|question|marks?|total|coursework|instructions?)\b/i', $name)) {
+        $rowErrors[] = 'student full name is missing or not a real name';
+    }
+    $contactErrors = [];
+    validateRegistrarStudentContact($email, $phone, $contactErrors);
+    foreach ($contactErrors as $contactError) {
+        $rowErrors[] = $contactError;
+    }
+    if ($dept !== '' && !isset($deptCodes[$dept])) {
+        $rowErrors[] = "unknown department code {$dept}";
+    }
+    if (($clean['session_type'] ?? '') !== '' && $session === null) {
+        $rowErrors[] = 'session_type must be Day, Evening, or Weekend';
+    }
+    if ($intake !== '' && !isValidIntakeCode($intake)) {
+        $rowErrors[] = 'intake must be a valid intake code such as JAN26, MAY26, or SEPT26';
+    }
+    if ($year !== '' && !in_array((int) $year, [1, 2, 3, 4], true)) {
+        $rowErrors[] = 'year_of_study must be 1, 2, 3, or 4';
+    }
+
+    if ($rowErrors) {
+        $errors[] = 'Row ' . $sourceLine . ': ' . implode('; ', $rowErrors) . '.';
+        return null;
+    }
+
+    return [
+        'reg_number' => $regNum,
+        'full_name' => preg_replace('/\s+/', ' ', $name),
+        'email' => strtolower($email),
+        'phone' => $phone ?? '',
+        'department_code' => $dept,
+        'session_type' => $session ?? '',
+        'intake' => $intake !== '' ? $intake : (detectIntakeFromRegNumber($regNum) ?? ''),
+        'year_of_study' => $year !== '' ? (string) (int) $year : '',
+        '_source_line' => $sourceLine,
+    ];
+}
+
+function registrarImportValidateHeaders(array $headers): array
+{
+    $canonical = array_values(array_filter(array_map('registrarImportCanonicalHeader', $headers)));
+    $required = ['reg_number', 'full_name', 'email'];
+    return array_values(array_diff($required, $canonical));
+}
+
 // One-time migration: upgrade old 3-char intake codes (JAN/MAY/SEPT) to year-coded (JAN24/MAY24/SEPT24)
 (function () use ($db): void {
     $rows = $db->query(
@@ -219,17 +351,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/registrar/students.php');
         }
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $rows = [];
+        $rawRows = [];
         $parseError = null;
 
         if ($ext === 'csv') {
             $handle = fopen($file['tmp_name'], 'r');
             $headers = null;
+            $lineNo = 0;
             while (($line = fgetcsv($handle)) !== false) {
+                $lineNo++;
                 if ($headers === null) { $headers = array_map('trim', $line); continue; }
                 if (count($line) < 2) continue;
                 $map = @array_combine($headers, $line);
-                if ($map) $rows[] = array_map('trim', $map);
+                if ($map) {
+                    $map = array_map('trim', $map);
+                    $map['_source_line'] = $lineNo;
+                    $rawRows[] = $map;
+                }
             }
             fclose($handle);
         } elseif (in_array($ext, ['xlsx', 'xls'], true)) {
@@ -240,12 +378,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sheet = $spreadsheet->getActiveSheet();
                 $data = $sheet->toArray(null, true, true, false);
                 $headers = null;
-                foreach ($data as $row) {
+                foreach ($data as $idx => $row) {
                   $row = array_map(function ($v) { return trim((string) $v); }, $row);
                   if (!array_filter($row)) continue;
                   if ($headers === null) { $headers = $row; continue; }
                   $map = @array_combine($headers, $row);
-                  if ($map) $rows[] = $map;
+                  if ($map) {
+                      $map['_source_line'] = $idx + 1;
+                      $rawRows[] = $map;
+                  }
                 }
             } catch (Exception $e) {
                 $parseError = 'Could not read Excel file: ' . $e->getMessage();
@@ -260,6 +401,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/registrar/students.php');
         }
 
+        $headers = [];
+        if (!empty($rawRows)) {
+            $headers = array_filter(array_keys($rawRows[0]), function ($h) {
+                return $h !== '_source_line';
+            });
+        }
+        $missingHeaders = registrarImportValidateHeaders($headers);
+        if ($missingHeaders) {
+            flash('error', 'This file does not look like a student import file. Missing required column(s): ' . implode(', ', $missingHeaders) . '.');
+            redirect('/registrar/students.php');
+        }
+
+        $deptCodes = [];
+        foreach ($db->query('SELECT department_code FROM departments')->fetchAll(PDO::FETCH_COLUMN) as $code) {
+            $deptCodes[strtoupper((string) $code)] = true;
+        }
+        $rows = [];
+        $rowErrors = [];
+        $seenRegs = [];
+        foreach ($rawRows as $rawRow) {
+            $sourceLine = (int) ($rawRow['_source_line'] ?? 0);
+            $normalized = registrarImportNormalizeRow($rawRow, $sourceLine ?: count($rows) + 2, $deptCodes, $rowErrors);
+            if (!$normalized) {
+                continue;
+            }
+            if (isset($seenRegs[$normalized['reg_number']])) {
+                $rowErrors[] = 'Row ' . ($sourceLine ?: '?') . ': duplicate registration number already appears in this file.';
+                continue;
+            }
+            $seenRegs[$normalized['reg_number']] = true;
+            $rows[] = $normalized;
+        }
+
+        if (!$rows) {
+            flash('error', 'No valid student records were found. The file may contain notes, assignments, or unsupported content. ' . implode(' ', array_slice($rowErrors, 0, 3)));
+            redirect('/registrar/students.php');
+        }
+        if ($rowErrors) {
+            $_SESSION['import_warnings'] = array_slice($rowErrors, 0, 20);
+        }
+
         // Store rows in session for preview/confirm step
         $_SESSION['import_rows'] = $rows;
         redirect('/registrar/students.php?import_preview=1');
@@ -268,31 +450,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ---- CONFIRM BULK IMPORT ----
     if ($action === 'import_confirm') {
         $rows = $_SESSION['import_rows'] ?? [];
-        unset($_SESSION['import_rows']);
+        unset($_SESSION['import_rows'], $_SESSION['import_warnings']);
         $created = 0; $updated = 0; $failed = 0; $failedRows = [];
 
         foreach ($rows as $idx => $row) {
-            $regNum   = trim($row['reg_number'] ?? $row['RegNumber'] ?? $row['Reg Number'] ?? $row['REG_NUMBER'] ?? '');
-            $name     = trim($row['full_name']  ?? $row['FullName']  ?? $row['Full Name']  ?? $row['NAME'] ?? '');
-            $email    = trim($row['email']       ?? $row['Email']     ?? $row['EMAIL'] ?? '');
-            $phone    = normalizeRegistrarPhone($row['phone'] ?? $row['Phone'] ?? $row['phone_number'] ?? '');
-            $dept     = trim($row['department_code'] ?? $row['DeptCode'] ?? $row['dept_code'] ?? '') ?: null;
-            $session  = trim($row['session_type'] ?? $row['Session'] ?? '') ?: null;
-            $intake   = trim($row['intake'] ?? $row['Intake'] ?? '') ?: null;
-            $year     = (int) ($row['year_of_study'] ?? $row['Year'] ?? 0) ?: null;
+            $sourceLine = (int) ($row['_source_line'] ?? ($idx + 2));
+            $regNum   = trim($row['reg_number'] ?? '');
+            $name     = trim($row['full_name'] ?? '');
+            $email    = trim($row['email'] ?? '');
+            $phone    = normalizeRegistrarPhone($row['phone'] ?? '');
+            $dept     = trim($row['department_code'] ?? '') ?: null;
+            $session  = trim($row['session_type'] ?? '') ?: null;
+            $intake   = trim($row['intake'] ?? '') ?: null;
+            $year     = (int) ($row['year_of_study'] ?? 0) ?: null;
             // Auto-detect intake from reg number if not in the file
             if (!$intake && $regNum) $intake = detectIntakeFromRegNumber($regNum);
 
             if (!$regNum || !$name || !$email) {
                 $failed++;
-                $failedRows[] = "Row " . ($idx + 2) . ": Missing reg_number, full_name, or email.";
+                $failedRows[] = "Row {$sourceLine}: Missing reg_number, full_name, or email.";
                 continue;
             }
             $contactErrors = [];
             validateRegistrarStudentContact($email, $phone, $contactErrors);
             if ($contactErrors) {
                 $failed++;
-                $failedRows[] = "Row " . ($idx + 2) . ": " . implode(' ', $contactErrors);
+                $failedRows[] = "Row {$sourceLine}: " . implode(' ', $contactErrors);
                 continue;
             }
 
@@ -321,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $emailCheck->execute(['e' => $email]);
                     if ($emailCheck->fetch()) {
                         $failed++;
-                        $failedRows[] = "Row " . ($idx + 2) . ": Email {$email} already in use by another account.";
+                        $failedRows[] = "Row {$sourceLine}: Email {$email} already in use by another account.";
                         continue;
                     }
                     $hash = password_hash($regNum, PASSWORD_BCRYPT);
@@ -348,7 +531,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } catch (Exception $ex) {
                 $failed++;
-                $failedRows[] = "Row " . ($idx + 2) . " ({$regNum}): " . $ex->getMessage();
+                $failedRows[] = "Row {$sourceLine} ({$regNum}): " . $ex->getMessage();
             }
         }
 
@@ -369,6 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // -------------------------------------------------------------------
 $showPreview = isset($_GET['import_preview']) && !empty($_SESSION['import_rows']);
 $importRows  = $showPreview ? ($_SESSION['import_rows'] ?? []) : [];
+$importWarnings = $showPreview ? ($_SESSION['import_warnings'] ?? []) : [];
 
 // Search / filter
 $search    = trim($_GET['q'] ?? '');
@@ -430,6 +614,16 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="semas-card p-3 mb-3">
   <p class="mb-2 small text-muted">Review the records below before saving. Existing students (matched by Reg Number) will be <strong>updated</strong>. New ones will be <strong>created</strong>.</p>
   <div class="alert alert-info small mb-2"><i class="bi bi-info-circle me-1"></i> <strong><?= count($importRows) ?></strong> record(s) found in file.</div>
+  <?php if ($importWarnings): ?>
+    <div class="alert alert-warning small mb-2">
+      <strong>Skipped invalid row(s):</strong>
+      <ul class="mb-0 ps-3">
+        <?php foreach (array_slice($importWarnings, 0, 8) as $warning): ?>
+          <li><?= e($warning) ?></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+  <?php endif; ?>
   <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
     <table class="table table-sm table-hover align-middle">
       <thead class="table-light sticky-top"><tr>
@@ -439,13 +633,13 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php foreach ($importRows as $i => $row): ?>
         <tr>
           <td><?= $i + 1 ?></td>
-          <td><code><?= e($row['reg_number'] ?? $row['RegNumber'] ?? $row['Reg Number'] ?? $row['REG_NUMBER'] ?? '') ?></code></td>
-          <td><?= e($row['full_name']  ?? $row['FullName']  ?? $row['Full Name']  ?? $row['NAME'] ?? '') ?></td>
-          <td><?= e($row['email']      ?? $row['Email']     ?? $row['EMAIL'] ?? '') ?></td>
-          <td><?= e($row['department_code'] ?? $row['DeptCode'] ?? $row['dept_code'] ?? '') ?></td>
-          <td><?= e($row['session_type'] ?? $row['Session'] ?? '') ?></td>
-          <td><?= e($row['intake'] ?? $row['Intake'] ?? '') ?></td>
-          <td><?= e((string) ($row['year_of_study'] ?? $row['Year'] ?? '')) ?></td>
+          <td><code><?= e($row['reg_number'] ?? '') ?></code></td>
+          <td><?= e($row['full_name'] ?? '') ?></td>
+          <td><?= e($row['email'] ?? '') ?></td>
+          <td><?= e($row['department_code'] ?? '') ?></td>
+          <td><?= e($row['session_type'] ?? '') ?></td>
+          <td><?= e($row['intake'] ?? '') ?></td>
+          <td><?= e((string) ($row['year_of_study'] ?? '')) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
@@ -682,7 +876,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="alert alert-info small">
             <strong>Required columns:</strong> <code>reg_number, full_name, email</code><br>
             <strong>Optional:</strong> <code>phone, department_code, session_type, intake, year_of_study</code><br>
-            Existing students matched by <code>reg_number</code> will be <strong>updated</strong>, not duplicated.
+            Only valid student records are accepted; notes, assignments, marksheets, and unsupported files will be rejected or skipped. Existing students matched by <code>reg_number</code> will be <strong>updated</strong>, not duplicated.
           </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">Upload File (CSV, XLS, XLSX)</label>

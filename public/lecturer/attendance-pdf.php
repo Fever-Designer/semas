@@ -18,6 +18,7 @@ $modStmt = $db->prepare('SELECT m.*, d.department_name FROM modules m LEFT JOIN 
 $modStmt->execute(['id' => $moduleId, 'lec' => $lecturer['lecturer_id'] ?? 0]);
 $module = $modStmt->fetch();
 if (!$module) { http_response_code(404); die('Module not found or not assigned to you.'); }
+$metrics = AttendanceSheet::currentMetrics($db, $moduleId, $module);
 
 if ($rangeType === 'weekly') {
     $dateFrom = date('Y-m-d', strtotime('monday this week', strtotime($rangeDate)));
@@ -31,7 +32,7 @@ if ($rangeType === 'weekly') {
 }
 
 $rows = $db->prepare(
-    "SELECT u.full_name, u.reg_number, cs.session_date, cs.window_name,
+    "SELECT u.user_id, u.full_name, u.reg_number, cs.session_date, cs.window_name,
             cal.status, cal.checkin_time, cal.verification_method
      FROM class_attendance_logs cal
      JOIN class_sessions cs ON cs.session_id = cal.session_id
@@ -74,7 +75,7 @@ header('Content-Type: text/html; charset=utf-8');
 
 <table>
   <thead>
-    <tr><th>NO</th><th>Student Name</th><th>Reg No.</th><th>Date</th><th>Session</th><th>Status</th><th>Check-in</th></tr>
+    <tr><th>NO</th><th>Student Name</th><th>Reg No.</th><th>Date</th><th>Session</th><th>Status</th><th>Check-in</th><th>Current %</th></tr>
   </thead>
   <tbody>
     <?php $i = 0; foreach ($records as $r): $i++; ?>
@@ -85,11 +86,13 @@ header('Content-Type: text/html; charset=utf-8');
         <td><?= e($r['session_date']) ?></td>
         <td><?= e($r['window_name']) ?></td>
         <td class="<?= strtolower($r['status']) ?>"><?= e($r['status']) ?></td>
-        <td><?= ($r['checkin_time'] && $r['verification_method'] !== 'Auto') ? e(date('H:i', strtotime($r['checkin_time']))) : '—' ?></td>
+        <td><?= ($r['checkin_time'] && in_array((string) $r['verification_method'], ['QR', 'Manual'], true)) ? e(date('H:i', strtotime($r['checkin_time']))) : '—' ?></td>
+        <?php $m = $metrics[(int) $r['user_id']] ?? ['percent' => 0]; ?>
+        <td><?= e(number_format((float) $m['percent'], 1)) ?>%</td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$records): ?>
-      <tr><td colspan="7" style="text-align:center;color:#888;padding:16px;">No records in this period.</td></tr>
+      <tr><td colspan="8" style="text-align:center;color:#888;padding:16px;">No records in this period.</td></tr>
     <?php endif; ?>
   </tbody>
 </table>

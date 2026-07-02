@@ -47,7 +47,7 @@ function class_student_payload(PDO $db, array $session, int $userId): array
     $already->execute(['s' => $session['session_id'], 'u' => $userId]);
     $existing = $already->fetch();
     // Auto-populated Absent placeholders don't count as "already marked".
-    $reallyMarked = $existing && $existing['verification_method'] !== 'Auto';
+    $reallyMarked = $existing && in_array((string) $existing['verification_method'], ['QR', 'Manual'], true);
 
     return [
         'ok' => true,

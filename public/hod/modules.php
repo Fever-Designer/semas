@@ -170,6 +170,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/hod/modules.php');
     }
 
+    if ($action === 'delete_module') {
+        $modId = (int) $_POST['module_id'];
+        Module::deleteModule($db, $modId);
+        AuditLog::record(Auth::id(), 'MODULE_DELETE', 'modules', $modId);
+        flash('success', 'Module deleted.');
+        redirect('/hod/modules.php');
+    }
+
     if ($action === 'enroll_student') {
         $modId  = (int) $_POST['module_id'];
         $regNum = trim($_POST['search_reg_number'] ?? '');
@@ -224,10 +232,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Completed module enrollments cannot be removed.');
             redirect('/hod/modules.php');
         }
-        $db->prepare('DELETE FROM module_enrollments WHERE module_id=:m AND user_id=:u')
-           ->execute(['m' => $modId, 'u' => $userId]);
+        Module::removeEnrollment($db, $modId, $userId);
         AuditLog::record(Auth::id(), 'MODULE_UNENROLL', 'modules', $modId, "user_id=$userId");
-        flash('success', 'Student unenrolled.');
+        flash('success', 'Student unenrolled and removed from this module attendance.');
         redirect('/hod/modules.php');
     }
 
@@ -352,6 +359,11 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($m['module_qr_secret']): ?>
               <a href="<?= APP_URL ?>/hod/module-qr-print.php?module_id=<?= $mId ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-qr-code"></i></a>
             <?php endif; ?>
+            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this module and all its attendance/enrollment records?')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="module_id" value="<?= $mId ?>">
+              <button name="action" value="delete_module" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
             <?php if ($m['status'] !== 'Ongoing'): ?>
             <form method="POST" class="d-inline"><?= csrf_field() ?>
               <input type="hidden" name="module_id" value="<?= $mId ?>">
@@ -526,6 +538,11 @@ require __DIR__ . '/../partials/layout_top.php';
           <form method="POST" class="d-inline"><?= csrf_field() ?>
             <input type="hidden" name="module_id" value="<?= $mId ?>">
             <button name="action" value="reopen" class="btn btn-semas btn-sm">Reopen</button>
+          </form>
+          <form method="POST" class="d-inline" onsubmit="return confirm('Delete this module and all its attendance/enrollment records?')">
+            <?= csrf_field() ?>
+            <input type="hidden" name="module_id" value="<?= $mId ?>">
+            <button name="action" value="delete_module" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Delete</button>
           </form>
         </div>
       </div>

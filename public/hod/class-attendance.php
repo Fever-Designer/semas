@@ -8,8 +8,30 @@ $pageTitle     = 'Class Attendance';
 $activeNav     = 'class-attendance';
 $db            = Database::connection();
 $me            = Auth::user();
-$today         = date('Y-m-d');
+$today         = ClassAttendance::now()->format('Y-m-d');
 $isCoordinator = Auth::role() === 'Coordinator';
+
+function hod_module_matches_attendance_window(array $module, string $windowName): bool
+{
+    $sessionType = $module['session_type'] ?? '';
+    $slot = $module['weekend_slot'] ?? '';
+    if ($sessionType === 'Day') {
+        return $windowName === 'Day';
+    }
+    if ($sessionType === 'Evening') {
+        return $windowName === 'Evening';
+    }
+    if ($sessionType === 'Weekend') {
+        if ($slot === 'Morning') {
+            return in_array($windowName, ['WeekendMorning', 'UmugandaMorning'], true);
+        }
+        if ($slot === 'Afternoon') {
+            return in_array($windowName, ['WeekendAfternoon', 'UmugandaAfternoon'], true);
+        }
+        return in_array($windowName, ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true);
+    }
+    return false;
+}
 
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -145,8 +167,10 @@ if ($module) {
     );
     $sessStmt->execute(['mid' => $moduleId]);
     $allSess = $sessStmt->fetchAll();
-    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today) {
-        return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
+    $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today, $module) {
+        return $s['session_date'] <= $today
+            && !in_array($s['session_date'], $excludeDates, true)
+            && hod_module_matches_attendance_window($module, (string) $s['window_name']);
     }));
 
     foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
@@ -177,7 +201,7 @@ if ($module) {
         }
         if ($log['attendance_type'] === 'Sign In') {
             $attMap[$sid][$uid]['in_status'] = $log['status'];
-            $isAuto = ($log['verification_method'] === 'Auto');
+            $isAuto = !in_array((string) $log['verification_method'], ['QR', 'Manual'], true);
             $attMap[$sid][$uid]['is_auto'] = $isAuto;
             if (!$isAuto) {
                 $attMap[$sid][$uid]['in_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
@@ -269,7 +293,7 @@ if ($viewMode === 'overall') {
             }
             if ($log['attendance_type'] === 'Sign In') {
                 $amMap[$sid][$uid]['in_status'] = $log['status'];
-                $amMap[$sid][$uid]['is_auto']   = ($log['verification_method'] === 'Auto');
+                $amMap[$sid][$uid]['is_auto']   = !in_array((string) $log['verification_method'], ['QR', 'Manual'], true);
             } else {
                 $amMap[$sid][$uid]['out_time'] = true;
             }

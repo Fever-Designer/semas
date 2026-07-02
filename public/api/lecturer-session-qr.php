@@ -38,6 +38,15 @@ function liveqr_rotate(PDO $db, int $sessionId): array
     return $row->fetch() ?: ['qr_token' => $token, 'qr_token_expires_at' => date('Y-m-d H:i:s', time() + 60)];
 }
 
+function liveqr_payload(int $moduleId, int $sessionId, string $token): array
+{
+    $raw = "SEMAS:{$moduleId}:{$sessionId}:{$token}";
+    return [
+        'raw' => $raw,
+        'url' => public_url('/student/attendance.php?module_id=' . $moduleId . '&d=' . rawurlencode($raw)),
+    ];
+}
+
 // ── open_session ──────────────────────────────────────────────────────────
 if ($action === 'open_session') {
     $moduleId = (int) ($_POST['module_id'] ?? 0);
@@ -59,7 +68,7 @@ if ($action === 'open_session') {
     }
 
     $window = ClassAttendance::currentWindow();
-    $today  = date('Y-m-d');
+    $today  = ClassAttendance::now()->format('Y-m-d');
     $slot   = $module['weekend_slot'] ?? '';
     $st     = $module['session_type'] ?? '';
 
@@ -94,7 +103,9 @@ if ($action === 'open_session') {
     $windowName = $window['name'];
 
     $findStmt = $db->prepare(
-        "SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = :d AND window_name = :win LIMIT 1"
+        "SELECT * FROM class_sessions
+         WHERE module_id = :mid AND session_date = :d AND window_name = :win
+         ORDER BY session_id DESC LIMIT 1"
     );
     $findStmt->execute(['mid' => $moduleId, 'd' => $today, 'win' => $windowName]);
     $session = $findStmt->fetch();
@@ -130,6 +141,7 @@ if ($action === 'open_session') {
         $tokenRow = liveqr_rotate($db, $sessionId);
     }
     $expiresIn = max(0, strtotime((string) $tokenRow['qr_token_expires_at']) - time());
+    $payload = liveqr_payload($moduleId, $sessionId, (string) $tokenRow['qr_token']);
 
     echo json_encode([
         'ok'         => true,
@@ -139,7 +151,8 @@ if ($action === 'open_session') {
         'room'       => $module['room_name'] ?? '',
         'token'      => $tokenRow['qr_token'],
         'expires_in' => $expiresIn,
-        'qr_data'    => "SEMAS:{$moduleId}:{$sessionId}:{$tokenRow['qr_token']}",
+        'qr_data'    => $payload['url'],
+        'qr_raw'     => $payload['raw'],
     ]);
     exit;
 }
@@ -162,12 +175,14 @@ if ($action === 'refresh') {
     $tokenRow  = liveqr_rotate($db, $sessionId);
     $expiresIn = max(0, strtotime((string) $tokenRow['qr_token_expires_at']) - time());
     $modId     = (int) $row['module_id'];
+    $payload   = liveqr_payload($modId, $sessionId, (string) $tokenRow['qr_token']);
 
     echo json_encode([
         'ok'         => true,
         'token'      => $tokenRow['qr_token'],
         'expires_in' => $expiresIn,
-        'qr_data'    => "SEMAS:{$modId}:{$sessionId}:{$tokenRow['qr_token']}",
+        'qr_data'    => $payload['url'],
+        'qr_raw'     => $payload['raw'],
     ]);
     exit;
 }

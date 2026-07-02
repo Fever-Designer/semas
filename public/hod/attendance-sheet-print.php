@@ -29,6 +29,7 @@ if (!$module) {
 $students   = AttendanceSheet::students($db, $moduleId);
 $classDates = AttendanceSheet::expectedClassDates($module);
 $sessLabel  = AttendanceSheet::sessionLabel($module);
+$metrics = AttendanceSheet::currentMetrics($db, $moduleId, $module);
 $effectiveEnd = empty($classDates)
     ? date('Y-m-d')
     : end($classDates);
@@ -52,6 +53,8 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
   .col-name { min-width: 210px; white-space: nowrap; }
   .col-reg { min-width: 115px; white-space: nowrap; }
   .col-phone { min-width: 105px; white-space: nowrap; }
+  .col-num { width: 42px; text-align: center; }
+  .col-pct { width: 58px; text-align: center; }
   .date-col { min-width: 58px; width: 58px; text-align: center; }
   .no-print { margin-bottom: 12px; }
   @media print {
@@ -85,6 +88,11 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
       <th class="col-name">STUDENT NAME</th>
       <th class="col-reg">REG NUMBER</th>
       <th class="col-phone">PHONE NUMBER</th>
+      <th class="col-num">P</th>
+      <th class="col-num">L</th>
+      <th class="col-num">A</th>
+      <th class="col-num">TOT</th>
+      <th class="col-pct">%</th>
       <?php foreach ($classDates as $d): ?>
         <th class="date-col">
           <div><?= e(date('d M', strtotime($d))) ?></div>
@@ -100,6 +108,12 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
         <td class="col-name"><?= e($s['full_name']) ?></td>
         <td class="col-reg"><?= e($s['reg_number'] ?? '') ?></td>
         <td class="col-phone"><?= e($s['phone_number'] ?? '') ?></td>
+        <?php $m = $metrics[(int) $s['user_id']] ?? ['present' => 0, 'late' => 0, 'absent' => 0, 'total' => 0, 'percent' => 0]; ?>
+        <td class="col-num"><?= (int) $m['present'] ?></td>
+        <td class="col-num"><?= (int) $m['late'] ?></td>
+        <td class="col-num"><?= (int) $m['absent'] ?></td>
+        <td class="col-num"><?= (int) $m['total'] ?></td>
+        <td class="col-pct"><?= e(number_format((float) $m['percent'], 1)) ?>%</td>
         <?php foreach ($classDates as $d): ?><td class="date-col">&nbsp;</td><?php endforeach; ?>
       </tr>
     <?php endforeach; ?>
@@ -107,6 +121,7 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
       <tr>
         <td class="col-no"><?= $no++ ?></td>
         <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+        <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
         <?php foreach ($classDates as $d): ?><td class="date-col">&nbsp;</td><?php endforeach; ?>
       </tr>
     <?php endfor; ?>

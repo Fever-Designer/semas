@@ -282,6 +282,7 @@ if ($module['end_date'] && $today > $module['end_date']) {
 
 $window = ClassAttendance::currentWindow();
 $now    = ClassAttendance::now();
+$attendanceDate = $now->format('Y-m-d');
 
 // ── Determine whether we're in Sign In window or Sign Out window ──────────
 // Sign In  : session is active AND elapsed < 20 minutes.
@@ -320,8 +321,12 @@ if ($forcedSessId !== null) {
     $allowSignOut          = true;  // dynamic QR is valid both for sign-in and sign-out
 } else {
     // ── Legacy / window-based path ────────────────────────────────────────
-    $todayFind = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() ORDER BY start_time DESC LIMIT 1');
-    $todayFind->execute(['mid' => $moduleId]);
+    $todayFind = $db->prepare(
+        'SELECT * FROM class_sessions
+         WHERE module_id = :mid AND session_date = :today
+         ORDER BY start_time DESC, session_id DESC LIMIT 1'
+    );
+    $todayFind->execute(['mid' => $moduleId, 'today' => $attendanceDate]);
     $todaySession = $todayFind->fetch();
 
     if ($todaySession) {
@@ -344,7 +349,11 @@ if ($forcedSessId !== null) {
         exit;
     }
 
-    $find       = $db->prepare('SELECT * FROM class_sessions WHERE module_id = :mid AND session_date = CURDATE() AND window_name = :win');
+    $find       = $db->prepare(
+        'SELECT * FROM class_sessions
+         WHERE module_id = :mid AND session_date = :today AND window_name = :win
+         ORDER BY session_id DESC LIMIT 1'
+    );
     $windowName = $window ? $window['name'] : ($todaySession['window_name'] ?? null);
 
     if (!$windowName) {
@@ -352,7 +361,7 @@ if ($forcedSessId !== null) {
         exit;
     }
 
-    $find->execute(['mid' => $moduleId, 'win' => $windowName]);
+    $find->execute(['mid' => $moduleId, 'today' => $attendanceDate, 'win' => $windowName]);
     $session = $find->fetch();
     $sessionAlreadyExisted = (bool) $session;
 
@@ -360,19 +369,20 @@ if ($forcedSessId !== null) {
         try {
             $db->prepare(
                 'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, created_by)
-                 VALUES (:mid, CURDATE(), :win, :start, :end, :secret, :uid)'
+                 VALUES (:mid, :today, :win, :start, :end, :secret, :uid)'
             )->execute([
                 'mid'    => $moduleId,
+                'today'  => $attendanceDate,
                 'win'    => $window['name'],
                 'start'  => $window['start']->format('Y-m-d H:i:s'),
                 'end'    => $window['end']->format('Y-m-d H:i:s'),
                 'secret' => QrService::generateSecret(),
                 'uid'    => $me['user_id'],
             ]);
-            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $find->execute(['mid' => $moduleId, 'today' => $attendanceDate, 'win' => $window['name']]);
             $session = $find->fetch();
         } catch (PDOException $e) {
-            $find->execute(['mid' => $moduleId, 'win' => $window['name']]);
+            $find->execute(['mid' => $moduleId, 'today' => $attendanceDate, 'win' => $window['name']]);
             $session = $find->fetch();
         }
     }
@@ -403,7 +413,7 @@ if ($signOutRow->fetch()) {
     exit;
 }
 
-$realSignInRow = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND user_id = :u AND attendance_type = 'Sign In' AND verification_method != 'Auto'");
+$realSignInRow = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :s AND user_id = :u AND attendance_type = 'Sign In' AND verification_method IN ('QR','Manual')");
 $realSignInRow->execute(['s' => $session['session_id'], 'u' => $me['user_id']]);
 $hasRealSignIn = (bool) $realSignInRow->fetch();
 
@@ -461,7 +471,7 @@ $sameWindowStmt = $db->prepare(
      JOIN modules m ON m.module_id = cs.module_id
      WHERE cal.user_id = :uid
        AND cal.attendance_type = :type
-       AND cal.verification_method != 'Auto'
+       AND cal.verification_method IN ('QR','Manual')
        AND cs.session_date = :session_date
        AND cs.window_name = :window_name
        AND cs.module_id <> :module_id
@@ -571,7 +581,7 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
          FROM class_sessions cs
          JOIN class_attendance_logs cal ON cal.session_id = cs.session_id
              AND cal.user_id = :uid AND cal.attendance_type = 'Sign In' AND cal.status = 'Absent'
-             AND cal.verification_method != 'Auto'
+             AND cal.verification_method IN ('QR','Manual')
          WHERE cs.module_id = :mid"
     );
     $stmt2->execute(['uid' => $student['user_id'], 'mid' => $module['module_id']]);

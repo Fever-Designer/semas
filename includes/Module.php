@@ -46,6 +46,87 @@ final class Module
         return self::ongoingEnrollmentCount($userId, $moduleId) < self::MAX_ONGOING_ENROLLMENTS;
     }
 
+    public static function removeEnrollment(PDO $db, int $moduleId, int $userId): void
+    {
+        $db->beginTransaction();
+        try {
+            $db->prepare(
+                "DELETE cal FROM class_attendance_logs cal
+                 JOIN class_sessions cs ON cs.session_id = cal.session_id
+                 WHERE cs.module_id = :mid AND cal.user_id = :uid"
+            )->execute(['mid' => $moduleId, 'uid' => $userId]);
+
+            $db->prepare(
+                "DELETE ceal FROM cat_exam_attendance_logs ceal
+                 JOIN cat_exam_schedules ces ON ces.schedule_id = ceal.schedule_id
+                 WHERE ces.module_id = :mid AND ceal.user_id = :uid"
+            )->execute(['mid' => $moduleId, 'uid' => $userId]);
+
+            $db->prepare('DELETE FROM cat_exam_eligibility WHERE module_id = :mid AND user_id = :uid')
+               ->execute(['mid' => $moduleId, 'uid' => $userId]);
+
+            $db->prepare('DELETE FROM module_enrollments WHERE module_id = :mid AND user_id = :uid')
+               ->execute(['mid' => $moduleId, 'uid' => $userId]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+    }
+
+    public static function deleteModule(PDO $db, int $moduleId): void
+    {
+        $db->beginTransaction();
+        try {
+            $scheduleIds = [];
+            try {
+                $scheduleStmt = $db->prepare('SELECT schedule_id FROM cat_exam_schedules WHERE module_id = :mid');
+                $scheduleStmt->execute(['mid' => $moduleId]);
+                $scheduleIds = array_map('intval', $scheduleStmt->fetchAll(PDO::FETCH_COLUMN));
+            } catch (PDOException $e) {
+                $scheduleIds = [];
+            }
+
+            if ($scheduleIds) {
+                $placeholders = implode(',', array_fill(0, count($scheduleIds), '?'));
+                try {
+                    $stmt = $db->prepare("DELETE FROM cat_exam_attendance_logs WHERE schedule_id IN ($placeholders)");
+                    $stmt->execute($scheduleIds);
+                } catch (PDOException $e) {
+                    // Older installs may not have CAT/Exam attendance yet.
+                }
+            }
+
+            $guardedDeletes = [
+                'DELETE cal FROM class_attendance_logs cal JOIN class_sessions cs ON cs.session_id = cal.session_id WHERE cs.module_id = :mid',
+                'DELETE FROM class_sessions WHERE module_id = :mid',
+                'DELETE FROM cat_exam_schedules WHERE module_id = :mid',
+                'DELETE FROM cat_exam_eligibility WHERE module_id = :mid',
+                'DELETE FROM module_attendance_submissions WHERE module_id = :mid',
+                'DELETE FROM assignment_submissions WHERE assignment_id IN (SELECT assignment_id FROM assignments WHERE module_id = :mid)',
+                'DELETE FROM assignments WHERE module_id = :mid',
+                'DELETE FROM module_intakes WHERE module_id = :mid',
+                'DELETE FROM module_departments WHERE module_id = :mid',
+                'DELETE FROM module_enrollments WHERE module_id = :mid',
+            ];
+
+            foreach ($guardedDeletes as $sql) {
+                try {
+                    $db->prepare($sql)->execute(['mid' => $moduleId]);
+                } catch (PDOException $e) {
+                    // The final modules delete/cascades remain the source of truth.
+                }
+            }
+
+            $db->prepare('DELETE FROM modules WHERE module_id = :mid')->execute(['mid' => $moduleId]);
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+    }
+
     public static function ongoingEnrollmentLimitMessage(string $studentName): string
     {
         return $studentName . ' already has ' . self::MAX_ONGOING_ENROLLMENTS . ' ongoing modules. Complete one module before enrolling in another.';

@@ -237,9 +237,9 @@ final class Eligibility
         $stmt = $db->prepare(
             "SELECT
                 cs.session_date,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method <> 'Auto' AND si.status = 'Present' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_present,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method <> 'Auto' AND si.status = 'Late' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_late,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method <> 'Auto' AND so.attendance_id IS NULL THEN 1 ELSE 0 END) AS has_left_early
+                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND si.status = 'Present' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_present,
+                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND si.status = 'Late' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_late,
+                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND so.attendance_id IS NULL THEN 1 ELSE 0 END) AS has_left_early
              FROM class_sessions cs
              LEFT JOIN class_attendance_logs si ON si.session_id = cs.session_id AND si.user_id = :uid AND si.attendance_type = 'Sign In'
              LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id AND so.user_id = :uid2 AND so.attendance_type = 'Sign Out'

@@ -156,6 +156,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/coordinator/modules.php');
     }
 
+    if ($action === 'delete_module') {
+        $modId = (int) $_POST['module_id'];
+        coordRequireWeekendModule($db, $modId);
+        Module::deleteModule($db, $modId);
+        AuditLog::record(Auth::id(), 'MODULE_DELETE', 'modules', $modId);
+        flash('success', 'Module deleted.');
+        redirect('/coordinator/modules.php');
+    }
+
     if ($action === 'enroll_student') {
         $modId  = (int) $_POST['module_id'];
         coordRequireWeekendModule($db, $modId);
@@ -189,10 +198,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $modId  = (int) $_POST['module_id'];
         $userId = (int) $_POST['user_id'];
         coordRequireWeekendModule($db, $modId);
-        $db->prepare('DELETE FROM module_enrollments WHERE module_id=:m AND user_id=:u')
-           ->execute(['m' => $modId, 'u' => $userId]);
+        Module::removeEnrollment($db, $modId, $userId);
         AuditLog::record(Auth::id(), 'MODULE_UNENROLL', 'modules', $modId, "user_id=$userId");
-        flash('success', 'Student unenrolled.');
+        flash('success', 'Student unenrolled and removed from this module attendance.');
         redirect('/coordinator/modules.php');
     }
 
@@ -295,6 +303,11 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php if ($m['module_qr_secret']): ?>
               <a href="<?= APP_URL ?>/hod/module-qr-print.php?module_id=<?= $mId ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-qr-code"></i></a>
             <?php endif; ?>
+            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this weekend module and all its attendance/enrollment records?')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="module_id" value="<?= $mId ?>">
+              <button name="action" value="delete_module" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
             <?php if ($m['status'] !== 'Ongoing'): ?>
             <form method="POST" class="d-inline"><?= csrf_field() ?>
               <input type="hidden" name="module_id" value="<?= $mId ?>">

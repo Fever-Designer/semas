@@ -54,24 +54,48 @@ $existing = $db->prepare(
 );
 $existing->execute(['s' => $sessionId, 'u' => $studentUserId]);
 $existingRow = $existing->fetch();
-if ($existingRow && $existingRow['verification_method'] !== 'Auto') {
+if ($existingRow && in_array((string) $existingRow['verification_method'], ['QR', 'Manual'], true)) {
     echo json_encode(['ok' => false, 'message' => 'This student is already marked for this session.']);
     exit;
 }
 
-$status = ClassAttendance::statusFor($session['start_time']);
+$status = $method === 'Manual' ? 'Present' : ClassAttendance::statusFor($session['start_time']);
+if ($method !== 'Manual' && $status === 'Absent') {
+    $status = 'Late';
+}
 
 try {
     if ($existingRow) {
         $db->prepare(
             "UPDATE class_attendance_logs SET status=:status, verification_method=:method, confirmed_by=:confirmed_by, checkin_time=NOW()
-             WHERE session_id=:s AND user_id=:u AND attendance_type='Sign In' AND verification_method='Auto'"
+             WHERE session_id=:s AND user_id=:u AND attendance_type='Sign In'
+               AND verification_method NOT IN ('QR','Manual')"
         )->execute(['status' => $status, 'method' => $method, 'confirmed_by' => Auth::id(), 's' => $sessionId, 'u' => $studentUserId]);
     } else {
         $db->prepare(
             'INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, confirmed_by)
              VALUES (:s, :u, \'Sign In\', :status, :method, :confirmed_by)'
         )->execute(['s' => $sessionId, 'u' => $studentUserId, 'status' => $status, 'method' => $method, 'confirmed_by' => Auth::id()]);
+    }
+
+    if ($method === 'Manual') {
+        $db->prepare(
+            "UPDATE class_attendance_logs
+             SET checkin_time = :signin_time
+             WHERE session_id = :s AND user_id = :u AND attendance_type = 'Sign In'"
+        )->execute(['signin_time' => $session['start_time'], 's' => $sessionId, 'u' => $studentUserId]);
+
+        $db->prepare(
+            "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
+             VALUES (:s, :u, 'Sign Out', 'Present', 'Manual', :confirmed_by, :signout_time)
+             ON DUPLICATE KEY UPDATE status = VALUES(status), verification_method = VALUES(verification_method),
+                 confirmed_by = VALUES(confirmed_by), checkin_time = VALUES(checkin_time)"
+        )->execute([
+            's' => $sessionId,
+            'u' => $studentUserId,
+            'confirmed_by' => Auth::id(),
+            'signout_time' => $session['end_time'],
+        ]);
     }
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {
@@ -100,7 +124,7 @@ if ($status === 'Absent' && $student) {
              FROM class_sessions cs
              JOIN class_attendance_logs cal ON cal.session_id = cs.session_id
                  AND cal.user_id = :uid AND cal.attendance_type = 'Sign In' AND cal.status = 'Absent'
-                 AND cal.verification_method != 'Auto'
+                 AND cal.verification_method IN ('QR','Manual')
              WHERE cs.module_id = :mid"
         );
         $absStmt->execute(['uid' => $studentUserId, 'mid' => $session['module_id']]);

@@ -11,6 +11,7 @@ $me        = Auth::user();
 $today     = date('Y-m-d');
 $moduleIdParam = (int) ($_GET['module_id'] ?? 0);
 $tokenParam    = $_GET['t'] ?? ($_GET['qr_token'] ?? '');
+$qrDataParam   = $_GET['d'] ?? ($_GET['qr_data'] ?? '');
 
 $window  = ClassAttendance::currentWindow();
 $holiday = ClassAttendance::holidayToday();
@@ -209,7 +210,7 @@ foreach ($logStmt->fetchAll() as $log) {
     }
     if ($log['attendance_type'] === 'Sign In') {
         $myAttMap[$sid]['in_status'] = $log['status'];
-        $isAuto = ($log['verification_method'] === 'Auto');
+        $isAuto = !in_array((string) $log['verification_method'], ['QR', 'Manual'], true);
         $myAttMap[$sid]['is_auto'] = $isAuto;
         if (!$isAuto) {
             $myAttMap[$sid]['in_time'] = $log['checkin_time'] ? date('H:i', strtotime((string) $log['checkin_time'])) : null;
@@ -460,6 +461,10 @@ function normalizeScannedQr(rawText) {
   try {
     const parsedUrl = new URL(rawText, window.location.href);
     const moduleId = parsedUrl.searchParams.get('module_id');
+    const qrData = parsedUrl.searchParams.get('d') || parsedUrl.searchParams.get('qr_data');
+    if (moduleId && qrData && /^SEMAS:\d+:\d+:[0-9a-f]+$/i.test(qrData)) {
+      return { moduleId: moduleId, qrData: qrData };
+    }
     const token = parsedUrl.searchParams.get('t') || parsedUrl.searchParams.get('qr_token');
     if (moduleId && token) {
       return { moduleId: moduleId, qrToken: token };
@@ -546,14 +551,21 @@ function doSubmitAttendance(moduleId, qrPayload, lat, lng) {
   });
 }
 
-<?php if ($scanWindowOpen && $moduleIdParam && $tokenParam): ?>
+<?php if ($scanWindowOpen && $moduleIdParam && ($tokenParam || $qrDataParam)): ?>
 window.addEventListener('DOMContentLoaded', function () {
   activeModuleId = <?= (int) $moduleIdParam ?>;
   const modalEl = document.getElementById('scanModal');
   if (modalEl && window.bootstrap) {
     new bootstrap.Modal(modalEl).show();
   }
-  submitAttendance(<?= (int) $moduleIdParam ?>, { moduleId: <?= (int) $moduleIdParam ?>, qrToken: <?= json_encode($tokenParam) ?> });
+  submitAttendance(<?= (int) $moduleIdParam ?>, {
+    moduleId: <?= (int) $moduleIdParam ?>,
+    <?php if ($qrDataParam): ?>
+    qrData: <?= json_encode($qrDataParam) ?>
+    <?php else: ?>
+    qrToken: <?= json_encode($tokenParam) ?>
+    <?php endif; ?>
+  });
 });
 <?php endif; ?>
 </script>

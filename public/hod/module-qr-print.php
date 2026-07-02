@@ -29,7 +29,8 @@ $shortToken = ctype_xdigit($secret)
     ? $b64u(hex2bin($secret) ?: $secret)
     : $secret;
 $scanPayload = 'SM:' . $moduleId . ':' . $shortToken;
-$qrImage = SimpleQr::pngDataUri($scanPayload, 10, 2);
+$scanUrl = public_url('/student/attendance.php?module_id=' . $moduleId . '&t=' . rawurlencode($scanPayload));
+$qrImage = SimpleQr::pngDataUri($scanUrl, 10, 2);
 $brandName = Settings::get('university_name', 'University of Kigali');
 ?>
 <!DOCTYPE html>
@@ -77,7 +78,7 @@ $brandName = Settings::get('university_name', 'University of Kigali');
     </div>
     <div class="instruction">Students: scan this QR to mark class attendance.</div>
     <div class="meta">CAT: <?= e($module['cat_date'] ?? '-') ?> &nbsp;|&nbsp; Exam: <?= e($module['exam_date'] ?? '-') ?></div>
-    <div class="payload"><?= e($scanPayload) ?></div>
+    <div class="payload"><?= e($scanUrl) ?></div>
   </div>
 </div>
 
