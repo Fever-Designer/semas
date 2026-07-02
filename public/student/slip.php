@@ -48,14 +48,14 @@ if (!$module) {
   <div class="sub">CAT / EXAM ENTRY SLIP</div>
   <table>
     <tr><td class="label">Student Name</td><td><?= e($me['full_name']) ?></td></tr>
-    <tr><td class="label">Registration Number</td><td><?= e($me['reg_number'] ?? '—') ?></td></tr>
-    <tr><td class="label">Department</td><td><?= e($module['department_name'] ?? '—') ?></td></tr>
+    <tr><td class="label">Registration Number</td><td><?= e($me['reg_number'] ?? '/') ?></td></tr>
+    <tr><td class="label">Department</td><td><?= e($module['department_name'] ?? '/') ?></td></tr>
     <tr><td class="label">Module</td><td><?= e($module['module_title']) ?></td></tr>
-    <tr><td class="label">Lecturer</td><td><?= e($module['lecturer_name'] ?? '—') ?></td></tr>
+    <tr><td class="label">Lecturer</td><td><?= e($module['lecturer_name'] ?? '/') ?></td></tr>
     <tr><td class="label">CAT Date</td><td><?= e($module['cat_date'] ?? 'Not scheduled') ?></td></tr>
     <tr><td class="label">Exam Date</td><td><?= e($module['exam_date'] ?? 'Not scheduled') ?></td></tr>
-    <tr><td class="label">Room</td><td><?= e($module['room'] ?? '—') ?></td></tr>
-    <tr><td class="label">Session</td><td><?= e($module['session_type'] ?? '—') ?></td></tr>
+    <tr><td class="label">Room</td><td><?= e($module['room'] ?? '/') ?></td></tr>
+    <tr><td class="label">Session</td><td><?= e($module['session_type'] ?? '/') ?></td></tr>
     <tr><td class="label">Issued</td><td><?= e(date('d F Y, h:i A')) ?></td></tr>
   </table>
   <a href="#" class="btn no-print" onclick="window.print(); return false;">Print Slip</a>

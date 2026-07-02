@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $startYear = (int) date('Y', strtotime($startDate));
         [$ayFirst, $ayLast] = array_map('intval', explode('/', $academicYear));
         if ($startYear < $ayFirst || $startYear > $ayLast) {
-            flash('error', "Start date year ($startYear) does not match the selected academic year ($academicYear). The start date must fall within $ayFirst–$ayLast.");
+            flash('error', "Start date year ($startYear) does not match the selected academic year ($academicYear). The start date must fall within $ayFirst/$ayLast.");
             redirect('/registrar/semester-calendar.php');
         }
         if ($startDate >= $endDate) {
@@ -265,8 +265,8 @@ require __DIR__ . '/../partials/layout_top.php';
           <td><small><?= $weeks ?> wks</small>
             <?php if ($isActive): ?><span class="badge badge-completed ms-1">Active</span><?php endif; ?>
           </td>
-          <td><small class="text-muted"><?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '…' : '') : '—' ?></small></td>
-          <td><small><?= e($c['created_by_name'] ?? '—') ?></small></td>
+          <td><small class="text-muted"><?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '…' : '') : '/' ?></small></td>
+          <td><small><?= e($c['created_by_name'] ?? '/') ?></small></td>
           <td>
             <button class="btn btn-sm btn-outline-dark"
               data-bs-toggle="modal" data-bs-target="#editCal-<?= $c['id'] ?>"
@@ -422,7 +422,7 @@ function disableAndSubmit(btn) {
         const parts = ay.split('/');
         const startYear = new Date(sd).getFullYear();
         if (parts.length === 2 && (startYear < parseInt(parts[0]) || startYear > parseInt(parts[1]))) {
-            alert('Start date year (' + startYear + ') does not match the selected academic year (' + ay + ').\n\nThe start date must fall within ' + parts[0] + '–' + parts[1] + '.');
+            alert('Start date year (' + startYear + ') does not match the selected academic year (' + ay + ').\n\nThe start date must fall within ' + parts[0] + '/' + parts[1] + '.');
             return;
         }
     }

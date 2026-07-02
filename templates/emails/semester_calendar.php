@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/_layout.php'; semas_email_open('Semester Calendar — ' . htmlspecialchars($semester_name)); ?>
+<?php require __DIR__ . '/_layout.php'; semas_email_open('Semester Calendar / ' . htmlspecialchars($semester_name)); ?>
 <p>Dear <?= htmlspecialchars($full_name) ?>,</p>
 <p>The Registrar's Office has published the academic calendar for your intake cohort (<strong><?= htmlspecialchars($intake) ?></strong>). Please take note of the following dates:</p>
 

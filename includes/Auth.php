@@ -54,7 +54,7 @@ final class Auth
     }
 
     /** Returns true if the logged-in user must change their password before accessing anything.
-     *  Reads the DB fresh rather than the session-cached flag set at login — the session value
+     *  Reads the DB fresh rather than the session-cached flag set at login / the session value
      *  can go stale (e.g. a request that updates the DB but doesn't finish syncing the session),
      *  and a stale "true" here against an up-to-date "false" in change-password.php's own DB
      *  check produces an infinite redirect loop between this page and /dashboard.php. */

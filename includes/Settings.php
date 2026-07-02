@@ -7,7 +7,7 @@ declare(strict_types=1);
  * Thin wrapper around the `system_settings` key-value table. Used for
  * University Branding (name, logo, theme colors) and a few general
  * settings (academic year, current semester). Deliberately NOT used for
- * mail/SMS credentials — those stay in .env/config/config.php exactly as
+ * mail/SMS credentials / those stay in .env/config/config.php exactly as
  * before, so this page can never accidentally break a working integration
  * by storing a half-typed API key in the database instead.
  */

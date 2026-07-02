@@ -6,7 +6,7 @@ Auth::requireRole(['Principal']);
 $pageTitle = 'Roles & Permissions';
 $activeNav = 'roles';
 
-// This is a REFERENCE table, not a dynamic permission editor — permissions are
+// This is a REFERENCE table, not a dynamic permission editor / permissions are
 // enforced in code via Auth::requireRole() at the top of every page, not read
 // from a database table. Presenting this as if it were live-editable would be
 // misleading, so it's deliberately read-only and documents the actual rules.

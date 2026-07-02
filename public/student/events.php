@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
 
                 if ($status === 'Waitlisted') {
                     NotificationCenter::notify($user['user_id'], 'Added to waiting list', 'You are on the waiting list for "' . $event['title'] . '".', 'Event');
-                    flash('success', 'This event is full — you have been added to the waiting list.');
+                    flash('success', 'This event is full / you have been added to the waiting list.');
                 } else {
                     NotificationCenter::notify($user['user_id'], 'Registration confirmed', 'You are registered for "' . $event['title'] . '".', 'Event');
                     Mailer::sendEventRegistrationConfirmation($user, $event);
@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
     if ($toPromote) {
         $db->prepare("UPDATE event_registrations SET status='Registered' WHERE registration_id=:id")
            ->execute(['id' => $toPromote['registration_id']]);
-        NotificationCenter::notify((int) $toPromote['user_id'], 'Moved off the waiting list', 'A spot opened up — you are now registered for this event.', 'Event');
+        NotificationCenter::notify((int) $toPromote['user_id'], 'Moved off the waiting list', 'A spot opened up / you are now registered for this event.', 'Event');
     }
 
     AuditLog::record($user['user_id'], 'EVENT_REGISTRATION_CANCELLED', 'events', $eventId);

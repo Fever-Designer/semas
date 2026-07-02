@@ -1,10 +1,10 @@
 <?php
 /** vars: full_name, exam_type, module_title, scheduled_date, start_time, end_time, room, invigilator_name, day_of_week */
 require_once __DIR__ . '/_layout.php';
-semas_email_open($exam_type . ' Schedule — ' . $module_title);
+semas_email_open($exam_type . ' Schedule / ' . $module_title);
 
 $dateLabel = date('d F Y', strtotime($scheduled_date));
-$timeLabel = date('h:i A', strtotime($start_time)) . ' – ' . date('h:i A', strtotime($end_time));
+$timeLabel = date('h:i A', strtotime($start_time)) . ' / ' . date('h:i A', strtotime($end_time));
 $typeWord  = $exam_type === 'Exam' ? 'Exam' : 'CAT';
 ?>
 <p>Dear <strong><?= htmlspecialchars($full_name) ?></strong>,</p>
@@ -51,7 +51,7 @@ $typeWord  = $exam_type === 'Exam' ? 'Exam' : 'CAT';
   <tr>
     <td style="background:#7C2D12;padding:10px 16px;border-radius:6px 6px 0 0;">
       <span style="color:#FFFFFF;font-size:13px;font-weight:bold;letter-spacing:.05em;">
-        &#9888; IMPORTANT &mdash; STUDENT <?= htmlspecialchars(strtoupper($typeWord)) ?> INSTRUCTIONS
+        &#9888; IMPORTANT / STUDENT <?= htmlspecialchars(strtoupper($typeWord)) ?> INSTRUCTIONS
       </span>
     </td>
   </tr>
@@ -60,7 +60,7 @@ $typeWord  = $exam_type === 'Exam' ? 'Exam' : 'CAT';
       <table cellpadding="0" cellspacing="0" width="100%">
         <?php
         $instructions = [
-            'Arrive at the examination room at least <strong>15–30 minutes before the start time</strong>.',
+            'Arrive at the examination room at least <strong>15/30 minutes before the start time</strong>.',
             'Bring your <strong>valid student card</strong> and <strong>Entry Slip</strong>.',
             'Mobile phones and all electronic devices are <strong>strictly not allowed</strong> in the examination room.',
             'Switch off all devices before entering and keep them outside the exam area as instructed.',

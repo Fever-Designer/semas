@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Migration 011:
+-- SEMAS / Migration 011:
 --   1. Registrar role (student account management)
 --   2. Coordinator role (Weekend-session academic authority)
 --   3. must_change_password flag on users (first-login enforcement)
@@ -29,14 +29,14 @@ INSERT INTO roles (role_name)
     SELECT 'Coordinator' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'Coordinator');
 
 -- ---------------------------------------------------------------------
--- 3. must_change_password flag — set to 1 for auto-created student
+-- 3. must_change_password flag / set to 1 for auto-created student
 --    accounts (reg_number = password). Cleared after first change.
 -- ---------------------------------------------------------------------
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) NOT NULL DEFAULT 0 AFTER status;
 
 -- ---------------------------------------------------------------------
--- 4. Rooms — predefined campus rooms. A room can be assigned to AT MOST
+-- 4. Rooms / predefined campus rooms. A room can be assigned to AT MOST
 --    ONE Ongoing module per session_type (Day / Evening / Weekend).
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rooms (
@@ -58,7 +58,7 @@ INSERT IGNORE INTO rooms (room_name) VALUES
     ('101.2'),
     ('SEBAYA');
 
--- room_id FK on modules (nullable — old rows stay NULL until re-saved)
+-- room_id FK on modules (nullable / old rows stay NULL until re-saved)
 ALTER TABLE modules
     ADD COLUMN IF NOT EXISTS room_id INT NULL AFTER room,
     ADD CONSTRAINT fk_modules_room FOREIGN KEY (room_id) REFERENCES rooms(room_id) ON DELETE SET NULL;
@@ -70,7 +70,7 @@ SET    m.room_id = r.room_id
 WHERE  m.room_id IS NULL AND m.room IS NOT NULL;
 
 -- ---------------------------------------------------------------------
--- 5. Module intakes — a module can belong to multiple intake cohorts
+-- 5. Module intakes / a module can belong to multiple intake cohorts
 --    (JAN, MAY, SEPT); students can only register if their assigned
 --    intake matches one of the module's intakes.
 -- ---------------------------------------------------------------------
@@ -193,7 +193,7 @@ FROM   faculties f,
 WHERE  f.faculty_code = 'SPEP';
 
 -- ---------------------------------------------------------------------
--- 9. modules.start_date / end_date — already added in migration_005 via
+-- 9. modules.start_date / end_date / already added in migration_005 via
 --    ALTER TABLE; these columns should exist. If upgrading a database
 --    that somehow missed them, add safely.
 -- ---------------------------------------------------------------------

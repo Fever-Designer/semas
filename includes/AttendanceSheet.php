@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Builds the data behind the blank, printable backup attendance sheet — for
+/** Builds the data behind the blank, printable backup attendance sheet / for
  *  hand-signing when QR scanning isn't usable. Shared by the lecturer and HOD
  *  "Class Attendance" pages (print + Excel export). */
 final class AttendanceSheet
@@ -110,10 +110,10 @@ final class AttendanceSheet
     }
 
     /** Every expected class day between the module's start and end date,
-     *  computed automatically — Day/Evening modules get every Monday–Friday,
-     *  Weekend modules get every Saturday–Sunday in the range. CAT/Exam dates
+     *  computed automatically / Day/Evening modules get every Monday/Friday,
+     *  Weekend modules get every Saturday/Sunday in the range. CAT/Exam dates
      *  are skipped (covered by CAT/Exam Attendance instead). This is the only
-     *  place that logic lives — the printed/exported sheet itself carries no
+     *  place that logic lives / the printed/exported sheet itself carries no
      *  explanatory text, it just shows the resulting dates.
      *  @return string[] Y-m-d dates, ascending. */
     public static function expectedClassDates(array $module): array
@@ -142,9 +142,9 @@ final class AttendanceSheet
 
     public static function sessionLabel(array $module): string
     {
-        $label = $module['session_type'] ?? '—';
+        $label = $module['session_type'] ?? '/';
         if ($label === 'Weekend' && !empty($module['weekend_slot'])) {
-            $label .= ' – ' . $module['weekend_slot'];
+            $label .= ' / ' . $module['weekend_slot'];
         }
         return $label;
     }

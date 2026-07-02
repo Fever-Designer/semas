@@ -98,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  FROM module_enrollments e WHERE e.module_id = :mid"
             )->execute(['sid' => $newSid, 'mid' => $moduleId]);
             AuditLog::record(Auth::id(), 'CREATE_SESSION_MANUAL', 'class_sessions', $newSid);
-            flash('success', 'Session added. Students pre-marked Absent — update individually as needed.');
+            flash('success', 'Session added. Students pre-marked Absent / update individually as needed.');
         } catch (PDOException $e) {
             flash('error', 'Session already exists for this date/window, or an error occurred.');
         }
@@ -325,7 +325,7 @@ if ($viewMode === 'overall') {
         $overallRows = array_values(array_filter($overallRows, function ($r) { return $r['a'] >= 3; }));
     }
 
-    // Group into per-module summaries — HoD/Coordinator view modules, not individual students.
+    // Group into per-module summaries / HoD/Coordinator view modules, not individual students.
     foreach ($overallRows as $r) {
         $mid = $r['module_id'];
         $moduleSummary[$mid]['p'] += $r['p'];
@@ -396,7 +396,7 @@ require __DIR__ . '/../partials/layout_top.php';
           ?>
           <tr style="<?= $rowBg ? "background:$rowBg;" : '' ?>">
             <td class="fw-semibold"><?= e($r['name']) ?></td>
-            <td style="color:#666;"><?= e($r['reg'] ?? '—') ?></td>
+            <td style="color:#666;"><?= e($r['reg'] ?? '/') ?></td>
             <td class="text-center"><?= $r['p'] ?></td>
             <td class="text-center"><?= $r['l'] ?></td>
             <td class="text-center fw-bold"><?= $r['a'] ?></td>
@@ -408,7 +408,7 @@ require __DIR__ . '/../partials/layout_top.php';
               <?php elseif ($r['a'] >= 3): ?>
                 <span class="badge bg-warning text-dark">⚠ Special Case</span>
               <?php else: ?>
-                <span class="text-muted">—</span>
+                <span class="text-muted">/</span>
               <?php endif; ?>
             </td>
           </tr>
@@ -476,7 +476,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="col-md-6 col-lg-4">
       <div class="semas-card p-3 h-100 d-flex flex-column">
         <h6 class="fw-semibold mb-1"><?= e($ms['module']) ?></h6>
-        <?php $slotLabel = ($ms['session_type'] === 'Weekend' && $ms['weekend_slot']) ? 'Weekend - ' . $ms['weekend_slot'] : $ms['session_type']; ?>
+        <?php $slotLabel = ($ms['session_type'] === 'Weekend' && $ms['weekend_slot']) ? 'Weekend / ' . $ms['weekend_slot'] : $ms['session_type']; ?>
         <p class="text-muted small mb-2">
           <?= (int) $ms['students'] ?> registered student(s) &middot; <?= (int) $ms['sessions'] ?> session(s)<br>
           <?= e($slotLabel ?: 'Any session') ?><?= $ms['room'] ? ' &middot; ' . e($ms['room']) : '' ?>
@@ -519,11 +519,11 @@ require __DIR__ . '/../partials/layout_top.php';
     <label class="form-label small fw-semibold mb-0 text-nowrap">Select Module:</label>
     <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:440px;"
             onchange="this.form.submit()">
-      <option value="">— Choose a module —</option>
+      <option value="">/ Choose a module /</option>
       <?php foreach ($allModules as $am): ?>
         <option value="<?= (int) $am['module_id'] ?>"
                 <?= (int) $am['module_id'] === $moduleId ? 'selected' : '' ?>>
-          <?= e($am['module_title']) ?> &mdash; <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
+          <?= e($am['module_title']) ?> / <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
         </option>
       <?php endforeach; ?>
     </select>
@@ -542,7 +542,7 @@ require __DIR__ . '/../partials/layout_top.php';
   $lName    = $module['lecturer_name']  ?? 'TBA';
   $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName : $lName;
   $slot     = $module['weekend_slot'] ?? '';
-  $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend – {$slot}" : $module['session_type'];
+  $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slot}" : $module['session_type'];
 ?>
 
 <!-- Module info header -->
@@ -559,7 +559,7 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
     <div class="col-sm-2">
       <span class="text-muted small">Room</span><br>
-      <strong><?= e($module['room_name'] ?? '—') ?></strong>
+      <strong><?= e($module['room_name'] ?? '/') ?></strong>
     </div>
     <div class="col-sm-2">
       <span class="text-muted small">Period</span><br>
@@ -651,11 +651,11 @@ require __DIR__ . '/../partials/layout_top.php';
         ?>
         <tr>
           <td class="text-center text-muted"><?= $idx + 1 ?></td>
-          <td style="color:#666;"><?= e($stu['reg_number'] ?? '—') ?></td>
+          <td style="color:#666;"><?= e($stu['reg_number'] ?? '/') ?></td>
           <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:600;min-width:170px;">
             <?= e($stu['full_name']) ?>
           </td>
-          <td style="color:#666;"><?= e($stu['phone_number'] ?? '—') ?></td>
+          <td style="color:#666;"><?= e($stu['phone_number'] ?? '/') ?></td>
           <?php foreach ($sessions as $s):
             $sid   = (int) $s['session_id'];
             $isHol = isset($holidayMap[$s['session_date']]);
@@ -665,7 +665,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php if ($isHol): ?>
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
           <?php elseif ($fs === ''): ?>
-            <td class="text-center" style="color:#ddd;">—</td>
+            <td class="text-center" style="color:#ddd;">/</td>
           <?php elseif (!$entry || $entry['is_auto']): ?>
             <td class="text-center" style="background:#f8d7da;padding:3px 2px;">
               <div class="fw-bold" style="color:#721c24;">A</div>

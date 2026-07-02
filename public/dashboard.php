@@ -73,14 +73,14 @@ if ($role === 'Principal') {
          ORDER BY m.created_at DESC LIMIT 8"
     )->fetchAll();
 
-    // CAT/Exam Schedules — upcoming dates across every module.
+    // CAT/Exam Schedules / upcoming dates across every module.
     $upcomingCatExam = $db->query(
         "SELECT module_id, module_title, cat_date, exam_date FROM modules
          WHERE (cat_date IS NOT NULL AND cat_date >= CURDATE()) OR (exam_date IS NOT NULL AND exam_date >= CURDATE())
          ORDER BY COALESCE(cat_date, exam_date) ASC LIMIT 8"
     )->fetchAll();
 
-    // Student Registration Summary — enrollments per department.
+    // Student Registration Summary / enrollments per department.
     $registrationSummary = $db->query(
         "SELECT d.department_name, COUNT(e.enrollment_id) AS enrollments
          FROM departments d LEFT JOIN modules m ON m.department_id = d.department_id
@@ -88,7 +88,7 @@ if ($role === 'Principal') {
          GROUP BY d.department_id ORDER BY enrollments DESC LIMIT 8"
     )->fetchAll();
 
-    // Lecturer Performance Overview — sessions run + average attendance rate per lecturer.
+    // Lecturer Performance Overview / sessions run + average attendance rate per lecturer.
     $lecturerPerformance = $db->query(
         "SELECT u.full_name,
             COUNT(DISTINCT cs.session_id) AS sessions_run,
@@ -249,7 +249,7 @@ require __DIR__ . '/partials/layout_top.php';
       <div class="semas-card p-3">
         <h6 class="display-font mb-3">Recent Announcements (system-wide visibility)</h6>
         <?php if (!$recentAnnouncementsAdmin): ?><p class="text-muted small mb-0">No announcements yet.</p><?php else: foreach ($recentAnnouncementsAdmin as $a): ?>
-          <div class="border-bottom py-2"><div class="fw-semibold small"><?= e($a['title']) ?></div><div class="text-muted" style="font-size:0.75rem;">By <?= e($a['sender_name'] ?? '—') ?> (<?= e($a['sender_role'] ?? '—') ?>) &middot; <?= e($a['target_audience']) ?></div></div>
+          <div class="border-bottom py-2"><div class="fw-semibold small"><?= e($a['title']) ?></div><div class="text-muted" style="font-size:0.75rem;">By <?= e($a['sender_name'] ?? '/') ?> (<?= e($a['sender_role'] ?? '/') ?>) &middot; <?= e($a['target_audience']) ?></div></div>
         <?php endforeach; endif; ?>
       </div>
     </div>
@@ -359,7 +359,7 @@ require __DIR__ . '/partials/layout_top.php';
           <table class="table table-sm">
             <thead><tr><th>Module</th><th>CAT</th><th>Exam</th></tr></thead>
             <tbody><?php foreach ($upcomingCatExam as $row): ?>
-              <tr><td><?= e($row['module_title']) ?></td><td><?= e($row['cat_date'] ?? '—') ?></td><td><?= e($row['exam_date'] ?? '—') ?></td></tr>
+              <tr><td><?= e($row['module_title']) ?></td><td><?= e($row['cat_date'] ?? '/') ?></td><td><?= e($row['exam_date'] ?? '/') ?></td></tr>
             <?php endforeach; ?></tbody>
           </table>
         <?php endif; ?>
@@ -401,7 +401,7 @@ require __DIR__ . '/partials/layout_top.php';
           <table class="table table-sm align-middle">
             <thead><tr><th>Module</th><th>Department</th><th>Lecturer</th><th>Status</th></tr></thead>
             <tbody><?php foreach ($recentModules as $m): ?>
-              <tr><td><?= e($m['module_title']) ?></td><td><?= e($m['department_name'] ?? '—') ?></td><td><?= e($m['lecturer_name'] ?? '—') ?></td><td><span class="badge <?= $m['status'] === 'Ongoing' ? 'badge-completed' : 'bg-secondary' ?>"><?= e($m['status']) ?></span></td></tr>
+              <tr><td><?= e($m['module_title']) ?></td><td><?= e($m['department_name'] ?? '/') ?></td><td><?= e($m['lecturer_name'] ?? '/') ?></td><td><span class="badge <?= $m['status'] === 'Ongoing' ? 'badge-completed' : 'bg-secondary' ?>"><?= e($m['status']) ?></span></td></tr>
             <?php endforeach; ?></tbody>
           </table>
         <?php endif; ?>

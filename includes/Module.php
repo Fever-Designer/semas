@@ -6,7 +6,7 @@ declare(strict_types=1);
  * ------
  * Houses the "auto-complete a module once its exam date has passed" rule
  * so every page that lists modules (HOD, Lecturer, Student) applies it the
- * same way, lazily, on page load — there's no cron job in this stack, so
+ * same way, lazily, on page load / there's no cron job in this stack, so
  * this runs as a cheap idempotent UPDATE at the top of those pages instead.
  */
 final class Module

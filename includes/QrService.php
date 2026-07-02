@@ -5,7 +5,7 @@ declare(strict_types=1);
  * QrService
  * ----------
  * Each event gets its own random secret (events.qr_secret, generated at
- * event creation — see EventController::create()). The QR code encodes a
+ * event creation / see EventController::create()). The QR code encodes a
  * JSON payload {event_id, exp} that is:
  *   1. Encrypted with AES-256-CBC using a key derived from the event secret
  *      (so the payload is not human-readable if the QR is photographed).
@@ -47,7 +47,7 @@ final class QrService
             $sig = strtolower($m[4]);
             $expected = substr(hash_hmac('sha256', $eventId . '|' . $exp . '|' . $nonce, $eventSecret), 0, 20);
             if (!hash_equals($expected, $sig)) {
-                return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid - possible tampering.'];
+                return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid / possible tampering.'];
             }
             if ($exp < time()) {
                 return ['ok' => false, 'data' => null, 'error' => 'This QR code has expired.'];
@@ -69,7 +69,7 @@ final class QrService
 
         $expectedHmac = hash_hmac('sha256', $iv . $cipher, $eventSecret, true);
         if (!hash_equals($expectedHmac, $hmac)) {
-            return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid — possible tampering.'];
+            return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid / possible tampering.'];
         }
 
         $key = hash('sha256', $eventSecret, true);
@@ -90,7 +90,7 @@ final class QrService
     }
 
     /** Same scheme as buildPayload()/verifyPayload() above, but for class_sessions (Class Attendance)
-     *  instead of events — kept as separate methods so the payload's 'session_id' vs 'event_id' key
+     *  instead of events / kept as separate methods so the payload's 'session_id' vs 'event_id' key
      *  can never be confused/mixed up by a caller. */
     public static function buildSessionPayload(int $sessionId, string $sessionSecret, int $ttlSeconds = 3600): string
     {
@@ -124,7 +124,7 @@ final class QrService
 
         $expectedHmac = hash_hmac('sha256', $iv . $cipher, $sessionSecret, true);
         if (!hash_equals($expectedHmac, $hmac)) {
-            return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid — possible tampering.'];
+            return ['ok' => false, 'data' => null, 'error' => 'QR signature invalid / possible tampering.'];
         }
 
         $key = hash('sha256', $sessionSecret, true);

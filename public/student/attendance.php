@@ -16,7 +16,7 @@ $qrDataParam   = $_GET['d'] ?? ($_GET['qr_data'] ?? '');
 $window  = ClassAttendance::currentWindow();
 $holiday = ClassAttendance::holidayToday();
 
-// Enrolled modules — Ongoing only
+// Enrolled modules / Ongoing only
 $modStmt = $db->prepare(
     "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, m.status,
             m.start_date, m.end_date, m.cat_date, m.exam_date, m.room_id,
@@ -82,7 +82,7 @@ function stu_scan_window_open(?array $window): bool
 
 $scanWindowOpen = stu_scan_window_open($window);
 
-// Only show modules whose session is in its live window right now — even a
+// Only show modules whose session is in its live window right now / even a
 // registered Ongoing module stays hidden outside its actual class time.
 $visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today) {
     return stu_window_matches($am, $window) && stu_within_dates($am, $today) && $am['status'] === 'Ongoing';
@@ -237,7 +237,7 @@ $lTitle   = $module['lecturer_title'] ?? '';
 $lName    = $module['lecturer_name']  ?? 'TBA';
 $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName : $lName;
 $slot     = $module['weekend_slot'] ?? '';
-$sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend – {$slot}" : $module['session_type'];
+$sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slot}" : $module['session_type'];
 $isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_within_dates($module, $today) && $module['status'] === 'Ongoing';
 ?>
 
@@ -300,7 +300,7 @@ $isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_wit
   <?php endif; ?>
 </div>
 
-<!-- Scan modal — opens when student taps "Scan / Check In" -->
+<!-- Scan modal / opens when student taps "Scan / Check In" -->
 <div class="modal fade" id="scanModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -318,7 +318,7 @@ $isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_wit
   </div>
 </div>
 
-<!-- Attendance register — my own row -->
+<!-- Attendance register / my own row -->
 <?php if (!$sessions): ?>
   <div class="semas-card p-4 text-center text-muted small">No class sessions recorded yet for this module.</div>
 <?php else: ?>
@@ -374,7 +374,7 @@ $isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_wit
           <?php if ($isHol): ?>
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
           <?php elseif ($fs === ''): ?>
-            <td class="text-center" style="color:#ddd;">—</td>
+            <td class="text-center" style="color:#ddd;">/</td>
           <?php elseif (!$entry || $entry['is_auto']): ?>
             <td class="text-center fw-bold" style="background:#f8d7da;color:#721c24;">A</td>
           <?php else: ?>

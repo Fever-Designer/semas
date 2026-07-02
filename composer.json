@@ -1,6 +1,6 @@
 {
     "name": "uok/semas",
-    "description": "Student Event Management & Announcement System (SEMAS) - University of Kigali",
+    "description": "Student Event Management and Announcement System (SEMAS) / University of Kigali",
     "type": "project",
     "license": "proprietary",
     "require": {

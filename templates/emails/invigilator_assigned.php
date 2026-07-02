@@ -1,10 +1,10 @@
 <?php
 /** vars: full_name, exam_type, module_title, scheduled_date, start_time, end_time, room, day_of_week */
 require_once __DIR__ . '/_layout.php';
-semas_email_open('Invigilator Assignment — ' . $exam_type . ': ' . $module_title);
+semas_email_open('Invigilator Assignment / ' . $exam_type . ': ' . $module_title);
 
 $dateLabel = date('d F Y', strtotime($scheduled_date));
-$timeLabel = date('h:i A', strtotime($start_time)) . ' – ' . date('h:i A', strtotime($end_time));
+$timeLabel = date('h:i A', strtotime($start_time)) . ' / ' . date('h:i A', strtotime($end_time));
 $typeWord  = $exam_type === 'Exam' ? 'Exam' : 'CAT';
 ?>
 <p>Dear <strong><?= htmlspecialchars($full_name) ?></strong>,</p>

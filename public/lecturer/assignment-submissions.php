@@ -87,7 +87,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php foreach ($students as $s): ?>
                 <tr>
                     <td class="fw-semibold"><?= e($s['full_name']) ?></td>
-                    <td class="text-muted"><?= e($s['reg_number'] ?? '—') ?></td>
+                    <td class="text-muted"><?= e($s['reg_number'] ?? '/') ?></td>
                     <td>
                         <?php if ($s['file_path']): ?>
                             <span class="badge badge-completed">Submitted</span>
@@ -95,7 +95,7 @@ require __DIR__ . '/../partials/layout_top.php';
                             <span class="badge bg-secondary">Not submitted</span>
                         <?php endif; ?>
                     </td>
-                    <td class="text-muted"><?= $s['submitted_at'] ? e(date('d M Y, H:i', strtotime($s['submitted_at']))) : '—' ?></td>
+                    <td class="text-muted"><?= $s['submitted_at'] ? e(date('d M Y, H:i', strtotime($s['submitted_at']))) : '/' ?></td>
                     <td>
                         <?php if ($s['file_path']): ?>
                             <a href="<?= APP_URL ?>/lecturer/assignment-download.php?assignment_id=<?= $assignmentId ?>&user_id=<?= (int) $s['user_id'] ?>"

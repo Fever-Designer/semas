@@ -20,7 +20,7 @@ $me = $stmt->fetch();
 
 $errors = [];
 
-// ---- Update phone / session (own data only — no role/department/status fields here) ----
+// ---- Update phone / session (own data only / no role/department/status fields here) ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'contact') {
     csrf_verify();
     $phone = trim($_POST['phone_number'] ?? '');
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'contact
         redirect('/profile.php');
     }
     if ($me['role_name'] === 'Student') {
-        // Students: phone only — session and email are managed by Registrar
+        // Students: phone only / session and email are managed by Registrar
         $db->prepare('UPDATE users SET phone_number = :phone WHERE user_id = :id')
            ->execute(['phone' => $phone ?: null, 'id' => $userId]);
     } else {
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'email')
             'uid' => $userId, 'email' => $newEmail, 'hash' => hash('sha256', $rawToken), 'hrs' => VERIFY_LINK_EXPIRY_HOURS,
         ]);
         $confirmUrl = APP_URL . '/auth/confirm-email-change.php?uid=' . $userId . '&token=' . $rawToken;
-        // Sent to the NEW address — proves the user actually controls it before we switch.
+        // Sent to the NEW address / proves the user actually controls it before we switch.
         Mailer::send($newEmail, 'Confirm your new SEMAS email address', 'verification', [
             'full_name' => $me['full_name'], 'verify_url' => $confirmUrl,
         ], $userId);
@@ -168,11 +168,11 @@ require __DIR__ . '/partials/layout_top.php';
       <h6 class="display-font mb-3">Account Info</h6>
       <table class="table table-sm">
         <?php if (!in_array($me['role_name'], ['Principal', 'Dean', 'Registrar'], true)): ?>
-        <tr><td class="text-muted small">Department</td><td class="small text-end"><?= e($me['department_name'] ?? '—') ?></td></tr>
-        <tr><td class="text-muted small">Faculty</td><td class="small text-end"><?= e($me['faculty_name'] ?? '—') ?></td></tr>
+        <tr><td class="text-muted small">Department</td><td class="small text-end"><?= e($me['department_name'] ?? '/') ?></td></tr>
+        <tr><td class="text-muted small">Faculty</td><td class="small text-end"><?= e($me['faculty_name'] ?? '/') ?></td></tr>
         <?php endif; ?>
         <?php if ($me['role_name'] === 'Student'): ?>
-        <tr><td class="text-muted small">Reg. Number</td><td class="small text-end"><?= e($me['reg_number'] ?? '—') ?></td></tr>
+        <tr><td class="text-muted small">Reg. Number</td><td class="small text-end"><?= e($me['reg_number'] ?? '/') ?></td></tr>
         <?php endif; ?>
         <tr><td class="text-muted small">Status</td><td class="text-end"><span class="badge badge-<?= $me['status'] === 'Active' ? 'completed' : 'cancelled' ?>"><?= e($me['status']) ?></span></td></tr>
         <tr><td class="text-muted small">Last Login</td><td class="small text-end"><?= e($me['last_login_at'] ?? 'Never') ?></td></tr>
@@ -202,7 +202,7 @@ require __DIR__ . '/partials/layout_top.php';
     <?php if ($me['role_name'] !== 'Student'): ?>
     <div class="semas-card p-3 mb-3">
       <h6 class="display-font mb-3">Change Email Address</h6>
-      <p class="text-muted small">Current: <strong><?= e($me['email']) ?></strong>. Changing it sends a confirmation link to the new address — your login email stays the same until you click it.</p>
+      <p class="text-muted small">Current: <strong><?= e($me['email']) ?></strong>. Changing it sends a confirmation link to the new address / your login email stays the same until you click it.</p>
       <form method="post" class="d-flex gap-2">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="email">

@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $verifyUrl = APP_URL . '/auth/verify-email.php?uid=' . $user['user_id'] . '&token=' . $rawToken;
         Mailer::sendVerification($user, $verifyUrl);
     }
-    $sent = true; // same response either way — do not reveal whether the email exists or is verified
+    $sent = true; // same response either way / do not reveal whether the email exists or is verified
 }
 
 $pageTitle = 'Resend Verification';

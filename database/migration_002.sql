@@ -1,7 +1,7 @@
 -- =====================================================================
--- SEMAS — Migration 002: Profile, Sessions, Notifications, Suggestions,
+-- SEMAS / Migration 002: Profile, Sessions, Notifications, Suggestions,
 --          Event Capacity, QR Security, Reminders
--- ADDITIVE ONLY — does not drop or redefine any existing table/column.
+-- ADDITIVE ONLY / does not drop or redefine any existing table/column.
 -- Run this once against your existing `semas` database:
 --   mysql -u root -p semas < database/migration_002.sql
 -- =====================================================================
@@ -31,7 +31,7 @@ ALTER TABLE announcements
 
 -- ---------------------------------------------------------------------
 -- 3. Notifications: category grouping for the bell (Events / Announcements
---    / Attendance / System), used purely for UI grouping — no behavior change.
+--    / Attendance / System), used purely for UI grouping / no behavior change.
 -- ---------------------------------------------------------------------
 ALTER TABLE notifications
     ADD COLUMN category ENUM('Event','Announcement','Attendance','System') NOT NULL DEFAULT 'System' AFTER body;
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS event_reminders_sent (
 -- 7. Anonymous Suggestion Box.
 --    submitted_by_user_id is stored so abuse can be traced internally if
 --    ever legally/administratively required, but NO admin-facing query in
---    this codebase selects or displays it — see classes/Suggestion usage.
+--    this codebase selects or displays it / see classes/Suggestion usage.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS suggestions (
     suggestion_id      INT AUTO_INCREMENT PRIMARY KEY,

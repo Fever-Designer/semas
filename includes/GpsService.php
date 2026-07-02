@@ -19,7 +19,7 @@ final class GpsService
 
     /** Checks a submitted GPS reading against the configured campus center
      *  and radius (or an event-specific override if the event has its own
-     *  lat/lng). Returns the distance and a pass/fail flag — never throws,
+     *  lat/lng). Returns the distance and a pass/fail flag / never throws,
      *  so the caller can still log a denied attempt with full details. */
     public static function withinCampus(float $lat, float $lng, ?float $centerLat = null, ?float $centerLng = null, ?int $radiusM = null): array
     {

@@ -1,6 +1,6 @@
 -- =====================================================================
--- SEMAS — Migration 010: WhatsApp delivery log
---   1. whatsapp_logs — mirrors sms_logs for Vonage WhatsApp channel
+-- SEMAS / Migration 010: WhatsApp delivery log
+--   1. whatsapp_logs / mirrors sms_logs for Vonage WhatsApp channel
 --   2. Fix sms_logs.provider enum: replace 'twilio' with 'vonage'
 -- =====================================================================
 

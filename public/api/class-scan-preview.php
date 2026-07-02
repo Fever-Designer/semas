@@ -89,7 +89,7 @@ if ($mode === 'select') {
 
 if ($mode === 'qr') {
     // Lecturer scans the STUDENT's own personal QR (the same one shown on student/my-qr.php),
-    // decoded with the global APP_KEY — this is "Method 2" for class attendance, mirroring how
+    // decoded with the global APP_KEY / this is "Method 2" for class attendance, mirroring how
     // admin/scan-student.php scans a student's personal QR for event attendance.
     $token = trim((string) ($_POST['token'] ?? $_GET['token'] ?? ''));
     if (filter_var($token, FILTER_VALIDATE_URL)) {

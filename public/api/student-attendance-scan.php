@@ -338,7 +338,7 @@ if ($forcedSessId !== null) {
     if (!$window && !$allowSignOut) {
         $holiday = ClassAttendance::holidayToday();
         $msg     = $holiday && $holiday['holiday_type'] === 'Public Holiday'
-            ? 'Today is a public holiday — no attendance scanning is required.'
+            ? 'Today is a public holiday / no attendance scanning is required.'
             : 'There is no active class session window right now.';
         echo json_encode(['ok' => false, 'message' => $msg]);
         exit;
@@ -420,7 +420,7 @@ $hasRealSignIn = (bool) $realSignInRow->fetch();
 $statusVal = ClassAttendance::statusFor($session['start_time']);
 
 if (!$hasRealSignIn) {
-    // Attempting Sign In — must always be a QR scan, manual check-in is not allowed.
+    // Attempting Sign In / must always be a QR scan, manual check-in is not allowed.
     if ($isManual) {
         echo json_encode(['ok' => false, 'message' => 'Sign In requires scanning the QR code. Manual check-in is only available for Sign Out, near the end of the session.']);
         exit;
@@ -432,7 +432,7 @@ if (!$hasRealSignIn) {
     $type   = 'Sign In';
     $status = $statusVal;
 } else {
-    // Student already signed in — this must be a Sign Out
+    // Student already signed in / this must be a Sign Out
     if ($isManual) {
         // Manual sign-out is only allowed in the 40-to-20-minute window
         // before the session ends (QR scanning may be congested as
@@ -451,14 +451,14 @@ if (!$hasRealSignIn) {
     $status = 'Present';
 
     // Sign Out requires being noticeably closer than the general campus
-    // radius — right by the classroom/QR, not just anywhere on campus.
+    // radius / right by the classroom/QR, not just anywhere on campus.
     $scanOutGps = GpsService::withinCampus($lat, $lng, null, null, SCAN_OUT_RADIUS_METERS);
     if (!$scanOutGps['passed']) {
         AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_DENIED_GPS_SCANOUT', 'class_sessions', (int) $session['session_id'],
             "distance={$scanOutGps['distance_meters']}m radius={$scanOutGps['radius_meters']}m");
         echo json_encode([
             'ok'      => false,
-            'message' => "Sign-out requires you to be closer to the classroom — you appear to be {$scanOutGps['distance_meters']}m away (allowed: {$scanOutGps['radius_meters']}m). Move closer and try again.",
+            'message' => "Sign-out requires you to be closer to the classroom / you appear to be {$scanOutGps['distance_meters']}m away (allowed: {$scanOutGps['radius_meters']}m). Move closer and try again.",
         ]);
         exit;
     }
@@ -500,7 +500,7 @@ if ($ipAlready->fetch()) {
     exit;
 }
 
-// ── Device deduplication — a persisted client-side token, stronger than
+// ── Device deduplication / a persisted client-side token, stronger than
 //    shared-WiFi IP alone (catches "friend scans for me" from a different
 //    network) ────────────────────────────────────────────────────────────
 if ($deviceId !== null) {
@@ -545,7 +545,7 @@ try {
     }
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {
-        echo json_encode(['ok' => false, 'message' => 'This ' . $type . ' could not be recorded — it may already exist. Ask your lecturer to mark you manually if needed.']);
+        echo json_encode(['ok' => false, 'message' => 'This ' . $type . ' could not be recorded / it may already exist. Ask your lecturer to mark you manually if needed.']);
         exit;
     }
     throw $e;

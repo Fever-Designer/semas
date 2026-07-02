@@ -39,7 +39,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php else: ?>
   <div class="semas-card p-4 mx-auto text-center" style="max-width:480px;">
     <h6 class="display-font text-start mb-1"><?= e($event['title']) ?></h6>
-    <p class="text-muted small text-start mb-3"><?= e($event['venue']) ?> &middot; <?= e($event['event_date']) ?>, <?= e($event['start_time']) ?>&ndash;<?= e($event['end_time']) ?></p>
+    <p class="text-muted small text-start mb-3"><?= e($event['venue']) ?> &middot; <?= e($event['event_date']) ?>, <?= e($event['start_time']) ?>/<?= e($event['end_time']) ?></p>
 
     <div class="qr-frame">
       <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
@@ -47,7 +47,7 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
     <div class="qr-token-label" id="qr-token-label"><?= e($scanUrl) ?></div>
     <?php if ((int) $event['qr_rotation_seconds'] > 0): ?>
-      <div class="badge badge-urgent mt-2">Rotating every <?= (int) $event['qr_rotation_seconds'] ?>s — old scans expire automatically</div>
+      <div class="badge badge-urgent mt-2">Rotating every <?= (int) $event['qr_rotation_seconds'] ?>s / old scans expire automatically</div>
     <?php endif; ?>
     <script>
       const rotationSeconds = <?= (int) $event['qr_rotation_seconds'] ?>;

@@ -43,7 +43,7 @@ function availableIntakes(int $startYear = 2024): array
             }
         }
     } catch (Throwable $e) {
-        // DB not ready yet — fall back to the date-computed list only.
+        // DB not ready yet / fall back to the date-computed list only.
     }
 
     return $intakes;
@@ -53,14 +53,14 @@ function availableIntakes(int $startYear = 2024): array
  * Detect intake code (e.g. 'MAY26') from a UoK registration number.
  *
  * Format: [YY][0][NNN]...
- *   YY  = 2-digit year (any year — not a fixed lookup table, so a new
+ *   YY  = 2-digit year (any year / not a fixed lookup table, so a new
  *         year prefix is recognised automatically the moment it appears
  *         in a reg number, with no code change needed)
  *   0   = literal separator digit (3rd character)
- *   NNN = digits 4–6 (sequence range):
- *         100–499 → JAN
- *         500–899 → MAY
- *         900–999 → SEPT
+ *   NNN = digits 4/6 (sequence range):
+ *         100/499 → JAN
+ *         500/899 → MAY
+ *         900/999 → SEPT
  */
 function detectIntakeCode(string $regNumber): ?string
 {
@@ -70,7 +70,7 @@ function detectIntakeCode(string $regNumber): ?string
     $yy = substr($regNumber, 0, 2);
     if (!ctype_digit($yy)) return null;
 
-    $seq = (int) substr($regNumber, 3, 3); // digits 4–6 as integer
+    $seq = (int) substr($regNumber, 3, 3); // digits 4/6 as integer
     if ($seq >= 100 && $seq <= 499) return 'JAN'  . $yy;
     if ($seq >= 500 && $seq <= 899) return 'MAY'  . $yy;
     if ($seq >= 900 && $seq <= 999) return 'SEPT' . $yy;

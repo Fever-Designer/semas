@@ -47,7 +47,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <label class="form-label small fw-semibold mb-0 text-nowrap">Select Module:</label>
     <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:400px;"
             onchange="this.form.submit()">
-      <option value="">— Choose a module —</option>
+      <option value="">/ Choose a module /</option>
       <?php foreach ($myModules as $m): ?>
         <option value="<?= (int) $m['module_id'] ?>"
                 <?= (int) $m['module_id'] === $moduleId ? 'selected' : '' ?>>
@@ -95,7 +95,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <p class="text-muted mt-3 mb-0" style="font-size:.75rem;">
         <i class="bi bi-info-circle me-1"></i>
         QR rotates every 60 seconds. Students must scan before it expires.
-        <br>1–2 metre scan range enforced.
+        <br>1/2 metre scan range enforced.
       </p>
     </div>
   </div>
@@ -180,7 +180,7 @@ function openSession() {
         loadRoster();
     })
     .catch(() => {
-        document.getElementById('qrStatus').textContent = 'Error — check connection';
+        document.getElementById('qrStatus').textContent = 'Error / check connection';
         document.getElementById('qrStatus').className = 'badge bg-danger';
     });
 }
@@ -228,10 +228,10 @@ function loadRoster() {
             const fc = fcolors[s.status] || '#000';
             html += '<tr>';
             html += '<td class="text-muted text-center">' + (i+1) + '</td>';
-            html += '<td>' + (s.reg || '—') + '</td>';
+            html += '<td>' + (s.reg || '/') + '</td>';
             html += '<td class="fw-semibold">' + s.name + '</td>';
-            html += '<td>' + (s.in_time || '—') + '</td>';
-            html += '<td>' + (s.out_time || '—') + '</td>';
+            html += '<td>' + (s.in_time || '/') + '</td>';
+            html += '<td>' + (s.out_time || '/') + '</td>';
             html += '<td class="text-center fw-bold" style="background:' + bg + ';color:' + fc + ';">' + s.status + '</td>';
             html += '</tr>';
         });

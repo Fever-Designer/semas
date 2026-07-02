@@ -50,7 +50,6 @@ require __DIR__ . '/../partials/auth_top.php';
 </div>
 
 <h5 class="display-font mb-1 text-center">Create New Password</h5>
-<p class="text-muted small text-center mb-4">Choose a strong, unique password you haven't used before.</p>
 
 <?php foreach ($errors as $err): ?>
   <div class="alert alert-danger small"><?= e($err) ?></div>

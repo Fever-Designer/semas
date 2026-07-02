@@ -14,7 +14,7 @@ declare(strict_types=1);
  *      what historical announcements display).
  *   2. Delivery (in-app + email + optional SMS) and the audit log entry
  *      always happen, in the same order, for every announcement in the
- *      system — not re-implemented (and potentially forgotten) per page.
+ *      system / not re-implemented (and potentially forgotten) per page.
  */
 final class Announcement
 {
@@ -157,7 +157,7 @@ final class Announcement
         if ($scope) {
             $line .= "\n" . $scope;
         }
-        $line .= "\n" . date('d F Y - h:i A');
+        $line .= "\n" . date('d F Y / h:i A');
         return $line;
     }
 }

@@ -11,13 +11,13 @@ $myRole = Auth::role();
 
 // ---- Scope resolution: Principal sees everyone; Dean is university-wide
 //      and may see/manage every STUDENT account (faculty no longer restricts
-//      a Dean — see migration_004.sql); HOD sees only the STUDENTS in their
+//      a Dean / see migration_004.sql); HOD sees only the STUDENTS in their
 //      own department, plus (per spec) every Dean account for view/activate/
-//      deactivate/reset-password. Restricting by role_name here — not just
-//      department_id — is what stops a Dean from ever touching an HOD/Dean/
+//      deactivate/reset-password. Restricting by role_name here / not just
+//      department_id / is what stops a Dean from ever touching an HOD/Dean/
 //      Principal account, and stops an HOD from touching anything
 //      outside their own department other than Deans. ----
-$scopeDeptIds = null; // null = unrestricted (Principal — but still excludes Students, see below)
+$scopeDeptIds = null; // null = unrestricted (Principal / but still excludes Students, see below)
 $hodCanSeeDeans = false;
 $deanUniversityWide = false;
 $registrarMode = false;
@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <td class="fw-semibold"><?= e($u['full_name']) ?></td>
             <td><?= e($u['email']) ?></td>
             <td><?= e($u['role_name']) ?></td>
-            <td><?= e($u['department_name'] ?? '—') ?></td>
+            <td><?= e($u['department_name'] ?? '/') ?></td>
             <td><span class="badge badge-<?= $u['status'] === 'Active' ? 'completed' : ($u['status'] === 'Pending' ? 'upcoming' : 'cancelled') ?>"><?= e($u['status']) ?></span></td>
             <td class="text-nowrap">
               <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#edit-<?= (int) $u['user_id'] ?>"><i class="bi bi-pencil"></i></button>

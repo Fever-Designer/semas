@@ -7,7 +7,7 @@ $pageTitle = 'My Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
 $me = Auth::user();
-// SEMAS Default Assignment Instructions (System-Wide) — fixed block id def_ins_001, applies to every assignment.
+// SEMAS Default Assignment Instructions (System-Wide) / fixed block id def_ins_001, applies to every assignment.
 $defaultAssignmentInstructionsId = 'def_ins_001';
 $defaultAssignmentInstructionsVersion = 'SEMAS-ASSIGN-2026-V1';
 $defaultAssignmentInstructions = "📘 Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
@@ -33,7 +33,6 @@ if (!$moduleId) {
     require __DIR__ . '/../partials/layout_top.php';
     ?>
     <h4 class="display-font mb-1">My Assignments</h4>
-    <p class="text-muted small mb-4">Across every module you're registered in. Open a module's page for full instructions and to submit.</p>
     <?php foreach ($allAssignments as $a): $closed = strtotime($a['deadline']) < time(); ?>
       <div class="semas-card p-3 mb-3">
         <div class="d-flex justify-content-between align-items-start">
@@ -161,7 +160,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php if (!$closed): ?>
         <div class="text-center px-3 py-2 rounded" style="background:#fff7e0;border:2px solid var(--semas-gold,#c9a227);min-width:180px;">
           <div class="text-uppercase text-muted fw-semibold" style="font-size:.68rem;letter-spacing:.06em;"><i class="bi bi-stopwatch me-1"></i>Time Left</div>
-          <div class="js-countdown fw-bold" data-deadline="<?= e((string) date('c', strtotime((string) $a['deadline']))) ?>" style="font-size:1.5rem;line-height:1.15;color:#1E2A52;">—</div>
+          <div class="js-countdown fw-bold" data-deadline="<?= e((string) date('c', strtotime((string) $a['deadline']))) ?>" style="font-size:1.5rem;line-height:1.15;color:#1E2A52;">/</div>
         </div>
       <?php else: ?>
         <div class="text-center px-3 py-2 rounded bg-light" style="min-width:180px;">
@@ -205,7 +204,6 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="modal-content">
       <div class="modal-header"><h6 class="modal-title display-font">Confirm Submission</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <p class="small text-muted mb-2">Review your file before submitting. Once confirmed, this will be recorded as your submission.</p>
         <div id="submitPreviewSummary" class="mb-3"></div>
         <div id="submitPreviewArea" style="height:50vh; background:#f5f5f5;"></div>
       </div>

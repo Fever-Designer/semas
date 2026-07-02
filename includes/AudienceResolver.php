@@ -21,7 +21,7 @@ final class AudienceResolver
      * @param int|null $departmentId  Required when $audience === 'Specific Department'.
      * @param int|null $facultyId     Required when $audience === 'Specific Faculty'.
      * @param int|null $eventId       Required when $audience === 'Event Participants'.
-     * @return array<int,array>       Active users only — Pending/Deactivated accounts never receive anything.
+     * @return array<int,array>       Active users only / Pending/Deactivated accounts never receive anything.
      */
     public static function resolve(string $audience, ?int $departmentId = null, ?int $facultyId = null, ?int $eventId = null): array
     {
@@ -131,7 +131,7 @@ final class AudienceResolver
      * Role-scoped resolver used by HOD and Dean announcement/poll pages.
      * Unlike resolve(), every filter here is ANDed and the caller (the
      * HOD/Dean send page) is responsible for hard-coding department_id /
-     * faculty_id to the sender's OWN scope — never from user input — so a
+     * faculty_id to the sender's OWN scope / never from user input / so a
      * HOD can never reach another department and a Dean can never reach
      * another faculty.
      *

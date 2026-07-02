@@ -1,7 +1,7 @@
 <?php
 /**
  * partials/announcement_card.php
- * SEMAS - Smart Education Management & Announcement System
+ * SEMAS / Student Event Management and Announcement System
  * Safe + production-ready announcement card renderer
  */
 
@@ -15,8 +15,8 @@ $title      = $a['title'] ?? 'No Title';
 $message    = $a['message'] ?? '';
 $priority   = $a['priority'] ?? 'Normal';
 $category   = $a['category'] ?? 'General';
-$senderName = $a['sender_name'] ?? '—';
-$senderRole = $a['sender_role'] ?? '—';
+$senderName = $a['sender_name'] ?? '/';
+$senderRole = $a['sender_role'] ?? '/';
 $postedAt   = $a['posted_at'] ?? null;
 
 // Safe timestamp handling

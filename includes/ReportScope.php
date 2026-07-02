@@ -6,7 +6,7 @@ declare(strict_types=1);
  * -----------------------
  * Event/attendance compliance reports are part of "Event Management", which
  * (as of the HOD-centralization increment) is accessible only to HOD and
- * Dean — and both now see EVERY department/faculty, not just their own:
+ * Dean / and both now see EVERY department/faculty, not just their own:
  * Dean became university-wide in the previous increment, and HOD became
  * the central academic authority across all departments in this one. So
  * neither role gets extra row-level scoping here anymore; the explicit

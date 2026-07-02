@@ -5,7 +5,7 @@ final class Otp
 {
     /** Generates a new 6-digit OTP for a user, stores its hash, and returns the
      *  PLAINTEXT code so the caller can send it by email/SMS. The plaintext is
-     *  never stored — only password_hash() of it is. */
+     *  never stored / only password_hash() of it is. */
     public static function generate(int $userId, string $purpose, string $channel = 'email'): string
     {
         $code = (string) random_int(100000, 999999); // 6 digits, OTP_LENGTH

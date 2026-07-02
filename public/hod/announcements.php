@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE r.role_name = 'Student' AND u.session_type = 'Weekend' AND u.status = 'Active'"
                 )->fetchAll();
                 $annTitle = 'Umuganda Schedule Change / ' . $_POST['holiday_date'];
-                $annMsg   = "Umuganda falls on {$_POST['holiday_date']}. Weekend classes are rescheduled: Morning session 13:30–16:30, Afternoon session 17:00–20:30.";
+                $annMsg   = "Umuganda falls on {$_POST['holiday_date']}. Weekend classes are rescheduled: Morning session 13:30/16:30, Afternoon session 17:00/20:30.";
                 Announcement::create([
                     'title'           => $annTitle,
                     'category'        => 'General Notice',

@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sessionT = $_POST['session_type'] ?? '';
     $intake   = $_POST['intake'] ?? '';
 
-    // Registrar can only send to Students — scope selection within students only
+    // Registrar can only send to Students / scope selection within students only
     if ($subScope === 'department' && $deptId) {
         $dn = $db->prepare('SELECT department_name FROM departments WHERE department_id = :id');
         $dn->execute(['id' => $deptId]);
@@ -101,7 +101,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div id="scopeDept" class="mb-3" style="display:none;">
           <label class="form-label small fw-semibold">Department</label>
           <select name="department_id" class="form-select">
-            <option value="">— Select —</option>
+            <option value="">/ Select /</option>
             <?php foreach ($departments as $d): ?>
               <option value="<?= $d['department_id'] ?>"><?= e($d['department_name']) ?> (<?= e($d['department_code']) ?>)</option>
             <?php endforeach; ?>
@@ -111,7 +111,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div id="scopeSession" class="mb-3" style="display:none;">
           <label class="form-label small fw-semibold">Session Type</label>
           <select name="session_type" class="form-select">
-            <option value="">— Select —</option>
+            <option value="">/ Select /</option>
             <option value="Day">Day</option>
             <option value="Evening">Evening</option>
             <option value="Weekend">Weekend</option>
@@ -121,7 +121,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div id="scopeIntake" class="mb-3" style="display:none;">
           <label class="form-label small fw-semibold">Intake</label>
           <select name="intake" class="form-select">
-            <option value="">— Select —</option>
+            <option value="">/ Select /</option>
             <?php foreach (availableIntakes() as $intakeCode): ?>
               <option value="<?= e($intakeCode) ?>"><?= e($intakeCode) ?></option>
             <?php endforeach; ?>

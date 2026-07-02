@@ -16,7 +16,7 @@ $studentRoleId = (int) $db->query("SELECT role_id FROM roles WHERE role_name='St
  * Format: [YYY][N]XXXXXX where YYY = year code (260=2026, 250=2025 …)
  * and N (4th character, index 3) = 1→JAN, 5→MAY, 9→SEPT.
  */
-// Alias for the shared IntakeHelper function — kept for backward compat with import code
+// Alias for the shared IntakeHelper function / kept for backward compat with import code
 function detectIntakeFromRegNumber(string $regNumber): ?string
 {
     return detectIntakeCode($regNumber);
@@ -254,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             AuditLog::record(Auth::id(), 'STUDENT_UPDATE', 'users', (int) $existingUser['user_id']);
             flash('success', "Student {$fullName} ({$regNumber}) updated successfully.");
         } else {
-            // Create new student — password = reg_number
+            // Create new student / password = reg_number
             $emailExists = $db->prepare('SELECT user_id FROM users WHERE email = :e');
             $emailExists->execute(['e' => $email]);
             if ($emailExists->fetch()) {
@@ -612,7 +612,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <a href="<?= APP_URL ?>/registrar/students.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i> Cancel</a>
 </div>
 <div class="semas-card p-3 mb-3">
-  <p class="mb-2 small text-muted">Review the records below before saving. Existing students (matched by Reg Number) will be <strong>updated</strong>. New ones will be <strong>created</strong>.</p>
+  <p class="mb-2 small text-muted">Existing students (matched by Reg Number) will be <strong>updated</strong>. New ones will be <strong>created</strong>.</p>
   <div class="alert alert-info small mb-2"><i class="bi bi-info-circle me-1"></i> <strong><?= count($importRows) ?></strong> record(s) found in file.</div>
   <?php if ($importWarnings): ?>
     <div class="alert alert-warning small mb-2">
@@ -732,13 +732,13 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php endif; ?>
       <?php foreach ($students as $s): ?>
         <tr>
-          <td><code><?= e($s['reg_number'] ?? '—') ?></code></td>
+          <td><code><?= e($s['reg_number'] ?? '/') ?></code></td>
           <td><?= e($s['full_name']) ?></td>
           <td class="small text-muted"><?= e($s['email']) ?></td>
-          <td class="small"><?= e($s['department_name'] ?? '—') ?></td>
-          <td><?= e($s['session_type'] ?? '—') ?></td>
-          <td><?= e($s['intake'] ?? '—') ?></td>
-          <td><?= e(isset($s['year_of_study']) ? (string) $s['year_of_study'] : '—') ?></td>
+          <td class="small"><?= e($s['department_name'] ?? '/') ?></td>
+          <td><?= e($s['session_type'] ?? '/') ?></td>
+          <td><?= e($s['intake'] ?? '/') ?></td>
+          <td><?= e(isset($s['year_of_study']) ? (string) $s['year_of_study'] : '/') ?></td>
           <td><span class="badge <?= $s['status'] === 'Active' ? 'badge-completed' : ($s['status'] === 'Pending' ? 'bg-warning text-dark' : 'bg-secondary') ?>"><?= e($s['status']) ?></span></td>
           <td>
             <button class="btn btn-sm btn-outline-dark py-0 px-1 edit-student-btn"
@@ -812,7 +812,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Department</label>
               <select name="department_id" id="fieldDept" class="form-select">
-                <option value="">— Select Department —</option>
+                <option value="">/ Select Department /</option>
                 <?php
                 $lastFac = null;
                 foreach ($departments as $d):
@@ -829,7 +829,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="col-md-3">
               <label class="form-label small fw-semibold">Session Type</label>
               <select name="session_type" id="fieldSession" class="form-select">
-                <option value="">— None —</option>
+                <option value="">/ None /</option>
                 <option value="Day">Day</option>
                 <option value="Evening">Evening</option>
                 <option value="Weekend">Weekend</option>
@@ -838,7 +838,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <div class="col-md-3">
               <label class="form-label small fw-semibold">Year of Study</label>
               <select name="year_of_study" id="fieldYear" class="form-select">
-                <option value="">— None —</option>
+                <option value="">/ None /</option>
                 <option value="1">Year 1</option>
                 <option value="2">Year 2</option>
                 <option value="3">Year 3</option>

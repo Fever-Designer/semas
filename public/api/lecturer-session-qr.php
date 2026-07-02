@@ -73,7 +73,7 @@ if ($action === 'open_session') {
     $st     = $module['session_type'] ?? '';
 
     // The QR "Sign" screen only goes live during the module's actual scan
-    // window — lecturers can manage Announcements/Assignments/Attendance
+    // window / lecturers can manage Announcements/Assignments/Attendance
     // records anytime, but students must not be able to scan outside the
     // scheduled session.
     $matchesWindow = false;
@@ -127,7 +127,7 @@ if ($action === 'open_session') {
                 "INSERT IGNORE INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
                  SELECT :sid, e.user_id, 'Sign In', 'Absent', 'Auto' FROM module_enrollments e WHERE e.module_id = :mid"
             )->execute(['sid' => $newSid, 'mid' => $moduleId]);
-        } catch (PDOException $e) { /* race — session created concurrently */ }
+        } catch (PDOException $e) { /* race / session created concurrently */ }
         $findStmt->execute(['mid' => $moduleId, 'd' => $today, 'win' => $windowName]);
         $session = $findStmt->fetch();
     }

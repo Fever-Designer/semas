@@ -289,12 +289,12 @@ require __DIR__ . '/../partials/layout_top.php';
         <tr>
           <td class="fw-semibold"><?= e($m['module_title']) ?></td>
           <td><?= e(Module::sessionLabel($m)) ?></td>
-          <td><?= e($m['department_name'] ?? '—') ?></td>
-          <td><?= e($m['lecturer_name'] ?? '—') ?></td>
-          <td><?= e($m['room_name'] ?? '—') ?></td>
-          <td><small><?= e($m['intakes_list'] ?? '—') ?></small></td>
-          <td><?= e($m['cat_date']  ?? '—') ?></td>
-          <td><?= e($m['exam_date'] ?? '—') ?></td>
+          <td><?= e($m['department_name'] ?? '/') ?></td>
+          <td><?= e($m['lecturer_name'] ?? '/') ?></td>
+          <td><?= e($m['room_name'] ?? '/') ?></td>
+          <td><small><?= e($m['intakes_list'] ?? '/') ?></small></td>
+          <td><?= e($m['cat_date']  ?? '/') ?></td>
+          <td><?= e($m['exam_date'] ?? '/') ?></td>
           <td><?= (int) $m['student_count'] ?></td>
           <td><span class="badge <?= $m['status']==='Ongoing'?'badge-completed':'bg-secondary' ?>"><?= e($m['status']) ?></span></td>
           <td class="text-nowrap">
@@ -491,7 +491,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
       <div class="col-md-6">
         <label class="form-label small fw-semibold">Room <span class="text-muted small">(Weekend-available)</span></label>
         <select name="room_id" class="form-select form-select-sm">
-          <option value="">— No room —</option>
+          <option value="">/ No room /</option>
           <?php
           $shownRoomIds = array_column($rooms, 'room_id');
           foreach ($rooms as $rm): ?>
@@ -657,7 +657,7 @@ function lookupStudent(modId) {
             var cardHtml = '<img src="' + s.photo_url + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
                 + '<div><div class="fw-semibold">' + escHtml(s.full_name) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.reg_number) + '</div>'
-                + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '—' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
+                + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '/' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
             if (!data.enrolled && data.ongoing_limit_reached) {
                 errEl.textContent = data.ongoing_limit_message || 'This student already has the maximum number of ongoing modules.';
                 errEl.style.display = '';

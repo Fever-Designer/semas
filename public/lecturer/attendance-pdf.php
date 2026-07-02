@@ -69,7 +69,7 @@ header('Content-Type: text/html; charset=utf-8');
 <body>
 <h2><?= e($brandName) ?> / Attendance Report</h2>
 <h3><?= e($module['module_title']) ?> (<?= e($module['department_name'] ?? '') ?>)</h3>
-<p><strong>Lecturer:</strong> <?= e($me['full_name'] ?? '—') ?> &nbsp;|&nbsp;
+<p><strong>Lecturer:</strong> <?= e($me['full_name'] ?? '/') ?> &nbsp;|&nbsp;
    <strong>Session:</strong> <?= e($module['session_type'] ?? 'Any') ?> &nbsp;|&nbsp;
    <strong>Period:</strong> <?= ucfirst($rangeType) ?> / <?= date('d M Y', strtotime($dateFrom)) ?><?= $dateFrom !== $dateTo ? ' to ' . date('d M Y', strtotime($dateTo)) : '' ?></p>
 
@@ -82,11 +82,11 @@ header('Content-Type: text/html; charset=utf-8');
       <tr>
         <td><?= $i ?></td>
         <td><?= e($r['full_name']) ?></td>
-        <td><?= e($r['reg_number'] ?? '—') ?></td>
+        <td><?= e($r['reg_number'] ?? '/') ?></td>
         <td><?= e($r['session_date']) ?></td>
         <td><?= e($r['window_name']) ?></td>
         <td class="<?= strtolower($r['status']) ?>"><?= e($r['status']) ?></td>
-        <td><?= ($r['checkin_time'] && in_array((string) $r['verification_method'], ['QR', 'Manual'], true)) ? e(date('H:i', strtotime($r['checkin_time']))) : '—' ?></td>
+        <td><?= ($r['checkin_time'] && in_array((string) $r['verification_method'], ['QR', 'Manual'], true)) ? e(date('H:i', strtotime($r['checkin_time']))) : '/' ?></td>
         <?php $m = $metrics[(int) $r['user_id']] ?? ['percent' => 0]; ?>
         <td><?= e(number_format((float) $m['percent'], 1)) ?>%</td>
       </tr>
@@ -97,7 +97,7 @@ header('Content-Type: text/html; charset=utf-8');
   </tbody>
 </table>
 
-<div class="footer">Generated on <?= date('d M Y H:i') ?> &mdash; SEMAS &mdash; <?= e($brandName) ?></div>
+<div class="footer">Generated on <?= date('d M Y H:i') ?> / SEMAS / <?= e($brandName) ?></div>
 <script>window.print();</script>
 </body>
 </html>

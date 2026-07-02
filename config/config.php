@@ -52,7 +52,7 @@ define('APP_ENV', env('APP_ENV', 'local'));               // local | production
 define('APP_KEY', env('APP_KEY', ''));                     // 32+ random bytes, used for HMAC fallback
 
 // ---------------------------------------------------------------------
-// Mail (PHPMailer) — pick ONE provider profile in .env: gmail | outlook | university
+// Mail (PHPMailer) / pick ONE provider profile in .env: gmail | outlook | university
 // ---------------------------------------------------------------------
 define('MAIL_HOST', env('MAIL_HOST', 'smtp.gmail.com'));
 define('MAIL_PORT', (int) env('MAIL_PORT', 587));
@@ -60,13 +60,13 @@ define('MAIL_ENCRYPTION', env('MAIL_ENCRYPTION', 'tls'));   // tls | ssl
 define('MAIL_USERNAME', env('MAIL_USERNAME', ''));
 define('MAIL_PASSWORD', env('MAIL_PASSWORD', ''));          // Gmail: use an App Password, not your login password
 define('MAIL_FROM_ADDRESS', env('MAIL_FROM_ADDRESS', 'noreply@uok.ac.rw'));
-define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'University of Kigali — SEMAS'));
+define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'University of Kigali / SEMAS'));
 
 // ---------------------------------------------------------------------
-// SMS — pick ONE provider in .env: vonage | africastalking
+// SMS / pick ONE provider in .env: vonage | africastalking
 // ---------------------------------------------------------------------
 define('SMS_PROVIDER', env('SMS_PROVIDER', 'vonage'));
-// Vonage (nexmo.com) credentials — shared by SMS and WhatsApp
+// Vonage (nexmo.com) credentials / shared by SMS and WhatsApp
 define('VONAGE_API_KEY',       env('VONAGE_API_KEY',       ''));
 define('VONAGE_API_SECRET',    env('VONAGE_API_SECRET',    ''));
 define('VONAGE_FROM',          env('VONAGE_FROM',          ''));   // SMS: number or alphanumeric sender ID

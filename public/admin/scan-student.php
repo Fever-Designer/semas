@@ -88,10 +88,10 @@ function showPreview(data, method) {
   pendingPreview = { user_id: data.student.user_id, method: method };
   document.getElementById('prevPhoto').src = data.student.photo_url;
   document.getElementById('prevName').textContent = data.student.full_name;
-  document.getElementById('prevReg').textContent = 'Reg. No: ' + (data.student.reg_number || '—');
-  document.getElementById('prevDept').textContent = 'Department: ' + (data.student.department || '—');
-  document.getElementById('prevFaculty').textContent = 'Faculty: ' + (data.student.faculty || '—');
-  document.getElementById('prevSession').textContent = 'Session: ' + (data.student.session_type || '—');
+  document.getElementById('prevReg').textContent = 'Reg. No: ' + (data.student.reg_number || '/');
+  document.getElementById('prevDept').textContent = 'Department: ' + (data.student.department || '/');
+  document.getElementById('prevFaculty').textContent = 'Faculty: ' + (data.student.faculty || '/');
+  document.getElementById('prevSession').textContent = 'Session: ' + (data.student.session_type || '/');
   const warn = document.getElementById('prevWarning');
   if (data.already_marked) {
     warn.style.display = '';
@@ -135,7 +135,7 @@ function doManualSearch() {
     .then(r => r.json()).then(function (data) {
       document.getElementById('searchResults').innerHTML = (data.results || []).map(function (s) {
         return '<div class="border-bottom py-1 small" style="cursor:pointer;" data-uid="' + s.user_id + '" data-name="' + s.full_name + '" data-reg="' + (s.reg_number || '') + '">' +
-               s.full_name + ' <span class="text-muted">(' + (s.reg_number || '—') + ')</span></div>';
+               s.full_name + ' <span class="text-muted">(' + (s.reg_number || '/') + ')</span></div>';
       }).join('') || '<p class="text-muted small mb-0">No matching students found.</p>';
     });
 }
@@ -148,7 +148,7 @@ document.getElementById('searchResults').addEventListener('click', function (e) 
   const row = e.target.closest('[data-uid]');
   if (!row) return;
   foundUserId = row.getAttribute('data-uid');
-  document.getElementById('foundText').textContent = 'Found: ' + row.getAttribute('data-name') + ' (Reg: ' + (row.getAttribute('data-reg') || '—') + ')';
+  document.getElementById('foundText').textContent = 'Found: ' + row.getAttribute('data-name') + ' (Reg: ' + (row.getAttribute('data-reg') || '/') + ')';
   document.getElementById('foundBar').classList.remove('d-none');
   document.getElementById('previewPanel').style.display = 'none';
 });

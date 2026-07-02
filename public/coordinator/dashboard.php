@@ -75,8 +75,8 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php foreach ($recentModules as $m): ?>
         <tr>
           <td><?= e($m['module_title']) ?></td>
-          <td><?= e($m['department_name'] ?? '—') ?></td>
-          <td><?= e($m['lecturer_name'] ?? '—') ?></td>
+          <td><?= e($m['department_name'] ?? '/') ?></td>
+          <td><?= e($m['lecturer_name'] ?? '/') ?></td>
           <td><span class="badge <?= $m['status'] === 'Ongoing' ? 'badge-completed' : 'bg-secondary' ?>"><?= e($m['status']) ?></span></td>
         </tr>
       <?php endforeach; ?>

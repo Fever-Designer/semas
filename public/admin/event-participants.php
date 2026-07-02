@@ -92,7 +92,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <tr>
             <td class="fw-semibold"><?= e($p['full_name']) ?></td>
             <td><?= e($p['reg_number']) ?></td>
-            <td><?= e($p['department_name'] ?? '—') ?></td>
+            <td><?= e($p['department_name'] ?? '/') ?></td>
             <td><span class="badge badge-<?= $p['reg_status'] === 'Registered' ? 'completed' : ($p['reg_status'] === 'Waitlisted' ? 'urgent' : 'cancelled') ?>"><?= e($p['reg_status']) ?></span></td>
             <td><?= $p['attended'] ? '<span class="badge badge-completed">Present</span>' : '<span class="badge badge-cancelled">Not yet</span>' ?></td>
             <td class="text-nowrap">

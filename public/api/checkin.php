@@ -45,7 +45,7 @@ if (!$verify['ok'] || (int) $verify['data']['event_id'] !== $eventId) {
     exit;
 }
 
-// 2. GPS validation — must be within the configured radius of the venue (or campus default).
+// 2. GPS validation / must be within the configured radius of the venue (or campus default).
 $gps = GpsService::withinCampus(
     $lat, $lng,
     $event['latitude'] !== null ? (float) $event['latitude'] : null,
@@ -54,7 +54,7 @@ $gps = GpsService::withinCampus(
 
 $userId = Auth::id();
 
-// 3. Anti-duplicate — the UNIQUE(event_id, user_id) constraint is the real guarantee;
+// 3. Anti-duplicate / the UNIQUE(event_id, user_id) constraint is the real guarantee;
 //    we also pre-check so we can return a friendly message instead of a raw SQL error.
 $existing = $db->prepare('SELECT attendance_id FROM attendance_logs WHERE event_id = :e AND user_id = :u');
 $existing->execute(['e' => $eventId, 'u' => $userId]);

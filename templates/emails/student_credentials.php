@@ -1,6 +1,6 @@
 <?php require __DIR__ . '/_layout.php'; semas_email_open('Your SEMAS Student Account Credentials'); ?>
 <p>Dear <?= htmlspecialchars($full_name) ?>,</p>
-<p>Welcome to the Smart Education Management and Announcement System (SEMAS) at the University of Kigali. Your student account has been created by the Registrar's Office.</p>
+<p>Welcome to the Student Event Management and Announcement System (SEMAS) at the University of Kigali. Your student account has been created by the Registrar's Office.</p>
 <table style="width:100%;border-collapse:collapse;margin:16px 0;">
   <tr>
     <td style="padding:8px 12px;background:#F4F6FB;font-weight:bold;width:40%;">Registration Number</td>

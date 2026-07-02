@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $result = Announcement::create([
                     'title' => 'Umuganda Schedule Change / ' . $holidayDate,
                     'category' => 'General Notice', 'priority' => 'High', 'target_audience' => 'Weekend Students',
-                    'message' => "Umuganda falls on {$holidayDate}. Weekend classes are rescheduled: Morning session 13:30–16:30, Afternoon session 17:00–20:30.",
+                    'message' => "Umuganda falls on {$holidayDate}. Weekend classes are rescheduled: Morning session 13:30/16:30, Afternoon session 17:00/20:30.",
                     'status' => 'Published', 'recipients' => $weekendStudents,
                 ], $me, 'Head of Department', 'University-wide (Weekend students)', false);
             }

@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Student Event Management & Announcement System
+-- SEMAS / Student Event Management and Announcement System
 -- Full production database schema (MySQL 8+ / MariaDB 10.4+)
 -- University of Kigali
 -- =====================================================================
@@ -244,25 +244,6 @@ CREATE TABLE system_settings (
     updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-CREATE TABLE ai_notifications (
-    notification_id    INT AUTO_INCREMENT PRIMARY KEY,
-    title               VARCHAR(200) NOT NULL,
-    category            VARCHAR(50) NOT NULL,
-    priority            VARCHAR(20) NOT NULL,
-    target_audience     VARCHAR(50) NOT NULL,
-    event_date          DATE NULL,
-    venue               VARCHAR(150) NULL,
-    content             TEXT NOT NULL,
-    email_subject       VARCHAR(255) NOT NULL,
-    email_body          TEXT NOT NULL,
-    generated_by_prompt TEXT NOT NULL,
-    generated_by_user   INT NULL,
-    published_announcement_id INT NULL,
-    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (generated_by_user) REFERENCES users(user_id) ON DELETE SET NULL,
-    FOREIGN KEY (published_announcement_id) REFERENCES announcements(announcement_id) ON DELETE SET NULL
-) ENGINE=InnoDB;
-
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -288,8 +269,6 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
     ('password_reset_expiry_minutes', '30'),
     ('qr_default_expiry_hours', '6');
 
--- The default Administrator account is NOT inserted here with a hard-coded password hash
--- (a hand-written bcrypt hash would be fake and would not match any real password).
--- Instead, run public/install.php once after importing this schema: it creates the
--- Administrator account using PHP's own password_hash() function against a password
--- you choose at setup time, then deletes itself.
+-- The default Principal account is intentionally not inserted here with a
+-- hard-coded password hash. Create the first Principal account through a
+-- trusted provisioning process for your environment.

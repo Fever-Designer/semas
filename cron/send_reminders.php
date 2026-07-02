@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  * cron/send_reminders.php
  * --------------------------
- * Run this every 5–10 minutes via cron (Linux) or Task Scheduler (Windows/XAMPP):
+ * Run this every 5/10 minutes via cron (Linux) or Task Scheduler (Windows/XAMPP):
  *   php /path/to/semas/cron/send_reminders.php
  *
  * Sends three reminder stages per event, to every student with a 'Registered'
@@ -55,7 +55,7 @@ foreach ($events as $event) {
             );
             $already->execute(['eid' => $event['event_id'], 'uid' => $student['user_id'], 'stage' => $stageName]);
             if ($already->fetchColumn()) {
-                continue; // already sent — never duplicate
+                continue; // already sent / never duplicate
             }
 
             $label = ['24h' => 'in 24 hours', '1h' => 'in 1 hour', 'start' => 'starting now'][$stageName];

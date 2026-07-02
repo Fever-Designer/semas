@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Migration 006:
+-- SEMAS / Migration 006:
 --   1. Announcement recipient scoping (so a user only ever sees
 --      announcements actually addressed to them on the board)
 --   2. Sign In / Sign Out class attendance with one-scan-per-IP dedup
@@ -27,14 +27,14 @@ CREATE TABLE IF NOT EXISTS announcement_recipients (
 
 -- (No new target_audience ENUM value needed here: Administrator's "system-wide"
 --  announcements reuse the existing 'University Community' value, which already
---  resolves to every active user regardless of role — see AudienceResolver::resolve().)
+--  resolves to every active user regardless of role / see AudienceResolver::resolve().)
 
 -- ---------------------------------------------------------------------
 -- 2. Sign In / Sign Out class attendance with per-IP dedup.
 --    A student's first scan in a session = Sign In; a later scan = Sign
 --    Out. The UNIQUE key on (session_id, ip_address, attendance_type)
 --    means only ONE Sign In and ONE Sign Out can ever be recorded from a
---    given IP address per session — stops one device/IP from "scanning"
+--    given IP address per session / stops one device/IP from "scanning"
 --    multiple different accounts in for the same class.
 -- ---------------------------------------------------------------------
 ALTER TABLE class_attendance_logs
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS holidays (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 5. System Settings / University Branding — simple key-value store.
+-- 5. System Settings / University Branding / simple key-value store.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_key   VARCHAR(100) PRIMARY KEY,
@@ -117,7 +117,7 @@ ALTER TABLE class_sessions
     MODIFY COLUMN window_name ENUM('Day','Evening','WeekendMorning','WeekendAfternoon','UmugandaMorning','UmugandaAfternoon') NULL;
 
 -- ---------------------------------------------------------------------
--- 7. Invigilator (must be a lecturer) per module — used for both the
+-- 7. Invigilator (must be a lecturer) per module / used for both the
 --    module record and CAT/Exam scheduling.
 -- ---------------------------------------------------------------------
 ALTER TABLE modules
@@ -128,10 +128,10 @@ ALTER TABLE modules
 -- 8. Backfill announcement_recipients for historical announcements sent
 --    before this migration existed. Deliberately placed LAST: it's a
 --    best-effort convenience (anyone who has a notification tied to an
---    announcement counts as a recipient), not a structural requirement —
+--    announcement counts as a recipient), not a structural requirement /
 --    if it fails for any reason, every table/column change above it has
 --    already been committed and the app works correctly either way.
---    (Earlier version of this migration used the wrong column names —
+--    (Earlier version of this migration used the wrong column names /
 --    notifications.category and notifications.related_announcement_id are
 --    the real ones, not notifications.type / notifications.related_id.)
 -- ---------------------------------------------------------------------

@@ -35,7 +35,7 @@ final class Delivery
             Mailer::enqueueAnnouncementNotification($user, $announcement);
 
             if (!empty($user['phone_number'])) {
-                // WhatsApp — sent to every user who has a phone number
+                // WhatsApp / sent to every user who has a phone number
                 $waText = WhatsApp::formatAnnouncement(
                     $announcement['title'],
                     $announcement['message'],
@@ -44,7 +44,7 @@ final class Delivery
                 );
                 WhatsApp::send($user['phone_number'], $waText, (int) $user['user_id']);
 
-                // SMS — only when the sender checked "Also send via SMS" AND user opted in
+                // SMS / only when the sender checked "Also send via SMS" AND user opted in
                 if ($sendSms && !empty($user['sms_opt_in'])) {
                     Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
                 }

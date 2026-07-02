@@ -10,7 +10,7 @@ use PHPMailer\PHPMailer\Exception as PHPMailerException;
  * Thin wrapper around PHPMailer. Every send is logged to email_logs
  * regardless of success/failure, satisfying the "verification status
  * tracking" / audit requirement. Requires `composer require phpmailer/phpmailer`
- * and real SMTP credentials in .env — see .env.example.
+ * and real SMTP credentials in .env / see .env.example.
  */
 final class Mailer
 {
@@ -174,7 +174,7 @@ SQL
         });
     }
 
-    // --- Enqueue convenience wrappers (bulk sends — response returns before delivery) ---
+    // --- Enqueue convenience wrappers (bulk sends / response returns before delivery) ---
 
     public static function enqueueAnnouncementNotification(array $user, array $announcement): void
     {
@@ -189,7 +189,7 @@ SQL
 
     public static function enqueueSemesterCalendar(array $user, array $calendar): void
     {
-        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' — Starts ' . date('d M Y', strtotime($calendar['start_date']));
+        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' / Starts ' . date('d M Y', strtotime($calendar['start_date']));
         self::enqueue($user['email'], $subject, 'semester_calendar', [
             'full_name'     => $user['full_name'],
             'academic_year' => $calendar['academic_year'],
@@ -207,7 +207,7 @@ SQL
         $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
         $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
         $userId    = isset($user['user_id']) ? (int) $user['user_id'] : null;
-        self::enqueue($user['email'], 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' — ' . $schedule['module_title'], 'cat_exam_schedule', [
+        self::enqueue($user['email'], 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' / ' . $schedule['module_title'], 'cat_exam_schedule', [
             'full_name'        => $user['full_name'],
             'exam_type'        => $schedule['exam_type'],
             'module_title'     => $schedule['module_title'],
@@ -223,7 +223,7 @@ SQL
         if ($phone) {
             $smsDate = date('d M Y', strtotime($schedule['scheduled_date']));
             $smsTime = date('h:i A', strtotime($schedule['start_time'])) . '-' . date('h:i A', strtotime($schedule['end_time']));
-            $sms = "Hi {$user['full_name']}, your $typeWord for {$schedule['module_title']} is on $dayOfWeek, $smsDate at $smsTime. Room: {$schedule['room']}. Invigilator: {$schedule['invigilator_name']}. - SEMAS";
+            $sms = "Hi {$user['full_name']}, your $typeWord for {$schedule['module_title']} is on $dayOfWeek, $smsDate at $smsTime. Room: {$schedule['room']}. Invigilator: {$schedule['invigilator_name']}. / SEMAS";
             Sms::send($phone, mb_substr($sms, 0, 160), $userId);
         }
     }
@@ -234,7 +234,7 @@ SQL
         $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
         $userId    = isset($user['user_id']) ? (int) $user['user_id'] : null;
         $subject   = $finalDecision === 'Allowed'
-            ? 'Your ' . $typeWord . ' eligibility is approved — Entry Card ready'
+            ? 'Your ' . $typeWord . ' eligibility is approved / Entry Card ready'
             : 'Your ' . $typeWord . ' eligibility decision has been made';
 
         self::enqueue($user['email'], $subject, 'cat_exam_eligibility_decision', [
@@ -254,9 +254,9 @@ SQL
         if ($phone) {
             $smsDate = date('d M Y', strtotime($schedule['scheduled_date']));
             if ($finalDecision === 'Allowed') {
-                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is APPROVED. Log in to SEMAS to print your Entry Card. Good luck! - SEMAS";
+                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is APPROVED. Log in to SEMAS to print your Entry Card. Good luck! / SEMAS";
             } else {
-                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is NOT ALLOWED. Please visit your HoD office before $typeWord day ($smsDate). - SEMAS";
+                $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is NOT ALLOWED. Please visit your HoD office before $typeWord day ($smsDate). / SEMAS";
             }
             Sms::send($phone, mb_substr($sms, 0, 160), $userId);
         }
@@ -266,7 +266,7 @@ SQL
     {
         $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
         $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
-        self::enqueue($invigilator['email'], 'Invigilator Assignment: ' . $typeWord . ' — ' . $schedule['module_title'] . ' on ' . $dayOfWeek, 'invigilator_assigned', [
+        self::enqueue($invigilator['email'], 'Invigilator Assignment: ' . $typeWord . ' / ' . $schedule['module_title'] . ' on ' . $dayOfWeek, 'invigilator_assigned', [
             'full_name'      => $invigilator['full_name'],
             'exam_type'      => $schedule['exam_type'],
             'module_title'   => $schedule['module_title'],
@@ -286,7 +286,7 @@ SQL
             : '';
         self::enqueue(
             $student['email'],
-            'New Assignment: ' . $assignment['title'] . ' — ' . $module['module_title'],
+            'New Assignment: ' . $assignment['title'] . ' / ' . $module['module_title'],
             'assignment_notification',
             [
                 'full_name'          => $student['full_name'],
@@ -390,7 +390,7 @@ SQL
     {
         $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
         $typeWord  = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
-        $subject   = 'Invigilator Assignment: ' . $typeWord . ' — ' . $schedule['module_title'] . ' on ' . $dayOfWeek;
+        $subject   = 'Invigilator Assignment: ' . $typeWord . ' / ' . $schedule['module_title'] . ' on ' . $dayOfWeek;
         return self::send($invigilator['email'], $subject, 'invigilator_assigned', [
             'full_name'      => $invigilator['full_name'],
             'exam_type'      => $schedule['exam_type'],
@@ -411,7 +411,7 @@ SQL
     {
         $dayOfWeek  = date('l', strtotime($schedule['scheduled_date']));
         $typeWord   = $schedule['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
-        $subject    = 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' — ' . $schedule['module_title'];
+        $subject    = 'Your ' . $typeWord . ' is on ' . $dayOfWeek . ' / ' . $schedule['module_title'];
         return self::send($user['email'], $subject, 'cat_exam_schedule', [
             'full_name'        => $user['full_name'],
             'exam_type'        => $schedule['exam_type'],
@@ -431,7 +431,7 @@ SQL
      */
     public static function sendSemesterCalendar(array $user, array $calendar): bool
     {
-        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' — Starts ' . date('d M Y', strtotime($calendar['start_date']));
+        $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' / Starts ' . date('d M Y', strtotime($calendar['start_date']));
         return self::send($user['email'], $subject, 'semester_calendar', [
             'full_name'     => $user['full_name'],
             'academic_year' => $calendar['academic_year'],

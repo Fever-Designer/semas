@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Migration 015: Module attendance submission workflow.
+-- SEMAS / Migration 015: Module attendance submission workflow.
 --
 --   Before a CAT/Exam, the module's lecturer must formally "submit" the
 --   class attendance register (Sign In/Out logs) covering that exam's

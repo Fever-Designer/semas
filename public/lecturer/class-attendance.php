@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $endDt   = new DateTime($sessData['end_time'], $tz);
             if ($nowDt < $startDt || $nowDt > $endDt) {
                 flash('error', 'Manual marking is only allowed during the class session ('
-                    . $startDt->format('H:i') . ' – ' . $endDt->format('H:i') . ').');
+                    . $startDt->format('H:i') . ' / ' . $endDt->format('H:i') . ').');
                 redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
             }
             $signInTime  = $sessData['start_time'];
@@ -305,7 +305,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  FROM module_enrollments e WHERE e.module_id = :mid"
             )->execute(['sid' => $newSid, 'mid' => $moduleId]);
             AuditLog::record(Auth::id(), 'CREATE_SESSION_MANUAL', 'class_sessions', $newSid);
-            flash('success', 'Session added. Students pre-marked Absent — update individually as needed.');
+            flash('success', 'Session added. Students pre-marked Absent / update individually as needed.');
         } catch (PDOException $e) {
             flash('error', 'Session already exists for this date/window, or an error occurred.');
         }
@@ -333,7 +333,7 @@ $allModules->execute(['uid' => $me['user_id']]);
 $allModules = $allModules->fetchAll();
 
 // A lecturer can open the attendance register / take manual actions for any
-// of their Ongoing modules at any time — only the live QR "Sign" screen
+// of their Ongoing modules at any time / only the live QR "Sign" screen
 // (live-session.php / api/lecturer-session-qr.php) is restricted to the
 // module's actual scan window.
 $nowDt        = ClassAttendance::now();
@@ -449,8 +449,8 @@ function lec_att_status(?array $e, string $date, string $today): string
 }
 
 // ── Module-wide "All Numbers" summary ───────────────────────────────────────
-// Distinguishes WHY a student counts as Absent on a given session — missed
-// signing in entirely vs. signed in but never signed out — instead of just
+// Distinguishes WHY a student counts as Absent on a given session / missed
+// signing in entirely vs. signed in but never signed out / instead of just
 // the lumped 'A' shown in each grid cell.
 $summary = ['missed_signin' => 0, 'no_signout' => 0, 'present' => 0, 'late' => 0, 'students_at_risk' => 0];
 foreach ($students as $stu) {
@@ -503,7 +503,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <?php if ($window): ?>
       <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
     <?php elseif ($holidayToday && $holidayToday['holiday_type'] === 'Public Holiday'): ?>
-      <i class="bi bi-info-circle me-1"></i> Today is a <strong>Public Holiday</strong> — no attendance scanning today.
+      <i class="bi bi-info-circle me-1"></i> Today is a <strong>Public Holiday</strong> / no attendance scanning today.
     <?php else: ?>
       <i class="bi bi-clock-history me-1"></i> No active class session window right now.
     <?php endif; ?>
@@ -547,11 +547,11 @@ require __DIR__ . '/../partials/layout_top.php';
     <label class="form-label small fw-semibold mb-0 text-nowrap">My Module:</label>
     <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:420px;"
             onchange="this.form.submit()">
-      <option value="">— Choose a module —</option>
+      <option value="">/ Choose a module /</option>
       <?php foreach ($visibleModules as $am): ?>
         <option value="<?= (int) $am['module_id'] ?>"
                 <?= (int) $am['module_id'] === $moduleId ? 'selected' : '' ?>>
-          <?= e($am['module_title']) ?> &mdash; <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
+          <?= e($am['module_title']) ?> / <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
         </option>
       <?php endforeach; ?>
     </select>
@@ -571,7 +571,7 @@ require __DIR__ . '/../partials/layout_top.php';
   $lName    = $module['lecturer_name']  ?? 'TBA';
   $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName : $lName;
   $slot     = $module['weekend_slot'] ?? '';
-  $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend – {$slot}" : $module['session_type'];
+  $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slot}" : $module['session_type'];
 ?>
 
 <div class="semas-card p-3 mb-3">
@@ -587,7 +587,7 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
     <div class="col-sm-2">
       <span class="text-muted small">Room</span><br>
-      <strong><?= e($module['room_name'] ?? '—') ?></strong>
+      <strong><?= e($module['room_name'] ?? '/') ?></strong>
     </div>
     <div class="col-sm-2">
       <span class="text-muted small">Period</span><br>
@@ -614,7 +614,7 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
-<!-- All Numbers — module-wide summary -->
+<!-- All Numbers / module-wide summary -->
 <div class="semas-card p-3 mb-3">
   <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.05em;">All Numbers</p>
   <div class="row g-2 text-center" style="font-size:.8rem;">
@@ -653,14 +653,14 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 <?= $examType === 'CAT' ? 'border-bottom' : '' ?>">
       <div>
         <strong><?= e($examType) ?></strong>
-        <span class="text-muted small">— scheduled <?= e(date('d M Y', strtotime($row['scheduled_date']))) ?></span>
+        <span class="text-muted small">/ scheduled <?= e(date('d M Y', strtotime($row['scheduled_date']))) ?></span>
         <?php if ($row['sub_status'] === 'Pending'): ?>
-          <span class="badge badge-urgent ms-1">Submitted — Pending HOD Review</span>
-          <span class="text-muted small d-block">By <?= e($row['submitted_by_name'] ?? '—') ?> on <?= e(date('d M Y, h:i A', strtotime($row['submitted_at']))) ?></span>
+          <span class="badge badge-urgent ms-1">Submitted / Pending HOD Review</span>
+          <span class="text-muted small d-block">By <?= e($row['submitted_by_name'] ?? '/') ?> on <?= e(date('d M Y, h:i A', strtotime($row['submitted_at']))) ?></span>
         <?php elseif ($row['sub_status'] === 'Approved'): ?>
           <span class="badge badge-completed ms-1"><i class="bi bi-lock-fill me-1"></i>Approved &amp; Locked</span>
         <?php elseif ($row['sub_status'] === 'Rejected'): ?>
-          <span class="badge bg-secondary ms-1">Rejected — please correct and resubmit</span>
+          <span class="badge bg-secondary ms-1">Rejected / please correct and resubmit</span>
           <?php if ($row['decision_note']): ?><span class="text-muted small d-block">Reason: <?= e($row['decision_note']) ?></span><?php endif; ?>
         <?php else: ?>
           <span class="badge bg-secondary ms-1">Not submitted yet</span>
@@ -746,11 +746,11 @@ require __DIR__ . '/../partials/layout_top.php';
         ?>
         <tr>
           <td class="text-center text-muted"><?= $idx + 1 ?></td>
-          <td style="color:#666;"><?= e($stu['reg_number'] ?? '—') ?></td>
+          <td style="color:#666;"><?= e($stu['reg_number'] ?? '/') ?></td>
           <td style="position:sticky;left:0;z-index:1;background:#fff;font-weight:600;min-width:170px;">
             <?= e($stu['full_name']) ?>
           </td>
-          <td style="color:#666;"><?= e($stu['phone_number'] ?? '—') ?></td>
+          <td style="color:#666;"><?= e($stu['phone_number'] ?? '/') ?></td>
           <?php foreach ($sessions as $s):
             $sid   = (int) $s['session_id'];
             $isHol = isset($holidayMap[$s['session_date']]);
@@ -760,7 +760,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php if ($isHol): ?>
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
           <?php elseif ($fs === ''): ?>
-            <td class="text-center" style="color:#ddd;">—</td>
+            <td class="text-center" style="color:#ddd;">/</td>
           <?php elseif (!$entry || $entry['is_auto']): ?>
             <td class="text-center" style="background:#f8d7da;padding:3px 2px;">
               <div class="fw-bold" style="color:#721c24;">A</div>

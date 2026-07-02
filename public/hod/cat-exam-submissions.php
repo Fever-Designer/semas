@@ -145,7 +145,7 @@ if ($scheduleId) {
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
         $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        $subTitle = ($schedDetail['exam_type'] ?? '') . ' Attendance - Module: '
+        $subTitle = ($schedDetail['exam_type'] ?? '') . ' Attendance / Module: '
             . ($schedDetail['module_title'] ?? '') . ' | Room: ' . ($schedDetail['room'] ?? '')
             . ' | Date: ' . $examDate . ' | Session: ' . ($schedDetail['session_type'] ?? '');
         $sheet->setCellValue('A2', $subTitle);
@@ -221,7 +221,7 @@ if ($scheduleId) {
             </td>
             <td style="width:40%;vertical-align:top;text-align:right;">
               <strong>Room:</strong> <?= e($schedDetail['room']) ?><br>
-              <strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '—') ?>
+              <strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '/') ?>
             </td>
           </tr>
         </table>
@@ -229,14 +229,14 @@ if ($scheduleId) {
           <thead><tr><th>NO</th><th>Student Name</th><th>Reg No.</th><th>Sign In</th><th>Sign Out</th><th>Status</th></tr></thead>
           <tbody>
           <?php $i = 1; foreach ($rosterData as $r):
-            $sin   = $r['signin_time']  ? date('h:i A', strtotime($r['signin_time']))  : '—';
-            $sout  = $r['signout_time'] ? date('h:i A', strtotime($r['signout_time'])) : '—';
+            $sin   = $r['signin_time']  ? date('h:i A', strtotime($r['signin_time']))  : '/';
+            $sout  = $r['signout_time'] ? date('h:i A', strtotime($r['signout_time'])) : '/';
             $status = $r['signin_time'] ? ($r['signout_time'] ? ($r['signout_status'] ?? 'Present') : 'No Sign-Out') : 'Absent';
           ?>
             <tr>
               <td><?= $i++ ?></td>
               <td><?= e($r['full_name']) ?></td>
-              <td><?= e($r['reg_number'] ?? '—') ?></td>
+              <td><?= e($r['reg_number'] ?? '/') ?></td>
               <td><?= e($sin) ?></td>
               <td><?= e($sout) ?></td>
               <td class="<?= $status === 'Present' ? 'present' : ($status === 'Absent' ? 'absent' : 'late') ?>"><?= e($status) ?></td>
@@ -285,11 +285,11 @@ require __DIR__ . '/../partials/layout_top.php';
       <div class="semas-card p-3 mb-2">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
           <div style="flex:1;">
-            <!-- Left: Module / Date / Invigilator — Right: Room / Session -->
+            <!-- Left: Module / Date / Invigilator / Right: Room / Session -->
             <div class="d-flex justify-content-between flex-wrap gap-2 mb-1">
               <div>
                 <div class="small"><strong>Module:</strong> <?= e($schedDetail['module_title']) ?> <span class="badge bg-secondary ms-1"><?= e($schedDetail['exam_type']) ?></span></div>
-                <div class="small"><strong>Date:</strong> <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?> &middot; <?= e(date('h:i A', strtotime($schedDetail['start_time']))) ?>–<?= e(date('h:i A', strtotime($schedDetail['end_time']))) ?></div>
+                <div class="small"><strong>Date:</strong> <?= e(date('d F Y', strtotime($schedDetail['scheduled_date']))) ?> &middot; <?= e(date('h:i A', strtotime($schedDetail['start_time']))) ?>/<?= e(date('h:i A', strtotime($schedDetail['end_time']))) ?></div>
                 <div class="small"><strong>Invigilator:</strong> <?= e($schedDetail['invigilator_name']) ?></div>
                 <?php if ($schedDetail['submitted_at']): ?>
                   <div class="small text-muted">Submitted: <?= e(date('d M Y H:i', strtotime($schedDetail['submitted_at']))) ?></div>
@@ -297,7 +297,7 @@ require __DIR__ . '/../partials/layout_top.php';
               </div>
               <div class="text-end text-md-end">
                 <div class="small"><strong>Room:</strong> <?= e($schedDetail['room']) ?></div>
-                <div class="small"><strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '—') ?></div>
+                <div class="small"><strong>Session:</strong> <?= e($schedDetail['session_type'] ?? '/') ?></div>
               </div>
             </div>
             <?php if ($schedDetail['submission_notes']): ?>
@@ -346,9 +346,9 @@ require __DIR__ . '/../partials/layout_top.php';
                 <tr class="<?= $rowClass ?>">
                   <td><?= $i++ ?></td>
                   <td class="fw-semibold"><?= e($r['full_name']) ?></td>
-                  <td class="text-muted small"><?= e($r['reg_number'] ?? '—') ?></td>
-                  <td><?= $sin ? '<span class="badge badge-completed">' . e($sin) . '</span>' : '<span class="badge bg-secondary">—</span>' ?></td>
-                  <td><?= $sout ? '<span class="badge bg-primary">' . e($sout) . '</span>' : '<span class="badge bg-secondary">—</span>' ?></td>
+                  <td class="text-muted small"><?= e($r['reg_number'] ?? '/') ?></td>
+                  <td><?= $sin ? '<span class="badge badge-completed">' . e($sin) . '</span>' : '<span class="badge bg-secondary">/</span>' ?></td>
+                  <td><?= $sout ? '<span class="badge bg-primary">' . e($sout) . '</span>' : '<span class="badge bg-secondary">/</span>' ?></td>
                   <td>
                     <?php
                       if ($status === 'Present') {
@@ -432,5 +432,4 @@ document.querySelectorAll('.hist-toggle').forEach(function(btn) {
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>
-
 

@@ -1,10 +1,10 @@
 -- =====================================================================
--- SEMAS — Migration 008: Full Attendance Lifecycle
---   1. Module date bounds (start_date / end_date) — attendance is only
+-- SEMAS / Migration 008: Full Attendance Lifecycle
+--   1. Module date bounds (start_date / end_date) / attendance is only
 --      active within this window; set by HOD when creating the module.
 --   2. CAT/Exam schedule gains start_time + end_time so the invigilator
 --      can enforce the "no early sign-out within first 1 hour" rule.
---   3. cat_exam_attendance_logs — invigilator-controlled sign-in / sign-
+--   3. cat_exam_attendance_logs / invigilator-controlled sign-in / sign-
 --      out during CAT or Exam (students NEVER scan themselves during an
 --      assessment; all entries are made by the assigned invigilator).
 -- ---------------------------------------------------------------------
@@ -33,9 +33,9 @@ ALTER TABLE cat_exam_schedules
     ADD COLUMN end_time   TIME NULL AFTER start_time;
 
 -- ---------------------------------------------------------------------
--- 3. CAT/Exam attendance log — separate table from class_attendance_logs
+-- 3. CAT/Exam attendance log / separate table from class_attendance_logs
 --    because the rules, triggers, and slip generation are all different.
---    One Sign In and one Sign Out row per (schedule × student).
+--    One Sign In and one Sign Out row per (schedule �/ student).
 --    Only rows where BOTH Sign In AND Sign Out exist enable the student
 --    to generate an Evidence Slip.
 -- ---------------------------------------------------------------------

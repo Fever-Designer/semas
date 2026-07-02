@@ -1,4 +1,4 @@
-<?php require __DIR__ . '/_layout.php'; semas_email_open('New Assignment — ' . htmlspecialchars($module_title)); ?>
+<?php require __DIR__ . '/_layout.php'; semas_email_open('New Assignment / ' . htmlspecialchars($module_title)); ?>
 <p>Dear <?= htmlspecialchars($full_name) ?>,</p>
 <p>Your lecturer has posted a new assignment for your module. Please read the details carefully.</p>
 
@@ -37,5 +37,5 @@
   </tr>
 </table>
 
-<p>Best regards,<br>SEMAS — University of Kigali</p>
+<p>Best regards,<br>SEMAS / University of Kigali</p>
 <?php semas_email_close(); ?>

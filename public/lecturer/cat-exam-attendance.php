@@ -52,7 +52,7 @@ $histStmt = $db->prepare(
 $histStmt->execute(['lid' => $lecturer['lecturer_id']]);
 $histSchedules = $histStmt->fetchAll();
 
-// ── Group by Module — lecturer picks a module first, then sees all operations
+// ── Group by Module / lecturer picks a module first, then sees all operations
 // (Sign In, Sign Out, Submit) for that module's CAT/Exam sessions in one place.
 $moduleOptions = [];
 foreach (array_merge($activeSchedules, $histSchedules) as $s) {
@@ -63,7 +63,7 @@ foreach (array_merge($activeSchedules, $histSchedules) as $s) {
 }
 foreach ($activeSchedules as $s) { $moduleOptions[(int) $s['module_id']]['active_count']++; }
 foreach ($histSchedules as $s) { $moduleOptions[(int) $s['module_id']]['history_count']++; }
-// Only list modules that still have a scheduled (not-yet-submitted) CAT/Exam session —
+// Only list modules that still have a scheduled (not-yet-submitted) CAT/Exam session /
 // modules whose invigilation is fully completed/submitted drop off the picker.
 $moduleOptions = array_filter($moduleOptions, function ($mo) { return $mo['active_count'] > 0; });
 $moduleOptions = array_values($moduleOptions);
@@ -81,8 +81,8 @@ foreach (array_merge($activeSchedules, $histSchedules) as $s) {
     $sid = (int) $s['schedule_id'];
     $schedMeta[$sid] = [
         'time_label' => $s['start_time']
-            ? date('h:i A', strtotime($s['start_time'])) . '–' . date('h:i A', strtotime($s['end_time']))
-            : '—',
+            ? date('h:i A', strtotime($s['start_time'])) . '/' . date('h:i A', strtotime($s['end_time']))
+            : '/',
     ];
 }
 
@@ -90,7 +90,6 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">CAT / Exam Attendance</h4>
 <p class="text-muted small mb-4">
-  Choose a module to manage its CAT/Exam sign-in, sign-out, and submission in one place.
   Students cannot self-scan during CAT or Exam.
 </p>
 
@@ -107,7 +106,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
     <label class="form-label small fw-semibold mb-0 text-nowrap">Select Module:</label>
     <select name="module_id" class="form-select form-select-sm flex-grow-1" style="max-width:440px;" onchange="this.form.submit()">
-      <option value="">— Choose a module —</option>
+      <option value="">/ Choose a module /</option>
       <?php foreach ($moduleOptions as $mo): ?>
         <option value="<?= $mo['module_id'] ?>" <?= $mo['module_id'] === $selectedModuleId ? 'selected' : '' ?>>
           <?= e($mo['module_title']) ?> (<?= $mo['active_count'] ?> active, <?= $mo['history_count'] ?> submitted)
@@ -207,14 +206,14 @@ require __DIR__ . '/../partials/layout_top.php';
         <button class="nav-link active py-1"
                 onclick="showRosterTab(<?= $sid ?>, 'in_room', this)">
           <i class="bi bi-person-check me-1"></i>In Room
-          <span class="badge bg-secondary ms-1" id="inRoomCount-<?= $sid ?>">—</span>
+          <span class="badge bg-secondary ms-1" id="inRoomCount-<?= $sid ?>">/</span>
         </button>
       </li>
       <li class="nav-item">
         <button class="nav-link py-1"
                 onclick="showRosterTab(<?= $sid ?>, 'missed', this)">
           <i class="bi bi-person-x me-1"></i>Not Signed In
-          <span class="badge badge-urgent ms-1" id="missedCount-<?= $sid ?>">—</span>
+          <span class="badge badge-urgent ms-1" id="missedCount-<?= $sid ?>">/</span>
         </button>
       </li>
     </ul>
@@ -297,14 +296,14 @@ require __DIR__ . '/../partials/layout_top.php';
           <button class="nav-link active py-1"
                   onclick="showRosterTab(<?= $sid ?>, 'in_room', this)">
             <i class="bi bi-person-check me-1"></i>Signed In
-            <span class="badge bg-secondary ms-1" id="inRoomCount-<?= $sid ?>">—</span>
+            <span class="badge bg-secondary ms-1" id="inRoomCount-<?= $sid ?>">/</span>
           </button>
         </li>
         <li class="nav-item">
           <button class="nav-link py-1"
                   onclick="showRosterTab(<?= $sid ?>, 'missed', this)">
             <i class="bi bi-person-x me-1"></i>Not Signed In
-            <span class="badge badge-urgent ms-1" id="missedCount-<?= $sid ?>">—</span>
+            <span class="badge badge-urgent ms-1" id="missedCount-<?= $sid ?>">/</span>
           </button>
         </li>
       </ul>
@@ -377,7 +376,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div id="previewError" class="alert alert-danger small py-2 px-3" style="display:none;"></div>
         <div id="searchResultsList" style="display:none;">
-          <p class="small text-muted mb-1">Multiple students found — select one:</p>
+          <p class="small text-muted mb-1">Multiple students found / select one:</p>
           <div id="searchResultsBody"></div>
         </div>
       </div>
@@ -477,7 +476,7 @@ function renderRoster(sid) {
                 : '';
             return `<tr>
               <td class="fw-semibold">${esc(r.full_name)}</td>
-              <td class="text-muted">${esc(r.reg_number||'—')}</td>
+              <td class="text-muted">${esc(r.reg_number||'/')}</td>
               <td><span class="badge badge-completed">${sinTime}</span></td>
               <td>${soutCell}</td>
               <td>${actionCell}</td>
@@ -500,7 +499,7 @@ function renderRoster(sid) {
                 : '';
             return `<tr>
               <td class="fw-semibold">${esc(r.full_name)}</td>
-              <td class="text-muted">${esc(r.reg_number||'—')}</td>
+              <td class="text-muted">${esc(r.reg_number||'/')}</td>
               <td><span class="badge bg-secondary">Not signed in</span></td>
               <td>${actionCell}</td>
             </tr>`;
@@ -575,8 +574,8 @@ function populatePreview(data, sid, action) {
         if (!s) throw new Error('No student data in response.');
 
         document.getElementById('prevPhoto').src           = s.photo_url || '';
-        document.getElementById('prevName').textContent    = s.full_name || '—';
-        document.getElementById('prevReg').textContent     = 'Reg. No: ' + (s.reg_number || '—');
+        document.getElementById('prevName').textContent    = s.full_name || '/';
+        document.getElementById('prevReg').textContent     = 'Reg. No: ' + (s.reg_number || '/');
         document.getElementById('prevDept').textContent    = s.department || '';
         document.getElementById('prevEligBadge').innerHTML = data.eligible
             ? '<span class="badge badge-completed">Eligible</span>'
@@ -640,7 +639,7 @@ function showSearchPicker(sid, results, action) {
     document.getElementById('searchResultsList').style.display = '';
     document.getElementById('searchResultsBody').innerHTML = results.map(r =>
         `<div class="border rounded p-2 mb-1 small d-flex justify-content-between align-items-center gap-2">
-           <div><span class="fw-semibold">${esc(r.full_name)}</span> <span class="text-muted">${esc(r.reg_number||'—')}</span></div>
+           <div><span class="fw-semibold">${esc(r.full_name)}</span> <span class="text-muted">${esc(r.reg_number||'/')}</span></div>
            <button class="btn btn-sm btn-semas-gold py-0 px-2" style="font-size:.74rem;"
                    onclick="loadPreviewModal(${sid},${r.user_id},'${action}')">Select</button>
          </div>`
@@ -684,10 +683,10 @@ function openSubmitModal(sid, moduleTitle) {
         if (missing.length === 0) {
             html = '<div class="alert alert-success small">All signed-in students have signed out. Ready to submit.</div>';
         } else {
-            html = `<div class="alert alert-warning small mb-2">${missing.length} student(s) signed in without signing out — provide a reason for each:</div>`;
+            html = `<div class="alert alert-warning small mb-2">${missing.length} student(s) signed in without signing out / provide a reason for each:</div>`;
             missing.forEach(r => {
                 html += `<div class="border rounded p-2 mb-2 small">
-                  <div class="fw-semibold mb-1">${esc(r.full_name)} <span class="text-muted">(${esc(r.reg_number||'—')})</span></div>
+                  <div class="fw-semibold mb-1">${esc(r.full_name)} <span class="text-muted">(${esc(r.reg_number||'/')})</span></div>
                   <div class="row g-2">
                     <div class="col-5">
                       <select class="form-select form-select-sm missing-reason" data-uid="${r.user_id}" required>
@@ -827,7 +826,7 @@ function captureCardImage() {
 }
 
 function fmtTime(dt) {
-    if (!dt) return '—';
+    if (!dt) return '/';
     try { return new Date(dt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); }
     catch { return dt; }
 }

@@ -6,7 +6,7 @@ declare(strict_types=1);
  * -----------
  * The submitter's user_id IS stored (suggestions.submitted_by_user_id) so
  * abuse can be traced administratively/legally if ever required, but no
- * method on this class — and no query anywhere else in the codebase —
+ * method on this class / and no query anywhere else in the codebase /
  * selects that column for display. adminList()/adminFind() explicitly
  * project only the columns the spec allows an admin to see.
  */
@@ -27,7 +27,7 @@ final class Suggestion
         return (int) $db->lastInsertId();
     }
 
-    /** Admin-safe listing — NEVER includes submitted_by_user_id. */
+    /** Admin-safe listing / NEVER includes submitted_by_user_id. */
     public static function adminList(?int $scopeDepartmentId = null, string $viewerRole = ''): array
     {
         $db = Database::connection();
@@ -61,7 +61,7 @@ final class Suggestion
         return $stmt->fetchAll();
     }
 
-    /** Admin-safe single lookup — NEVER includes submitted_by_user_id. */
+    /** Admin-safe single lookup / NEVER includes submitted_by_user_id. */
     public static function adminFind(int $suggestionId): ?array
     {
         $stmt = Database::connection()->prepare(

@@ -6,7 +6,7 @@ Auth::requireRole(['Principal']);
 /**
  * Pure-PHP SQL backup: SELECTs every table and writes plain INSERT
  * statements. No mysqldump/shell_exec dependency, since shared hosting
- * often disables shell access — at the cost of being slower and not
+ * often disables shell access / at the cost of being slower and not
  * including indexes/triggers. For a production-scale database, run
  * `mysqldump` directly on the server instead and skip this page.
  */
@@ -18,7 +18,7 @@ AuditLog::record(Auth::id(), 'SYSTEM_BACKUP_DOWNLOAD', 'system_settings', null);
 header('Content-Type: application/sql');
 header('Content-Disposition: attachment; filename="semas-backup-' . date('Y-m-d_His') . '.sql"');
 
-echo "-- SEMAS database backup — generated " . date('Y-m-d H:i:s') . "\n";
+echo "-- SEMAS database backup / generated " . date('Y-m-d H:i:s') . "\n";
 echo "SET FOREIGN_KEY_CHECKS=0;\n\n";
 
 foreach ($tables as $table) {

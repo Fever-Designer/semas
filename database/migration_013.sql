@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Migration 013: Email Queue
+-- SEMAS / Migration 013: Email Queue
 --   Adds email_queue table for async background email delivery.
 --   mysql -u root -p semas < database/migration_013.sql
 -- =====================================================================

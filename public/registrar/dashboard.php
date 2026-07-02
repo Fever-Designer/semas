@@ -128,8 +128,8 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php foreach ($recentStudents as $s): ?>
         <tr>
           <td><?= e($s['full_name']) ?></td>
-          <td><code><?= e($s['reg_number'] ?? '—') ?></code></td>
-          <td><?= e($s['department_name'] ?? '—') ?></td>
+          <td><code><?= e($s['reg_number'] ?? '/') ?></code></td>
+          <td><?= e($s['department_name'] ?? '/') ?></td>
           <td><span class="badge <?= $s['status'] === 'Active' ? 'badge-completed' : ($s['status'] === 'Pending' ? 'bg-warning text-dark' : 'bg-secondary') ?>"><?= e($s['status']) ?></span></td>
           <td><?= e(date('d M Y', strtotime($s['created_at']))) ?></td>
         </tr>

@@ -30,7 +30,7 @@ $modules->execute(['lec' => $lecturer['lecturer_id']]);
 $modules = $modules->fetchAll();
 $ongoing   = array_values(array_filter($modules, function ($m) { return $m['status'] === 'Ongoing'; }));
 
-// Today's CAT/Exam schedules where this lecturer is invigilator — keyed by module_id.
+// Today's CAT/Exam schedules where this lecturer is invigilator / keyed by module_id.
 $todaySchedules = [];
 $todayStmt = $db->prepare(
     "SELECT cs.schedule_id, cs.module_id, cs.exam_type, cs.start_time, cs.end_time, cs.room
@@ -48,7 +48,7 @@ function module_card(array $m, ?array $todaySchedule = null): void {
     $timeLabel = '';
     if ($todaySchedule && $todaySchedule['start_time']) {
         $timeLabel = date('h:i A', strtotime($todaySchedule['start_time']))
-            . '–' . date('h:i A', strtotime($todaySchedule['end_time']));
+            . '/' . date('h:i A', strtotime($todaySchedule['end_time']));
     }
 ?>
   <div class="col-md-4">
@@ -63,7 +63,7 @@ function module_card(array $m, ?array $todaySchedule = null): void {
         </div>
       </div>
       <p class="text-muted small mb-2">
-        <?= e($m['department_name'] ?? '—') ?> &middot; <?= e($m['session_type'] ?? 'Any session') ?><br>
+        <?= e($m['department_name'] ?? '/') ?> &middot; <?= e($m['session_type'] ?? 'Any session') ?><br>
         <?= (int) $m['student_count'] ?> student(s) registered<?= $m['room'] ? ' &middot; Room ' . e($m['room']) : '' ?>
       </p>
       <?php if ($m['cat_date'] || $m['exam_date']): ?>

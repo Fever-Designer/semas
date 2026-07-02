@@ -1,11 +1,11 @@
 -- =====================================================================
--- SEMAS — Migration 005: HOD becomes central academic authority
+-- SEMAS / Migration 005: HOD becomes central academic authority
 --   1. Modules: HOD-managed (room, CAT/Exam date, Ongoing/Completed status)
 --   2. Module enrollment (students register themselves)
 --   3. Assignments + submissions
 --   4. Announcements: new "Module Students" audience (Lecturer -> their
 --      module's registered students)
---   5. Drops the student-facing "scan a class QR" flow from migration_004 —
+--   5. Drops the student-facing "scan a class QR" flow from migration_004 /
 --      attendance is now fully lecturer-controlled (manual search or the
 --      lecturer scanning the STUDENT's personal QR), per product decision.
 --      class_sessions / class_attendance_logs tables are KEPT (still used,
@@ -48,7 +48,7 @@ ALTER TABLE modules
     ADD CONSTRAINT fk_modules_created_by FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL;
 
 -- ---------------------------------------------------------------------
--- 2. Module enrollment — students register themselves; attendance,
+-- 2. Module enrollment / students register themselves; attendance,
 --    assignments, and lecturer announcements for a module are only ever
 --    visible to/sent to students who appear in this table.
 -- ---------------------------------------------------------------------

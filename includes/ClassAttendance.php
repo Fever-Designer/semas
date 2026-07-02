@@ -6,21 +6,21 @@ declare(strict_types=1);
  * ----------------
  * Class attendance runs on FIXED, real-world session windows (not
  * "whenever someone happens to click Start"), evaluated in Africa/Kigali
- * time — every method below builds its own DateTime in the Kigali zone
+ * time / every method below builds its own DateTime in the Kigali zone
  * explicitly so this never silently drifts if the server timezone changes.
  *
- * Both a student (self-scan, Sign In then later Sign Out — see
+ * Both a student (self-scan, Sign In then later Sign Out / see
  * api/student-attendance-scan.php) and a lecturer (manual roster search,
- * or scanning the student's personal QR — see api/class-scan-confirm.php)
+ * or scanning the student's personal QR / see api/class-scan-confirm.php)
  * can record an entry; both paths funnel through statusFor() below so the
  * Present/Late/Absent rule is always identical either way.
  *
- *   Day Session:             08:00 – 11:30
- *   Evening Session:         18:00 – 20:00
- *   Weekend Morning Session: 08:30 – 14:00
- *   Weekend Afternoon:       14:30 – 20:30
+ *   Day Session:             08:00 / 11:30
+ *   Evening Session:         18:00 / 20:00
+ *   Weekend Morning Session: 08:30 / 14:00
+ *   Weekend Afternoon:       14:30 / 20:30
  *
- * Weekday (Mon–Fri) -> Day/Evening windows apply.
+ * Weekday (Mon/Fri) -> Day/Evening windows apply.
  * Weekend (Sat/Sun)  -> Weekend Morning/Afternoon windows apply, UNLESS
  * today is a registered Umuganda date, in which case its own override
  * hours apply instead (see currentWindow()). A Public Holiday disables
@@ -49,7 +49,7 @@ final class ClassAttendance
         ];
     }
 
-    /** Today's holiday row (Cairo date), if any — for UI messaging on pages that show "no active window". */
+    /** Today's holiday row (Cairo date), if any / for UI messaging on pages that show "no active window". */
     public static function holidayToday(): ?array
     {
         $stmt = Database::connection()->prepare('SELECT * FROM holidays WHERE holiday_date = :d');
@@ -71,7 +71,7 @@ final class ClassAttendance
 
     /**
      * Returns the currently active session window, or null if no window is
-     * open right now (Cairo time) — including because today is a Public
+     * open right now (Cairo time) / including because today is a Public
      * Holiday (attendance is fully disabled) or because today is an
      * Umuganda day with its own override hours instead of the normal
      * weekend windows.
@@ -119,7 +119,7 @@ final class ClassAttendance
         return null;
     }
 
-    /** Human label for nav/page copy, e.g. "Day Session (08:00–11:30)". */
+    /** Human label for nav/page copy, e.g. "Day Session (08:00/11:30)". */
     public static function describeWindow(array $window): string
     {
         $labels = [
@@ -127,7 +127,7 @@ final class ClassAttendance
             'WeekendMorning' => 'Weekend Morning Session', 'WeekendAfternoon' => 'Weekend Afternoon Session',
             'UmugandaMorning' => 'Umuganda Morning Session', 'UmugandaAfternoon' => 'Umuganda Afternoon Session',
         ];
-        return ($labels[$window['name']] ?? $window['name']) . ' (' . $window['start']->format('H:i') . '–' . $window['end']->format('H:i') . ')';
+        return ($labels[$window['name']] ?? $window['name']) . ' (' . $window['start']->format('H:i') . '/' . $window['end']->format('H:i') . ')';
     }
 
     /** @return string 'Present'|'Late'|'Absent' based on minutes elapsed since the window's official start. */

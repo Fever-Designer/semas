@@ -76,8 +76,8 @@ require __DIR__ . '/../partials/layout_top.php';
     <h6 class="display-font mb-3">Email &amp; SMS</h6>
     <p class="text-muted small mb-2">Configured via <code>.env</code>:</p>
     <ul class="small text-muted">
-      <li>Mail host: <?= e(defined('MAIL_HOST') ? MAIL_HOST : '—') ?>, From: <?= e(defined('MAIL_FROM_ADDRESS') ? MAIL_FROM_ADDRESS : '—') ?></li>
-      <li>SMS provider: <?= e(defined('SMS_PROVIDER') ? SMS_PROVIDER : '—') ?></li>
+      <li>Mail host: <?= e(defined('MAIL_HOST') ? MAIL_HOST : '/') ?>, From: <?= e(defined('MAIL_FROM_ADDRESS') ? MAIL_FROM_ADDRESS : '/') ?></li>
+      <li>SMS provider: <?= e(defined('SMS_PROVIDER') ? SMS_PROVIDER : '/') ?></li>
     </ul>
   </div>
 

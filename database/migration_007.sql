@@ -1,8 +1,8 @@
 -- =====================================================================
--- SEMAS — Migration 007:
+-- SEMAS / Migration 007:
 --   1. Module-level static QR code secret (for classroom print QR)
 --   2. CAT/Exam schedule table (room + invigilator per module per exam type)
---   3. HOD manual student enrollment permission (no constraint needed —
+--   3. HOD manual student enrollment permission (no constraint needed /
 --      handled at application layer)
 -- ---------------------------------------------------------------------
 --   mysql -u root -p semas < database/migration_007.sql
@@ -20,8 +20,8 @@ ALTER TABLE modules
     ADD COLUMN module_qr_secret VARCHAR(64) NULL AFTER invigilator_id;
 
 -- ---------------------------------------------------------------------
--- 2. CAT/Exam scheduling metadata — room, invigilator, and the actual
---    exam date for that exam type.  One row per (module × exam_type).
+-- 2. CAT/Exam scheduling metadata / room, invigilator, and the actual
+--    exam date for that exam type.  One row per (module �/ exam_type).
 --    Multiple modules can share the same room (no UNIQUE on room).
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cat_exam_schedules (

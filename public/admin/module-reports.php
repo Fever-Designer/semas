@@ -108,7 +108,7 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module &amp; Attendance Reports</h4>
 <p class="text-muted small mb-3">
-  Ongoing modules only. Current session:
+  Current session:
   <?= $currentWindow ? e(ClassAttendance::describeWindow($currentWindow)) : 'No active session window' ?>
 </p>
 
@@ -148,7 +148,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <tbody>
         <?php foreach ($modules as $m):
             $rate = (int) $m['total_signins'] > 0 ? round((int) $m['attended_signins'] / (int) $m['total_signins'] * 100) : null;
-            $slotLabel = ($m['session_type'] === 'Weekend' && !empty($m['weekend_slot'])) ? 'Weekend - ' . $m['weekend_slot'] : $m['session_type'];
+            $slotLabel = ($m['session_type'] === 'Weekend' && !empty($m['weekend_slot'])) ? 'Weekend / ' . $m['weekend_slot'] : $m['session_type'];
         ?>
           <tr>
             <td class="fw-semibold"><?= e($m['module_title']) ?></td>

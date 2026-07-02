@@ -5,7 +5,7 @@ declare(strict_types=1);
  * WhatsApp
  * ---------
  * Sends WhatsApp messages via Vonage Messages API v1 using cURL.
- * No SDK required — plain JSON POST with HTTP Basic Auth.
+ * No SDK required / plain JSON POST with HTTP Basic Auth.
  *
  * Vonage Messages API v1 endpoint:
  *   POST https://api.nexmo.com/v1/messages
@@ -49,7 +49,7 @@ final class WhatsApp
     {
         $text  = "📢 *" . $title . "*\n\n";
         $text .= $body . "\n\n";
-        $text .= "— _" . $senderName . " · " . $universityName . "_\n";
+        $text .= "/ _" . $senderName . " · " . $universityName . "_\n";
         $text .= "_Sent via SEMAS_";
         return $text;
     }
@@ -60,7 +60,7 @@ final class WhatsApp
             return ['ok' => false, 'error' => 'Vonage WhatsApp credentials not configured (VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_WHATSAPP_FROM).'];
         }
 
-        // Strip leading '+' — Vonage Messages API expects plain E.164 digits
+        // Strip leading '+' / Vonage Messages API expects plain E.164 digits
         $to = ltrim($toPhone, '+');
 
         $payload = json_encode([

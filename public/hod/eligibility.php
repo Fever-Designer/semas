@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $expectedDate = $examType === 'CAT' ? ($modRow['cat_date'] ?? null) : ($modRow['exam_date'] ?? null);
 
             // A lecturer can only invigilate ONE room per day, regardless of
-            // time overlap — but several modules sharing that same
+            // time overlap / but several modules sharing that same
             // invigilator + day + room is fine (no conflict). Only check
             // against Ongoing modules; Completed modules' schedules are
             // historical and must not block new scheduling.
@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'room'             => $room,
                         'invigilator_name' => $invName,
                     ];
-                    $timeLabel = date('h:i A', strtotime($startTime)) . '–' . date('h:i A', strtotime($endTime));
+                    $timeLabel = date('h:i A', strtotime($startTime)) . '/' . date('h:i A', strtotime($endTime));
                     $notifTitle = "Your $examType is on $dayOfWeek / $modTitle";
                     $notifBody  = "$examType for $modTitle scheduled on $dayOfWeek, " . date('d M Y', strtotime($schedDate)) . " · Time: $timeLabel · Room: $room · Invigilator: $invName. Be prepared with all required documents.";
 
@@ -319,7 +319,7 @@ require __DIR__ . '/../partials/layout_top.php';
         Invigilator: <strong><?= e($currentSchedule['invigilator_name']) ?></strong> &middot;
         Date: <strong><?= e($currentSchedule['scheduled_date']) ?></strong>
         <?php if ($currentSchedule['start_time']): ?>
-          &middot; <strong><?= e(substr($currentSchedule['start_time'], 0, 5)) ?>–<?= e(substr($currentSchedule['end_time'], 0, 5)) ?></strong>
+          &middot; <strong><?= e(substr($currentSchedule['start_time'], 0, 5)) ?>/<?= e(substr($currentSchedule['end_time'], 0, 5)) ?></strong>
         <?php endif; ?>
         <button class="btn btn-sm btn-outline-dark ms-2" data-bs-toggle="collapse" data-bs-target="#scheduleForm">Edit</button>
       </div>
@@ -330,7 +330,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php $moduleDate = $examType === 'CAT' ? ($selectedModule['cat_date'] ?? '') : ($selectedModule['exam_date'] ?? ''); ?>
       <div class="alert alert-light border small py-2 mt-1 mb-2">
         <i class="bi bi-calendar-event me-1"></i>
-        Date is taken from the module: <strong><?= e($moduleDate ?: '—') ?></strong>
+        Date is taken from the module: <strong><?= e($moduleDate ?: '/') ?></strong>
       </div>
       <form method="post" class="row g-2">
         <?= csrf_field() ?>
@@ -388,7 +388,7 @@ require __DIR__ . '/../partials/layout_top.php';
             ?>
             <tr>
               <td><?= e($row['full_name']) ?></td>
-              <td><?= e($row['reg_number'] ?? '—') ?></td>
+              <td><?= e($row['reg_number'] ?? '/') ?></td>
               <td><strong><?= number_format($pct, 1) ?>%</strong></td>
               <td><?= (int) ($row['total_sessions'] ?? 0) ?></td>
               <td><?= (int) ($row['present_count'] ?? 0) ?></td>
@@ -437,7 +437,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php endif; // $selectedModule ?>
 
 <?php elseif ($viewMode === 'history'): ?>
-<!-- History: Completed modules — read-only view -->
+<!-- History: Completed modules / read-only view -->
 <?php if (!$completedModules): ?>
   <div class="semas-card p-4 text-center text-muted small">No completed modules with CAT/Exam dates found.</div>
 <?php else: ?>
@@ -447,7 +447,7 @@ require __DIR__ . '/../partials/layout_top.php';
   ?>
   <?php if (!$histModId): ?>
   <div class="semas-card p-3">
-    <p class="small text-muted mb-2">Completed modules (read-only — no actions available):</p>
+    <p class="small text-muted mb-2">Completed modules (read-only / no actions available):</p>
     <div class="row g-2">
       <?php foreach ($completedModules as $m): ?>
       <div class="col-md-4">
@@ -478,10 +478,10 @@ require __DIR__ . '/../partials/layout_top.php';
   <?php if ($histMod): ?>
   <div class="semas-card p-3 mb-3">
     <h6 class="display-font mb-1"><?= e($histMod['module_title']) ?> <span class="badge bg-secondary ms-1">Completed</span></h6>
-    <small class="text-muted"><?= e($histMod['department_name'] ?? '') ?> · <?= $histExamType ?> Date: <?= e($histExamType==='CAT' ? ($histMod['cat_date']??'—') : ($histMod['exam_date']??'—')) ?></small>
+    <small class="text-muted"><?= e($histMod['department_name'] ?? '') ?> · <?= $histExamType ?> Date: <?= e($histExamType==='CAT' ? ($histMod['cat_date']??'/') : ($histMod['exam_date']??'/')) ?></small>
   </div>
   <div class="semas-card p-3">
-    <div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-eye me-1"></i>History view — read only. No changes can be made to completed modules.</div>
+    <div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-eye me-1"></i>History view / read only. No changes can be made to completed modules.</div>
     <div class="table-responsive">
       <table class="table table-sm align-middle">
         <thead><tr><th>Student</th><th>Reg No.</th><th>Missed</th><th>System Decision</th><th>HOD Status</th><th>Final</th></tr></thead>
@@ -489,7 +489,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php foreach ($histList as $row): ?>
           <tr>
             <td><?= e($row['full_name']) ?></td>
-            <td><?= e($row['reg_number'] ?? '—') ?></td>
+            <td><?= e($row['reg_number'] ?? '/') ?></td>
             <td><?= (int) $row['absences_count'] ?></td>
             <td><span class="badge <?= $row['system_decision']==='Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['system_decision']) ?></span></td>
             <td><span class="badge bg-secondary"><?= e($row['hod_decision']) ?></span></td>

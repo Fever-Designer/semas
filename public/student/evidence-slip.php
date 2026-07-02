@@ -54,7 +54,7 @@ $examDate  = date('d F Y', strtotime($schedule['scheduled_date']));
 $sinTime   = date('h:i A', strtotime($sinRecord['recorded_at']));
 $soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
 $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
-$timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' – ' . date('h:i A', strtotime($schedule['end_time']));
+$timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' / ' . date('h:i A', strtotime($schedule['end_time']));
 $issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
 $uniName   = Settings::get('university_name', 'University of Kigali');
 $brandLogo = Settings::get('logo_path');
@@ -201,20 +201,20 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
   <div class="body">
     <table class="info">
       <tr><td class="label">Student Name</td>       <td class="value"><?= e($me['full_name']) ?></td></tr>
-      <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '—') ?></td></tr>
-      <tr><td class="label">Department</td>         <td class="value"><?= e($schedule['department_name'] ?? '—') ?></td></tr>
+      <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '/') ?></td></tr>
+      <tr><td class="label">Department</td>         <td class="value"><?= e($schedule['department_name'] ?? '/') ?></td></tr>
       <tr><td class="label">Module</td>             <td class="value"><?= e($schedule['module_title']) ?></td></tr>
-      <tr><td class="label">Examiner</td><td class="value"><?= e($schedule['lecturer_name'] ?? '—') ?></td></tr>
-      <tr><td class="label">Invigilator</td>        <td class="value"><?= e($schedule['invigilator_name'] ?? '—') ?></td></tr>
+      <tr><td class="label">Examiner</td><td class="value"><?= e($schedule['lecturer_name'] ?? '/') ?></td></tr>
+      <tr><td class="label">Invigilator</td>        <td class="value"><?= e($schedule['invigilator_name'] ?? '/') ?></td></tr>
       <tr><td class="label"><?= e($schedule['exam_type']) ?> Date</td><td class="value"><?= e($dayOfWeek . ', ' . $examDate) ?></td></tr>
       <tr><td class="label">Room</td>               <td class="value"><?= e($schedule['room']) ?></td></tr>
-      <tr><td class="label">Session</td>            <td class="value"><?= e($schedule['session_type'] ?? '—') ?></td></tr>
+      <tr><td class="label">Session</td>            <td class="value"><?= e($schedule['session_type'] ?? '/') ?></td></tr>
     </table>
 
     <!-- Invigilator Signature Block -->
     <div class="sig-section">
       <div class="sig-info">
-        <div class="name"><?= e($schedule['invigilator_name'] ?? '—') ?></div>
+        <div class="name"><?= e($schedule['invigilator_name'] ?? '/') ?></div>
         <div style="color:#6B7280;margin-top:2px;">Invigilator · <?= e($uniName) ?></div>
         <?php if ($schedule['submitted_at']): ?>
           <div style="color:#6B7280;margin-top:2px;">Submitted: <?= e(date('d M Y H:i', strtotime($schedule['submitted_at']))) ?></div>

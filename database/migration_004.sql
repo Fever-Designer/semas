@@ -1,13 +1,10 @@
 -- =====================================================================
--- SEMAS — Migration 004:
+-- SEMAS / Migration 004:
 --   1. Lecturer role + lecturers table
---   2. Modules + Class Attendance (QR/manual), replacing Polls & Surveys
+--   2. Modules + Class Attendance (QR/manual)
 --   3. Dean becomes university-wide (no longer faculty-scoped)
 --   4. HOD can announce to Lecturers in their department
--- ADDITIVE/DESTRUCTIVE NOTE: section 2 below DROPS the polls tables added
--- in migration_003.sql, per product decision to replace that feature with
--- Class Attendance. Back up `polls`, `poll_options`, `poll_votes` first if
--- you need to keep historical poll data.
+-- Section 2 also drops retired poll tables if they exist from older installs.
 --   mysql -u root -p semas < database/migration_004.sql
 -- =====================================================================
 
@@ -18,7 +15,7 @@ USE semas;
 -- ---------------------------------------------------------------------
 INSERT INTO roles (role_name) SELECT 'Lecturer' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'Lecturer');
 
--- Lightweight profile table — a Lecturer is still a row in `users` (role_id =
+-- Lightweight profile table / a Lecturer is still a row in `users` (role_id =
 -- Lecturer), but this table is where department assignment and any
 -- lecturer-specific fields live, mirroring how `departments.hod_user_id`
 -- and `faculties.dean_user_id` already tie HOD/Dean to their scope.
@@ -34,7 +31,7 @@ CREATE TABLE IF NOT EXISTS lecturers (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 2. Modules & Class Attendance (replaces Polls & Surveys)
+-- 2. Modules & Class Attendance
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS poll_votes;
 DROP TABLE IF EXISTS poll_options;
@@ -84,7 +81,7 @@ CREATE TABLE IF NOT EXISTS class_attendance_logs (
 -- 3. Dean becomes university-wide. faculties.dean_user_id is kept for
 --    record/display purposes (e.g. "Dean of School of Computing" on a
 --    business card) but application code no longer uses it to RESTRICT
---    what a Dean can see — Dean now sees/manages every student, full stop.
+--    what a Dean can see / Dean now sees/manages every student, full stop.
 --    No schema change needed for this; see admin/users.php and
 --    dean/announcements.php for the corresponding code change.
 -- ---------------------------------------------------------------------

@@ -1,5 +1,5 @@
 -- =====================================================================
--- SEMAS — Migration 012:
+-- SEMAS / Migration 012:
 --   Safety re-runs of migration_011 tables (IF NOT EXISTS guards)
 --   + Semester Calendar feature
 -- ---------------------------------------------------------------------
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS semester_calendars (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     academic_year VARCHAR(9)            NOT NULL,   -- e.g. '2025/2026'
     intake        ENUM('JAN','MAY','SEPT') NOT NULL,
-    semester_name VARCHAR(100)          NOT NULL,   -- e.g. 'Semester 1 – Jan 2026'
+    semester_name VARCHAR(100)          NOT NULL,   -- e.g. 'Semester 1 / Jan 2026'
     start_date    DATE                  NOT NULL,
     end_date      DATE                  NOT NULL,
     notes         TEXT                  NULL,

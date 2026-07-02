@@ -36,7 +36,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <div id="pane-qr">
   <div class="semas-card p-4 mx-auto text-center" style="max-width:420px;">
     <h6 class="display-font text-start mb-1"><?= e($user['full_name']) ?></h6>
-    <p class="text-muted small text-start mb-3">Reg. No. <?= e($user['reg_number'] ?? '—') ?></p>
+    <p class="text-muted small text-start mb-3">Reg. No. <?= e($user['reg_number'] ?? '/') ?></p>
     <div class="qr-frame">
       <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
       <div id="qr-canvas"><img src="<?= e($qrImage) ?>" alt="Student event QR code" width="200" height="200"></div>

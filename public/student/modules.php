@@ -177,7 +177,7 @@ $mineStmt = $db->prepare(
 $mineStmt->execute(['uid' => $me['user_id']]);
 $myOngoing = $mineStmt->fetchAll();
 
-// Completed + enrolled — eligible for CAT/Exam slip.
+// Completed + enrolled / eligible for CAT/Exam slip.
 $completedStmt = $db->prepare(
     "SELECT m.*, d.department_name, u.full_name AS lecturer_name
      FROM modules m

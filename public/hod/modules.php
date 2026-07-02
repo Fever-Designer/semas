@@ -341,16 +341,16 @@ require __DIR__ . '/../partials/layout_top.php';
         <tr>
           <td class="fw-semibold"><?= e($m['module_title']) ?></td>
           <td><?php
-            $stype = $m['session_type'] ?? '—';
+            $stype = $m['session_type'] ?? '/';
             $slot  = $m['weekend_slot'] ?? '';
-            echo e($stype === 'Weekend' && $slot ? "Weekend – $slot" : $stype);
+            echo e($stype === 'Weekend' && $slot ? "Weekend / $slot" : $stype);
           ?></td>
-          <td><?= e($m['department_name'] ?? '—') ?></td>
-          <td><?= e($m['lecturer_name'] ?? '—') ?></td>
-          <td><?= e($m['room_name'] ?? '—') ?></td>
-          <td><small><?= e($m['intakes_list'] ?? '—') ?></small></td>
-          <td><?= e($m['cat_date']  ?? '—') ?></td>
-          <td><?= e($m['exam_date'] ?? '—') ?></td>
+          <td><?= e($m['department_name'] ?? '/') ?></td>
+          <td><?= e($m['lecturer_name'] ?? '/') ?></td>
+          <td><?= e($m['room_name'] ?? '/') ?></td>
+          <td><small><?= e($m['intakes_list'] ?? '/') ?></small></td>
+          <td><?= e($m['cat_date']  ?? '/') ?></td>
+          <td><?= e($m['exam_date'] ?? '/') ?></td>
           <td><?= (int) $m['student_count'] ?></td>
           <td><span class="badge <?= $m['status']==='Ongoing'?'badge-completed':'bg-secondary' ?>"><?= e($m['status']) ?></span></td>
           <td class="text-nowrap">
@@ -490,10 +490,10 @@ require __DIR__ . '/../partials/layout_top.php';
             ?>
               <tr>
                 <td class="fw-semibold"><?= e($m['module_title']) ?></td>
-                <td><?= e($m['session_type'] ?? '—') ?></td>
-                <td><?= e($m['department_name'] ?? '—') ?></td>
-                <td><?= e($m['lecturer_name'] ?? '—') ?></td>
-                <td><?= e($m['room_name'] ?? '—') ?></td>
+                <td><?= e($m['session_type'] ?? '/') ?></td>
+                <td><?= e($m['department_name'] ?? '/') ?></td>
+                <td><?= e($m['lecturer_name'] ?? '/') ?></td>
+                <td><?= e($m['room_name'] ?? '/') ?></td>
                 <td><?= (int) $m['student_count'] ?></td>
                 <td class="text-nowrap">
                   <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#view-completed-<?= $mId ?>">
@@ -521,13 +521,13 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="modal-body small">
           <div class="row g-2">
-            <div class="col-6"><span class="text-muted">Session</span><br><strong><?= e($m['session_type'] ?? '—') ?></strong></div>
-            <div class="col-6"><span class="text-muted">Department</span><br><strong><?= e($m['department_name'] ?? '—') ?></strong></div>
-            <div class="col-6"><span class="text-muted">Lecturer</span><br><strong><?= e($m['lecturer_name'] ?? '—') ?></strong></div>
-            <div class="col-6"><span class="text-muted">Room</span><br><strong><?= e($m['room_name'] ?? '—') ?></strong></div>
-            <div class="col-6"><span class="text-muted">CAT</span><br><strong><?= e($m['cat_date'] ?? '—') ?></strong></div>
-            <div class="col-6"><span class="text-muted">Exam</span><br><strong><?= e($m['exam_date'] ?? '—') ?></strong></div>
-            <div class="col-12"><span class="text-muted">Intakes</span><br><strong><?= e($m['intakes_list'] ?? '—') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Session</span><br><strong><?= e($m['session_type'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Department</span><br><strong><?= e($m['department_name'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Lecturer</span><br><strong><?= e($m['lecturer_name'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Room</span><br><strong><?= e($m['room_name'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">CAT</span><br><strong><?= e($m['cat_date'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Exam</span><br><strong><?= e($m['exam_date'] ?? '/') ?></strong></div>
+            <div class="col-12"><span class="text-muted">Intakes</span><br><strong><?= e($m['intakes_list'] ?? '/') ?></strong></div>
             <div class="col-12"><span class="text-muted">Students</span><br><strong><?= (int) $m['student_count'] ?></strong></div>
           </div>
         </div>
@@ -659,7 +659,7 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
       <div class="col-md-6">
         <label class="form-label small fw-semibold">Room <span class="text-muted small">(available for selected session)</span></label>
         <select name="room_id" class="form-select form-select-sm module-room-select" id="room-<?= $uid ?>" data-current-room-id="<?= (int) ($currentRoomId ?? 0) ?>">
-          <option value="">— TBC —</option>
+          <option value="">/ TBC /</option>
           <?php
           $shownRoomIds = array_column($rooms, 'room_id');
           foreach ($rooms as $rm): ?>
@@ -795,7 +795,7 @@ function refreshRoomsForSession(select) {
     fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var options = ['<option value="">— TBC —</option>'];
+            var options = ['<option value="">/ TBC /</option>'];
             if (data.ok && Array.isArray(data.rooms)) {
                 data.rooms.forEach(function(room) {
                     var selected = String(room.room_id) === String(previousValue) ? ' selected' : '';
@@ -890,7 +890,7 @@ function lookupStudent(modId) {
             var cardHtml = '<img src="' + s.photo_url + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
                 + '<div><div class="fw-semibold">' + escHtml(s.full_name) + '</div>'
                 + '<div class="small text-muted">' + escHtml(s.reg_number) + '</div>'
-                + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '—' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
+                + '<div class="small text-muted">' + escHtml(s.department) + (s.intake !== '/' ? ' · ' + escHtml(s.intake) : '') + '</div></div>';
             if (!data.enrolled && data.ongoing_limit_reached) {
                 errEl.textContent = data.ongoing_limit_message || 'This student already has the maximum number of ongoing modules.';
                 errEl.style.display = '';

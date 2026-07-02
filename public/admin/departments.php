@@ -57,7 +57,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <h6 class="display-font mb-1"><?= e($d['department_name']) ?></h6>
           <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#edit-<?= (int) $d['department_id'] ?>"><i class="bi bi-pencil"></i></button>
         </div>
-        <p class="text-muted small mb-2"><?= e($d['faculty_name'] ?? '—') ?> &middot; Code: <?= e($d['department_code']) ?></p>
+        <p class="text-muted small mb-2"><?= e($d['faculty_name'] ?? '/') ?> &middot; Code: <?= e($d['department_code']) ?></p>
         <p class="small mb-0">HOD: <?= e($d['hod_name'] ?? 'Not assigned') ?></p>
         <p class="small text-muted mb-0"><?= (int) $d['student_count'] ?> students &middot; <?= (int) $d['lecturer_count'] ?> lecturers &middot; <?= (int) $d['module_count'] ?> modules</p>
       </div>

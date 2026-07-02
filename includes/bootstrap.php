@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 date_default_timezone_set('Africa/Kigali');
 
-require_once __DIR__ . '/../vendor/autoload.php';   // composer install required — see README
+require_once __DIR__ . '/../vendor/autoload.php';   // composer install required / see README
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/Database.php';
 require_once __DIR__ . '/../includes/AuditLog.php';
@@ -52,7 +52,7 @@ function csrf_verify(): void
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
         http_response_code(419);
         // AJAX/API endpoints set Content-Type: application/json before calling
-        // csrf_verify() — match that so fetch().then(r => r.json()) can parse
+        // csrf_verify() / match that so fetch().then(r => r.json()) can parse
         // the failure instead of throwing a SyntaxError that the caller's
         // .catch() swallows silently (leaving the UI stuck, e.g. a "Looking
         // up student…" spinner that never resolves).

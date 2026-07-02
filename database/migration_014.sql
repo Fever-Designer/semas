@@ -1,15 +1,15 @@
 -- =====================================================================
--- SEMAS — Migration 014: GPS proximity + device fingerprint for class
+-- SEMAS / Migration 014: GPS proximity + device fingerprint for class
 --   attendance scans.
 --
 --   1. Adds latitude/longitude/distance_meters/gps_passed so a student's
 --      Sign In / Sign Out QR scan can be checked against the configured
---      campus radius (same approach already used for event check-ins —
+--      campus radius (same approach already used for event check-ins /
 --      see attendance_logs / GpsService).
 --   2. Adds device_id (a client-persisted random token, not just IP) with
 --      a UNIQUE(session_id, device_id, attendance_type) key so one phone
 --      cannot sign multiple different student accounts in/out for the
---      same session — a stronger check than IP alone (shared campus WiFi
+--      same session / a stronger check than IP alone (shared campus WiFi
 --      makes IP-only dedup too coarse).
 --
 --   mysql -u root -p semas < database/migration_014.sql

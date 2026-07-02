@@ -56,7 +56,7 @@ $schedStmt = $db->prepare(
 $schedStmt->execute(['mid' => $moduleId, 'type' => $examType]);
 $sched = $schedStmt->fetch() ?: [];
 
-// Once the student has signed out, the Entry Slip is no longer available — only the Attendance Slip remains.
+// Once the student has signed out, the Entry Slip is no longer available / only the Attendance Slip remains.
 if (!empty($sched['schedule_id'])) {
     $soutStmt = $db->prepare(
         "SELECT 1 FROM cat_exam_attendance_logs WHERE schedule_id = :s AND user_id = :u AND attendance_type = 'Sign Out'"
@@ -72,10 +72,10 @@ if (!empty($sched['schedule_id'])) {
 }
 
 $examDate = !empty($sched['scheduled_date']) ? $sched['scheduled_date'] : ($examType === 'CAT' ? $module['cat_date'] : $module['exam_date']);
-$room = $sched['room'] ?? ($module['room'] ?? '—');
-$invigilatorName = $sched['invigilator_name'] ?? '—';
-$startTime = !empty($sched['start_time']) ? date('h:i A', strtotime($sched['start_time'])) : '—';
-$endTime   = !empty($sched['end_time'])   ? date('h:i A', strtotime($sched['end_time']))   : '—';
+$room = $sched['room'] ?? ($module['room'] ?? '/');
+$invigilatorName = $sched['invigilator_name'] ?? '/';
+$startTime = !empty($sched['start_time']) ? date('h:i A', strtotime($sched['start_time'])) : '/';
+$endTime   = !empty($sched['end_time'])   ? date('h:i A', strtotime($sched['end_time']))   : '/';
 
 $payload = json_encode(['module_id' => $moduleId, 'user_id' => $me['user_id'], 'exam_type' => $examType, 'exp' => time() + 31536000]);
 $key = hash('sha256', APP_KEY !== '' ? APP_KEY : 'fallback-key', true);
@@ -98,7 +98,7 @@ $qrPayload = json_encode([
     'exam_date' => $examDate ? date('l, d F Y', strtotime($examDate)) : '',
     'room' => $room,
     'status' => $eligibilityRow['final_decision'] ?? 'Allowed',
-    'time' => $startTime . ' – ' . $endTime,
+    'time' => $startTime . ' / ' . $endTime,
     'issued_at' => date('c'),
     'sig' => $b64u(hash_hmac('sha256', json_encode([
         'module_id' => $moduleId,
@@ -106,7 +106,7 @@ $qrPayload = json_encode([
         'exam_type' => $examType,
         'exam_date' => $examDate ? date('l, d F Y', strtotime($examDate)) : '',
         'room' => $room,
-        'time' => $startTime . ' – ' . $endTime,
+        'time' => $startTime . ' / ' . $endTime,
     ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
 ]);
 $qrSig = substr($b64u(hash_hmac('sha256', $moduleId . '|' . $me['user_id'] . '|' . $examType . '|' . $examDate, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 12);
@@ -195,20 +195,20 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
   </div>
   <div class="slip-title">
     <h2><?= e($examType) ?> Entry Slip</h2>
-    <div class="sub"><?= e($module['module_title']) ?> · <?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '—') ?></div>
+    <div class="sub"><?= e($module['module_title']) ?> · <?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '/') ?></div>
   </div>
 
   <div class="body">
     <table class="info">
       <tr><td class="label">Student Name</td><td class="value"><?= e($me['full_name']) ?></td></tr>
-      <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '—') ?></td></tr>
-      <tr><td class="label">Department</td><td class="value"><?= e($module['department_name'] ?? '—') ?></td></tr>
+      <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '/') ?></td></tr>
+      <tr><td class="label">Department</td><td class="value"><?= e($module['department_name'] ?? '/') ?></td></tr>
       <tr><td class="label">Module</td><td class="value"><?= e($module['module_title']) ?></td></tr>
       <tr><td class="label">Assessment Type</td><td class="value"><?= e($examType) ?></td></tr>
-      <tr><td class="label"><?= e($examType) ?> Date</td><td class="value"><?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '—') ?></td></tr>
-      <tr><td class="label">Session</td><td class="value"><?= e($module['session_type'] ?? '—') ?></td></tr>
+      <tr><td class="label"><?= e($examType) ?> Date</td><td class="value"><?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '/') ?></td></tr>
+      <tr><td class="label">Session</td><td class="value"><?= e($module['session_type'] ?? '/') ?></td></tr>
       <tr><td class="label">Room</td><td class="value"><?= e($room) ?></td></tr>
-      <tr><td class="label">Time</td><td class="value"><?= e($startTime) ?> – <?= e($endTime) ?></td></tr>
+      <tr><td class="label">Time</td><td class="value"><?= e($startTime) ?> / <?= e($endTime) ?></td></tr>
       <tr><td class="label">Approval Status</td><td class="value"><?= e($eligibilityRow['final_decision'] ?? 'Allowed') ?></td></tr>
     </table>
 
