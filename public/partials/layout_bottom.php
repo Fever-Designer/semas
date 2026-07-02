@@ -1,7 +1,10 @@
     </div>
   </div>
 </div>
-<style>@keyframes notifSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }</style>
+<style>
+@keyframes notifSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+@keyframes notifBellPulse { 0%, 100% { transform:scale(1); } 35% { transform:scale(1.16); } 70% { transform:scale(0.96); } }
+</style>
 <script>
 document.getElementById('sidebarToggle')?.addEventListener('click', function () {
   document.getElementById('semasSidebar')?.classList.toggle('open');
@@ -31,10 +34,10 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     }
     list.innerHTML = items.map(function (n) {
       const icon = categoryIcon[n.category] || 'bi-bell-fill';
-      return '<div class="notif-item" data-id="' + n.notification_id + '">' +
+      const unreadClass = Number(n.is_read) === 0 ? ' unread' : '';
+      return '<div class="notif-item' + unreadClass + '" data-id="' + n.notification_id + '">' +
         '<div class="d-flex justify-content-between align-items-start">' +
         '<div class="fw-semibold"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(n.title) + '</div>' +
-        '<a href="#" class="notif-del-btn text-danger ms-2 flex-shrink-0" title="Delete"><i class="bi bi-trash"></i></a>' +
         '</div>' +
         '<div class="text-muted" style="font-size:0.78rem;">' + escapeHtml(n.body || '') + '</div>' +
         '<div class="text-muted" style="font-size:0.68rem;">' + n.created_at + '</div>' +
@@ -76,6 +79,13 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     }, 6000);
   }
 
+  function pulseBell() {
+    bell.classList.remove('notif-live-pulse');
+    void bell.offsetWidth;
+    bell.classList.add('notif-live-pulse');
+    setTimeout(function () { bell.classList.remove('notif-live-pulse'); }, 900);
+  }
+
   function loadNotifications() {
     fetch(APP_URL + '/api/notifications.php?action=list')
       .then(function (r) { return r.json(); })
@@ -88,7 +98,10 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
           data.items
             .filter(function (n) { return n.notification_id > lastSeenId; })
             .reverse()
-            .forEach(popToast);
+            .forEach(function (n) {
+              popToast(n);
+              pulseBell();
+            });
         }
         if (data.items.length) {
           lastSeenId = Math.max.apply(null, data.items.map(function (n) { return n.notification_id; }));
@@ -110,32 +123,20 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     panel.classList.toggle('show');
     if (wasHidden) {
       loadNotifications();
-      // Mark all as read silently when panel opens
-      postAction('mark_all_read').then(function (d) { renderCount(d.unread_count); });
+      postAction('mark_all_read').then(function (d) {
+        renderCount(d.unread_count);
+        list.querySelectorAll('.notif-item.unread').forEach(function (item) {
+          item.classList.remove('unread');
+        });
+      });
     }
   });
   document.addEventListener('click', function (e) {
     if (!panel.contains(e.target) && e.target !== bell) panel.classList.remove('show');
   });
 
-  list.addEventListener('click', function (e) {
-    const item = e.target.closest('.notif-item');
-    if (!item) return;
-    const id = item.getAttribute('data-id');
-    if (e.target.closest('.notif-del-btn')) {
-      e.preventDefault();
-      postAction('delete', id).then(function (d) { renderCount(d.unread_count); loadNotifications(); });
-      return;
-    }
-    // Clicking any notification marks all as read and clears the list.
-    postAction('clear_all').then(function (d) {
-      renderCount(d.unread_count);
-      renderList([]);
-    });
-  });
-
   loadNotifications();
-  setInterval(loadNotifications, 8000);
+  setInterval(loadNotifications, 4000);
 })();
 
 // Navigation progress bar

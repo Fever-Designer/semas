@@ -283,6 +283,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Date and window are required.');
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
+        $modStatus = $db->prepare("SELECT status FROM modules WHERE module_id = :mid");
+        $modStatus->execute(['mid' => $moduleId]);
+        if ($modStatus->fetchColumn() !== 'Ongoing') {
+            flash('error', 'This module is Completed / class attendance can no longer be recorded.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
         $defaultTimes = [
             'Day' => ['08:00:00','13:00:00'], 'Evening' => ['17:00:00','21:00:00'],
             'WeekendMorning' => ['08:00:00','13:00:00'], 'WeekendAfternoon' => ['13:00:00','17:00:00'],
@@ -874,7 +880,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-body">
           <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
           <div class="input-group">
-            <input name="reg_number" id="manualRegNumber" class="form-control" autocomplete="off" required>
+            <input name="reg_number" id="manualRegNumber" class="form-control" inputmode="numeric" pattern="\d{10}" maxlength="10" autocomplete="off" required>
             <button class="btn btn-outline-dark" type="button" id="manualLookupBtn">
               <i class="bi bi-search me-1"></i> Search
             </button>
@@ -1004,7 +1010,10 @@ function escapeHtml(value) {
 }
 
 document.getElementById('manualLookupBtn')?.addEventListener('click', manualLookupStudent);
-document.getElementById('manualRegNumber')?.addEventListener('input', manualResetPreview);
+document.getElementById('manualRegNumber')?.addEventListener('input', function () {
+    this.value = this.value.replace(/\D+/g, '').slice(0, 10);
+    manualResetPreview();
+});
 document.getElementById('manualRegNumber')?.addEventListener('keydown', function (event) {
     if (event.key === 'Enter') {
         event.preventDefault();

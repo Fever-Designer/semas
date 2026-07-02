@@ -28,6 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', ucfirst($type) . ' date cannot be in the past.');
             redirect('/hod/holidays.php');
         }
+        if ($type === 'Umuganda' && $dateValue->format('N') !== '6') {
+            flash('error', 'Umuganda can only be set on a Saturday.');
+            redirect('/hod/holidays.php');
+        }
         if ($title === '') {
             flash('error', 'Title is required.');
             redirect('/hod/holidays.php');
@@ -108,11 +112,15 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="modal fade" id="newHolidayModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="post">
+      <form method="post" id="holidayForm" onsubmit="return validateHolidayForm(event)">
         <?= csrf_field() ?><input type="hidden" name="action" value="create">
         <div class="modal-header"><h6 class="modal-title display-font"><?= $isCoordinator ? 'Add Umuganda Date' : 'Add Holiday / Umuganda' ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" min="<?= e($today) ?>" required></div>
+          <div class="mb-2">
+            <label class="form-label small">Date</label>
+            <input type="date" name="holiday_date" id="holidayDate" class="form-control form-control-sm" min="<?= e($today) ?>" required>
+            <div id="dateFeedback" class="text-danger small mt-1" style="display:none;">Umuganda can only be set on a Saturday.</div>
+          </div>
           <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
           <?php if ($isCoordinator): ?>
             <input type="hidden" name="holiday_type" value="Umuganda">
@@ -141,9 +149,42 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 <script>
+var isCoordinatorView = <?= $isCoordinator ? 'true' : 'false' ?>;
+
 function toggleUmuganda() {
   document.getElementById('umugandaFields').style.display = document.getElementById('holidayType').value === 'Umuganda' ? '' : 'none';
+  checkHolidayDate();
 }
+
+function isUmugandaSelected() {
+  var typeField = document.getElementById('holidayType');
+  return isCoordinatorView || (typeField && typeField.value === 'Umuganda');
+}
+
+function isSaturday(dateStr) {
+  var parts = dateStr.split('-').map(Number);
+  var d = new Date(parts[0], parts[1] - 1, parts[2]);
+  return d.getDay() === 6;
+}
+
+function checkHolidayDate() {
+  var dateInput = document.getElementById('holidayDate');
+  var feedback = document.getElementById('dateFeedback');
+  var invalid = isUmugandaSelected() && dateInput.value && !isSaturday(dateInput.value);
+  feedback.style.display = invalid ? '' : 'none';
+  dateInput.setCustomValidity(invalid ? 'Umuganda can only be set on a Saturday.' : '');
+  return !invalid;
+}
+
+function validateHolidayForm(event) {
+  if (!checkHolidayDate()) {
+    event.preventDefault();
+    return false;
+  }
+  return true;
+}
+
+document.getElementById('holidayDate').addEventListener('change', checkHolidayDate);
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

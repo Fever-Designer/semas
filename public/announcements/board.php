@@ -2,11 +2,21 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['Principal', 'Dean', 'HOD', 'Lecturer', 'Student', 'Registrar', 'Coordinator']);
+Announcement::purgeExpired();
 
 $pageTitle = 'Announcement Board';
 $activeNav = 'announcements';
 $db = Database::connection();
 $me = Auth::user();
+
+if (Auth::role() === 'Student') {
+    Announcement::backfillForNewStudent(
+        (int) $me['user_id'],
+        !empty($me['department_id']) ? (int) $me['department_id'] : null,
+        $me['session_type'] ?? null,
+        !empty($me['year_of_study']) ? (int) $me['year_of_study'] : null
+    );
+}
 
 $search = trim($_GET['q'] ?? '');
 $category = $_GET['category'] ?? '';

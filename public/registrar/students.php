@@ -223,6 +223,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Registration number, full name and email are required.');
             redirect('/registrar/students.php');
         }
+        if (!preg_match('/^\d{10}$/', $regNumber)) {
+            flash('error', 'Registration number must be exactly 10 digits.');
+            redirect('/registrar/students.php');
+        }
         $contactErrors = [];
         validateRegistrarStudentContact($email, $phone, $contactErrors);
         if ($contactErrors) {
@@ -283,6 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'created_by' => $me['user_id'],
             ]);
             $newUserId = (int) $db->lastInsertId();
+            Announcement::backfillForNewStudent($newUserId, $deptId, $sessionType, $yearStudy);
             AuditLog::record(Auth::id(), 'STUDENT_CREATE', 'users', $newUserId);
 
             // Send credentials email
@@ -519,6 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         's' => $session, 'i' => $intake, 'y' => $year, 'cb' => $me['user_id'],
                     ]);
                     $newId = (int) $db->lastInsertId();
+                    Announcement::backfillForNewStudent($newId, $deptId, $session, $year);
                     // Send credentials email silently
                     try {
                         Mailer::send($email, 'Your SEMAS Login Credentials', 'student_credentials', [
@@ -795,7 +801,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Registration Number <span class="text-danger">*</span></label>
-              <input type="text" name="reg_number" id="fieldRegNumber" class="form-control" required>
+              <input type="text" name="reg_number" id="fieldRegNumber" class="form-control" inputmode="numeric" pattern="\d{10}" maxlength="10" required>
             </div>
             <div class="col-md-6">
               <label class="form-label small fw-semibold">Full Name <span class="text-danger">*</span></label>
@@ -875,8 +881,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-body">
           <div class="alert alert-info small">
             <strong>Required columns:</strong> <code>reg_number, full_name, email</code><br>
-            <strong>Optional:</strong> <code>phone, department_code, session_type, intake, year_of_study</code><br>
-            Only valid student records are accepted; notes, assignments, marksheets, and unsupported files will be rejected or skipped. Existing students matched by <code>reg_number</code> will be <strong>updated</strong>, not duplicated.
+            <strong>Optional:</strong> <code>phone, department_code, session_type, intake, year_of_study</code>
           </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">Upload File (CSV, XLS, XLSX)</label>
@@ -926,6 +931,9 @@ document.getElementById('fieldPhone').addEventListener('input', function() {
         digits = '0' + digits.slice(3);
     }
     this.value = digits.slice(0, 10);
+});
+document.getElementById('fieldRegNumber').addEventListener('input', function() {
+    this.value = this.value.replace(/\D+/g, '').slice(0, 10);
 });
 </script>
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

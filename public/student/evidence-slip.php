@@ -233,5 +233,7 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
   </div>
 </div>
 
+<div class="no-print" style="margin-top:12px;"><button onclick="window.print()">Print / Save as PDF</button></div>
+
 </body>
 </html>

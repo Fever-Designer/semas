@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['HOD', 'Coordinator']);
+Announcement::purgeExpired();
 
 $pageTitle = 'Academic Announcements';
 $activeNav = 'announcements';

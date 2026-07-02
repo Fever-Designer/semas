@@ -205,6 +205,9 @@ a:hover { color: var(--semas-gold); }
     font-size: 1.25rem;
     color: var(--semas-ink);
 }
+.notif-bell.notif-live-pulse {
+    animation: notifBellPulse 0.85s ease-out;
+}
 .notif-bell .notif-count {
     position: absolute;
     top: -6px;
@@ -239,8 +242,13 @@ a:hover { color: var(--semas-gold); }
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--semas-border);
     font-size: 0.85rem;
+    transition: background 0.2s ease;
 }
-.notif-item.unread { background: #FBF6EC; }
+.notif-item.unread {
+    background: #FBF6EC;
+    border-left: 3px solid var(--semas-gold);
+    padding-left: calc(1rem - 3px);
+}
 .notif-item:last-child { border-bottom: none; }
 
 /* ---------- Auth pages ---------- */

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['Dean']);
+Announcement::purgeExpired();
 
 $pageTitle = 'Events & Announcement Management';
 $activeNav = 'events';
@@ -11,18 +12,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     csrf_verify();
     $secret = QrService::generateSecret();
     $db->prepare(
-        'INSERT INTO events (title, description, venue, capacity, registration_deadline, waitlist_enabled, latitude, longitude, event_date, start_time, end_time, department_id, created_by, qr_secret, qr_expires_at, qr_rotation_seconds)
-         VALUES (:title, :desc, :venue, :capacity, :deadline, :waitlist, :lat, :lng, :date, :start, :end, :dept, :uid, :secret, DATE_ADD(NOW(), INTERVAL :ttl HOUR), :rotation)'
+        'INSERT INTO events (title, description, venue, capacity, registration_deadline, waitlist_enabled, event_date, start_time, end_time, department_id, created_by, qr_secret, qr_expires_at)
+         VALUES (:title, :desc, :venue, :capacity, :deadline, :waitlist, :date, :start, :end, :dept, :uid, :secret, DATE_ADD(NOW(), INTERVAL :ttl HOUR))'
     )->execute([
         'title' => $_POST['title'], 'desc' => $_POST['description'] ?: null, 'venue' => $_POST['venue'],
         'capacity' => $_POST['capacity'] ?: null,
         'deadline' => $_POST['registration_deadline'] ?: null,
         'waitlist' => isset($_POST['waitlist_enabled']) ? 1 : 0,
-        'lat' => $_POST['latitude'] ?: null, 'lng' => $_POST['longitude'] ?: null,
         'date' => $_POST['event_date'], 'start' => $_POST['start_time'], 'end' => $_POST['end_time'],
         'dept' => $_POST['department_id'] ?: null, 'uid' => Auth::id(), 'secret' => $secret,
         'ttl' => (int) env('QR_DEFAULT_EXPIRY_HOURS', 6) ?: 6,
-        'rotation' => (int) ($_POST['qr_rotation_seconds'] ?? 0),
     ]);
     $eventId = (int) $db->lastInsertId();
     AuditLog::record(Auth::id(), 'CREATE_EVENT', 'events', $eventId);
@@ -96,15 +95,12 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option><?php endforeach; ?>
         </select>
       </div>
-      <div class="col-md-3"><label class="form-label small">Venue Latitude</label><input name="latitude" class="form-control"></div>
-      <div class="col-md-3"><label class="form-label small">Venue Longitude</label><input name="longitude" class="form-control"></div>
-      <div class="col-md-2"><label class="form-label small">Capacity</label><input type="number" min="1" name="capacity" class="form-control"></div>
-      <div class="col-md-4"><label class="form-label small">Registration Deadline</label><input type="datetime-local" name="registration_deadline" class="form-control"></div>
-      <div class="col-md-3 d-flex align-items-end">
+      <div class="col-md-3"><label class="form-label small">Capacity</label><input type="number" min="1" name="capacity" class="form-control"></div>
+      <div class="col-md-5"><label class="form-label small">Registration Deadline</label><input type="datetime-local" name="registration_deadline" class="form-control"></div>
+      <div class="col-md-4 d-flex align-items-end">
         <div class="form-check"><input type="checkbox" name="waitlist_enabled" id="waitlist_enabled" class="form-check-input" value="1">
           <label class="form-check-label small" for="waitlist_enabled">Enable waiting list when full</label></div>
       </div>
-      <div class="col-md-3"><label class="form-label small">QR Rotation (seconds, 0 = off)</label><input type="number" min="0" name="qr_rotation_seconds" class="form-control" value="0"></div>
       <div class="col-12"><label class="form-label small">Description</label><textarea name="description" class="form-control" rows="2"></textarea></div>
     </div>
     <button class="btn btn-semas-gold mt-3"><i class="bi bi-qr-code me-1"></i> Save &amp; Generate QR Code</button>

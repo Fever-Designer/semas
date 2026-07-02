@@ -117,7 +117,7 @@ require __DIR__ . '/../partials/layout_top.php';
       </div>
     <?php endif; ?>
 
-    <?php if ($canReply): ?>
+    <?php if ($canReply && !$s['admin_reply']): ?>
     <div class="d-flex gap-2 flex-wrap mt-2">
       <button class="btn btn-sm btn-outline-dark" data-bs-toggle="collapse" data-bs-target="#reply-<?= (int) $s['suggestion_id'] ?>">Reply</button>
 
@@ -128,7 +128,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
         <input type="hidden" name="action" value="reply">
-        <textarea name="reply" class="form-control form-control-sm mb-2" rows="2"><?= e($s['admin_reply'] ?? '') ?></textarea>
+        <textarea name="reply" class="form-control form-control-sm mb-2" rows="2"></textarea>
         <button class="btn btn-sm btn-semas">Save Reply</button>
       </form>
     </div>

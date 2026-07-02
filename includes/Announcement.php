@@ -115,6 +115,68 @@ final class Announcement
         Mailer::dispatch();
     }
 
+    /** Permanently erases announcements older than 1 week from the Board (and, via
+     *  ON DELETE CASCADE, their announcement_recipients rows). Called lazily at the
+     *  top of the pages that list announcements, the same way Module::autoCompleteExpired()
+     *  sweeps expired modules / no real cron job required. */
+    public static function purgeExpired(): void
+    {
+        Database::connection()->exec(
+            "DELETE FROM announcements WHERE posted_at < NOW() - INTERVAL 7 DAY"
+        );
+    }
+
+    /** Gives a newly-created/imported student visibility of still-live (published, not
+     *  yet expired) announcements whose audience they now match / posted before they had
+     *  an account and so never got an announcement_recipients row through the normal send
+     *  flow. Backfills BOTH the Announcement Board listing and a bell notification for each,
+     *  so the student is actively alerted rather than having to think to check the Board. */
+    public static function backfillForNewStudent(int $userId, ?int $departmentId, ?string $sessionType, ?int $yearOfStudy): void
+    {
+        $db = Database::connection();
+
+        $facultyId = null;
+        if ($departmentId) {
+            $f = $db->prepare('SELECT faculty_id FROM departments WHERE department_id = :id');
+            $f->execute(['id' => $departmentId]);
+            $facultyId = $f->fetchColumn() ?: null;
+        }
+
+        $stmt = $db->prepare(
+            "SELECT announcement_id, title, message FROM announcements
+             WHERE status = 'Published' AND posted_at >= NOW() - INTERVAL 7 DAY
+               AND (
+                    target_audience = 'All Students'
+                 OR target_audience = 'University Community'
+                 OR (target_audience = 'First Year Students'  AND :year1 = 1)
+                 OR (target_audience = 'Final Year Students'  AND :year2 >= 4)
+                 OR (target_audience = 'Specific Department'  AND department_id = :dept)
+                 OR (target_audience = 'Specific Faculty'     AND faculty_id = :faculty)
+                 OR (target_audience = 'Day Students'         AND :session1 = 'Day')
+                 OR (target_audience = 'Evening Students'     AND :session2 = 'Evening')
+                 OR (target_audience = 'Weekend Students'     AND :session3 = 'Weekend')
+               )
+             ORDER BY posted_at ASC"
+        );
+        $stmt->execute([
+            'year1' => $yearOfStudy, 'year2' => $yearOfStudy,
+            'dept' => $departmentId, 'faculty' => $facultyId,
+            'session1' => $sessionType, 'session2' => $sessionType, 'session3' => $sessionType,
+        ]);
+        $announcements = $stmt->fetchAll();
+        if (!$announcements) {
+            return;
+        }
+
+        $ins = $db->prepare('INSERT IGNORE INTO announcement_recipients (announcement_id, user_id) VALUES (:aid, :uid)');
+        foreach ($announcements as $a) {
+            $ins->execute(['aid' => (int) $a['announcement_id'], 'uid' => $userId]);
+            if ($ins->rowCount() > 0) {
+                NotificationCenter::notify($userId, $a['title'], $a['message'], 'Announcement', (int) $a['announcement_id']);
+            }
+        }
+    }
+
     /** Records exactly who an announcement was sent to, so the Announcement Board can be scoped per-viewer. */
     private static function persistRecipients(int $announcementId, array $recipients): void
     {
