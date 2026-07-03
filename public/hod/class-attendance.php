@@ -77,9 +77,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/hod/class-attendance.php?module_id=' . $moduleId);
         }
         $defaultTimes = [
-            'Day' => ['08:00:00','13:00:00'], 'Evening' => ['17:00:00','21:00:00'],
-            'WeekendMorning' => ['08:00:00','13:00:00'], 'WeekendAfternoon' => ['13:00:00','17:00:00'],
-            'UmugandaMorning' => ['08:00:00','13:00:00'], 'UmugandaAfternoon' => ['13:00:00','17:00:00'],
+            'Day' => ['08:00:00','11:30:00'], 'Evening' => ['18:00:00','20:00:00'],
+            'WeekendMorning' => ['08:30:00','14:00:00'], 'WeekendAfternoon' => ['14:30:00','20:30:00'],
+            'UmugandaMorning' => ['13:30:00','16:30:00'], 'UmugandaAfternoon' => ['17:00:00','20:30:00'],
         ];
         [$defStart, $defEnd] = $defaultTimes[$windowName] ?? ['08:00:00','17:00:00'];
         try {

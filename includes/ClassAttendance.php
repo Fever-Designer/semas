@@ -27,15 +27,19 @@ declare(strict_types=1);
  * attendance entirely for the day.
  *
  * Within whichever window is currently active: first 10 minutes of the
- * window's official start -> Present; next 10 minutes -> Late; beyond
- * that, attendance can still be recorded (e.g. a lecturer marking an
- * explicit Absence) but a window must be open at all for the attendance
- * page to allow taking/recording attendance in the first place.
+ * window's official start -> Present; after that until the 25 minute
+ * cutoff -> Late; beyond that student sign-in scanning is closed. Student
+ * sign-out opens only after the official end time, and closes 15 minutes
+ * later. Lecturers may manage attendance from class start until that same
+ * 15-minute post-class grace period.
  */
 final class ClassAttendance
 {
     public const PRESENT_WINDOW_MINUTES = 10;
-    public const LATE_WINDOW_MINUTES = 20;
+    public const LATE_WINDOW_MINUTES = 25;
+    public const SIGN_IN_CLOSE_MINUTES = 25;
+    public const SIGN_OUT_AFTER_END_MINUTES = 15;
+    public const LECTURER_AFTER_END_MINUTES = 15;
     private const TZ = 'Africa/Kigali';
 
     /** @return array<string,array{start:string,end:string}> 24h HH:MM strings */
@@ -89,7 +93,7 @@ final class ClassAttendance
             return null; // No scanning allowed at all on a public holiday.
         }
 
-        if ($holiday && $holiday['holiday_type'] === 'Umuganda') {
+        if ($holiday && $holiday['holiday_type'] === 'Umuganda' && $now->format('N') === '6') {
             $candidates = [
                 'UmugandaMorning'   => ['start' => substr($holiday['override_morning_start'] ?? '13:30', 0, 5), 'end' => substr($holiday['override_morning_end'] ?? '16:30', 0, 5)],
                 'UmugandaAfternoon' => ['start' => substr($holiday['override_afternoon_start'] ?? '17:00', 0, 5), 'end' => substr($holiday['override_afternoon_end'] ?? '20:30', 0, 5)],
@@ -142,5 +146,33 @@ final class ClassAttendance
             return 'Late';
         }
         return 'Absent';
+    }
+
+    public static function canSelfSignIn(string $sessionStartDateTime): bool
+    {
+        $start = new DateTime($sessionStartDateTime, new DateTimeZone(self::TZ));
+        $elapsedMinutes = (self::now()->getTimestamp() - $start->getTimestamp()) / 60;
+        return $elapsedMinutes >= 0 && $elapsedMinutes <= self::SIGN_IN_CLOSE_MINUTES;
+    }
+
+    public static function canSelfScan(string $sessionStartDateTime): bool
+    {
+        return self::canSelfSignIn($sessionStartDateTime);
+    }
+
+    public static function isStudentSignOutOpen(string $sessionEndDateTime): bool
+    {
+        $end = new DateTime($sessionEndDateTime, new DateTimeZone(self::TZ));
+        $afterEndMinutes = (self::now()->getTimestamp() - $end->getTimestamp()) / 60;
+        return $afterEndMinutes >= 0 && $afterEndMinutes <= self::SIGN_OUT_AFTER_END_MINUTES;
+    }
+
+    public static function isLecturerAttendanceOpen(string $sessionStartDateTime, string $sessionEndDateTime): bool
+    {
+        $now = self::now();
+        $start = new DateTime($sessionStartDateTime, new DateTimeZone(self::TZ));
+        $end = new DateTime($sessionEndDateTime, new DateTimeZone(self::TZ));
+        $end->modify('+' . self::LECTURER_AFTER_END_MINUTES . ' minutes');
+        return $now >= $start && $now <= $end;
     }
 }

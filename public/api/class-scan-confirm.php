@@ -35,7 +35,7 @@ if ($session['status'] !== 'Open') {
     echo json_encode(['ok' => false, 'message' => 'This class session has already ended.']);
     exit;
 }
-if (ClassAttendance::now()->getTimestamp() > (new DateTime($session['end_time'], new DateTimeZone('Africa/Kigali')))->getTimestamp()) {
+if (!ClassAttendance::isLecturerAttendanceOpen((string) $session['start_time'], (string) $session['end_time'])) {
     $db->prepare("UPDATE class_sessions SET status='Closed' WHERE session_id=:id")->execute(['id' => $sessionId]);
     echo json_encode(['ok' => false, 'message' => 'This session\'s attendance window has closed.']);
     exit;

@@ -111,17 +111,18 @@ if ($action === 'open_session') {
     $session = $findStmt->fetch();
 
     if (!$session) {
-        $times = [
-            'Day' => ['08:00:00','13:00:00'], 'Evening' => ['17:00:00','21:00:00'],
-            'WeekendMorning' => ['08:00:00','13:00:00'], 'WeekendAfternoon' => ['13:00:00','17:00:00'],
-            'UmugandaMorning' => ['08:00:00','13:00:00'], 'UmugandaAfternoon' => ['13:00:00','17:00:00'],
-        ];
-        [$ds, $de] = $times[$windowName] ?? ['08:00:00','17:00:00'];
         try {
             $db->prepare(
                 "INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, status, created_by)
                  VALUES (:mid,:d,:win,:st,:en,'Open',:uid)"
-            )->execute(['mid'=>$moduleId,'d'=>$today,'win'=>$windowName,'st'=>"$today $ds",'en'=>"$today $de",'uid'=>$me['user_id']]);
+            )->execute([
+                'mid' => $moduleId,
+                'd' => $today,
+                'win' => $windowName,
+                'st' => $window['start']->format('Y-m-d H:i:s'),
+                'en' => $window['end']->format('Y-m-d H:i:s'),
+                'uid' => $me['user_id'],
+            ]);
             $newSid = (int) $db->lastInsertId();
             $db->prepare(
                 "INSERT IGNORE INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)

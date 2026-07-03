@@ -44,6 +44,23 @@ function lecturer_module_matches_window(array $module, ?array $window): bool
     return false;
 }
 
+function lecturer_module_has_open_attendance(PDO $db, array $module, string $today): bool
+{
+    $stmt = $db->prepare(
+        "SELECT start_time, end_time
+         FROM class_sessions
+         WHERE module_id = :mid AND session_date = :today AND status = 'Open'
+         ORDER BY end_time DESC, session_id DESC"
+    );
+    $stmt->execute(['mid' => $module['module_id'], 'today' => $today]);
+    foreach ($stmt->fetchAll() as $session) {
+        if (ClassAttendance::isLecturerAttendanceOpen((string) $session['start_time'], (string) $session['end_time'])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -92,9 +109,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $nowDt   = new DateTime('now', $tz);
             $startDt = new DateTime($sessData['start_time'], $tz);
             $endDt   = new DateTime($sessData['end_time'], $tz);
-            if ($nowDt < $startDt || $nowDt > $endDt) {
+            if (!ClassAttendance::isLecturerAttendanceOpen((string) $sessData['start_time'], (string) $sessData['end_time'])) {
+                $endGraceDt = clone $endDt;
+                $endGraceDt->modify('+' . ClassAttendance::LECTURER_AFTER_END_MINUTES . ' minutes');
                 flash('error', 'Manual marking is only allowed during the class session ('
-                    . $startDt->format('H:i') . ' / ' . $endDt->format('H:i') . ').');
+                    . $startDt->format('H:i') . ' / ' . $endGraceDt->format('H:i') . ').');
                 redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
             }
             $signInTime  = $sessData['start_time'];
@@ -149,15 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $window = ClassAttendance::currentWindow();
-        if (!$window) {
-            flash('error', 'Manual attendance is only available during an active class session.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
-
-        if (!lecturer_module_matches_window($modRow, $window)) {
-            flash('error', 'This module does not match the active session window.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
-        }
 
         $stuStmt = $db->prepare(
             "SELECT u.user_id, u.full_name
@@ -173,14 +183,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $todayForAttendance = ClassAttendance::now()->format('Y-m-d');
+        $session = null;
         $find = $db->prepare(
             'SELECT * FROM class_sessions
              WHERE module_id = :mid AND session_date = :today AND window_name = :win
              ORDER BY session_id DESC LIMIT 1'
         );
-        $find->execute(['mid' => $moduleId, 'today' => $todayForAttendance, 'win' => $window['name']]);
-        $session = $find->fetch();
-        if (!$session) {
+        if ($window && lecturer_module_matches_window($modRow, $window)) {
+            $find->execute(['mid' => $moduleId, 'today' => $todayForAttendance, 'win' => $window['name']]);
+            $session = $find->fetch();
+        } elseif ($window) {
+            flash('error', 'This module does not match the active session window.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+
+        if (!$session && $window) {
             try {
                 $db->prepare(
                     'INSERT INTO class_sessions (module_id, session_date, window_name, start_time, end_time, qr_secret, status, created_by)
@@ -205,6 +222,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $find->execute(['mid' => $moduleId, 'today' => $todayForAttendance, 'win' => $window['name']]);
             $session = $find->fetch();
+        }
+
+        if (!$session) {
+            $todaySessionStmt = $db->prepare(
+                'SELECT * FROM class_sessions
+                 WHERE module_id = :mid AND session_date = :today
+                 ORDER BY end_time DESC, session_id DESC'
+            );
+            $todaySessionStmt->execute(['mid' => $moduleId, 'today' => $todayForAttendance]);
+            foreach ($todaySessionStmt->fetchAll() as $candidate) {
+                if (ClassAttendance::isLecturerAttendanceOpen((string) $candidate['start_time'], (string) $candidate['end_time'])) {
+                    $session = $candidate;
+                    break;
+                }
+            }
         }
 
         if (!$session || $session['status'] !== 'Open') {
@@ -290,9 +322,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
         $defaultTimes = [
-            'Day' => ['08:00:00','13:00:00'], 'Evening' => ['17:00:00','21:00:00'],
-            'WeekendMorning' => ['08:00:00','13:00:00'], 'WeekendAfternoon' => ['13:00:00','17:00:00'],
-            'UmugandaMorning' => ['08:00:00','13:00:00'], 'UmugandaAfternoon' => ['13:00:00','17:00:00'],
+            'Day' => ['08:00:00','11:30:00'], 'Evening' => ['18:00:00','20:00:00'],
+            'WeekendMorning' => ['08:30:00','14:00:00'], 'WeekendAfternoon' => ['14:30:00','20:30:00'],
+            'UmugandaMorning' => ['13:30:00','16:30:00'], 'UmugandaAfternoon' => ['17:00:00','20:30:00'],
         ];
         [$defStart, $defEnd] = $defaultTimes[$windowName] ?? ['08:00:00','17:00:00'];
         try {
@@ -345,8 +377,9 @@ $allModules = $allModules->fetchAll();
 $nowDt        = ClassAttendance::now();
 $window       = ClassAttendance::currentWindow();
 $holidayToday = ClassAttendance::holidayToday();
-$visibleModules = array_values(array_filter($allModules, function ($module) use ($window) {
-    return lecturer_module_matches_window($module, $window);
+$visibleModules = array_values(array_filter($allModules, function ($module) use ($db, $window, $today) {
+    return lecturer_module_matches_window($module, $window)
+        || lecturer_module_has_open_attendance($db, $module, $today);
 }));
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);

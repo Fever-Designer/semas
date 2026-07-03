@@ -67,7 +67,7 @@ if ($existing->fetch()) {
 }
 
 if (!ClassAttendance::canSelfScan($session['start_time'])) {
-    echo json_encode(['ok' => false, 'message' => 'Scanning has closed for this session (more than 20 minutes have passed). Ask your lecturer to mark you manually if needed.']);
+    echo json_encode(['ok' => false, 'message' => 'Scanning has closed for this session (more than 25 minutes have passed). Ask your lecturer to mark you manually if needed.']);
     exit;
 }
 

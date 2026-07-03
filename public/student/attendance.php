@@ -8,7 +8,7 @@ $pageTitle = 'My Attendance';
 $activeNav = 'class-attendance';
 $db        = Database::connection();
 $me        = Auth::user();
-$today     = date('Y-m-d');
+$today     = ClassAttendance::now()->format('Y-m-d');
 $moduleIdParam = (int) ($_GET['module_id'] ?? 0);
 $tokenParam    = $_GET['t'] ?? ($_GET['qr_token'] ?? '');
 $qrDataParam   = $_GET['d'] ?? ($_GET['qr_data'] ?? '');
@@ -77,15 +77,57 @@ function stu_scan_window_open(?array $window): bool
     if (!$window) {
         return false;
     }
-    return ClassAttendance::statusFor($window['start']->format('Y-m-d H:i:s')) !== 'Absent';
+    return ClassAttendance::canSelfSignIn($window['start']->format('Y-m-d H:i:s'));
 }
 
-$scanWindowOpen = stu_scan_window_open($window);
+function stu_signout_session(PDO $db, array $module, int $userId, string $today): ?array
+{
+    $stmt = $db->prepare(
+        "SELECT cs.*
+         FROM class_sessions cs
+         JOIN class_attendance_logs si ON si.session_id = cs.session_id
+             AND si.user_id = :uid
+             AND si.attendance_type = 'Sign In'
+             AND si.verification_method IN ('QR','Manual')
+         LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id
+             AND so.user_id = :uid2
+             AND so.attendance_type = 'Sign Out'
+         WHERE cs.module_id = :mid
+           AND cs.session_date = :today
+           AND cs.status = 'Open'
+           AND so.attendance_id IS NULL
+         ORDER BY cs.end_time DESC, cs.session_id DESC
+         LIMIT 1"
+    );
+    $stmt->execute([
+        'uid' => $userId,
+        'uid2' => $userId,
+        'mid' => $module['module_id'],
+        'today' => $today,
+    ]);
+    $session = $stmt->fetch();
+    if (!$session || !ClassAttendance::isStudentSignOutOpen((string) $session['end_time'])) {
+        return null;
+    }
+    return $session;
+}
+
+$signoutSessions = [];
+foreach ($allModules as $am) {
+    $outSession = stu_signout_session($db, $am, (int) $me['user_id'], $today);
+    if ($outSession) {
+        $signoutSessions[(int) $am['module_id']] = $outSession;
+    }
+}
+
+$scanWindowOpen = stu_scan_window_open($window) || !empty($signoutSessions);
 
 // Only show modules whose session is in its live window right now / even a
 // registered Ongoing module stays hidden outside its actual class time.
-$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today) {
-    return stu_window_matches($am, $window) && stu_within_dates($am, $today) && $am['status'] === 'Ongoing';
+$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today, $signoutSessions) {
+    $moduleId = (int) $am['module_id'];
+    return ((stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$moduleId]))
+        && $am['status'] === 'Ongoing';
 }));
 
 // Selected module tab
@@ -105,6 +147,8 @@ require __DIR__ . '/../partials/layout_top.php';
       Today is a <strong><?= e($holiday['holiday_type']) ?></strong>: <?= e($holiday['title']) ?>. No attendance scanning today.
     <?php elseif ($window): ?>
       <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
+    <?php elseif ($signoutSessions): ?>
+      <i class="bi bi-box-arrow-right me-1"></i> Sign-out is open for your completed class session.
     <?php else: ?>
       <i class="bi bi-clock-history me-1"></i> No active class session window right now.
     <?php endif; ?>
@@ -154,7 +198,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php
         $amId = (int) $am['module_id'];
         $isActive = $amId === $selectedId;
-        $scanable = $scanWindowOpen && stu_window_matches($am, $window) && stu_within_dates($am, $today) && $am['status'] === 'Ongoing';
+        $scanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$amId])) && $am['status'] === 'Ongoing';
       ?>
       <a href="?module_id=<?= $amId ?>"
          class="btn btn-sm text-nowrap <?= $isActive ? 'btn-semas' : 'btn-outline-secondary' ?>"
@@ -162,6 +206,8 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= e($am['module_title']) ?>
         <?php if ($am['status'] === 'Completed'): ?>
           <span class="badge bg-secondary ms-1" style="font-size:.6rem;">Done</span>
+        <?php elseif ($scanable && isset($signoutSessions[$amId])): ?>
+          <span class="badge bg-primary ms-1" style="font-size:.6rem;">Sign Out</span>
         <?php elseif ($scanable): ?>
           <span class="badge bg-success ms-1" style="font-size:.6rem;">Live</span>
         <?php endif; ?>
@@ -238,7 +284,8 @@ $lName    = $module['lecturer_name']  ?? 'TBA';
 $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName : $lName;
 $slot     = $module['weekend_slot'] ?? '';
 $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slot}" : $module['session_type'];
-$isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_within_dates($module, $today) && $module['status'] === 'Ongoing';
+$hasOpenSignout = isset($signoutSessions[$moduleId]);
+$isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $window) && stu_within_dates($module, $today)) || $hasOpenSignout) && $module['status'] === 'Ongoing';
 ?>
 
 <!-- Module info + summary card -->
@@ -294,7 +341,7 @@ $isScanable = $scanWindowOpen && stu_window_matches($module, $window) && stu_wit
       <button class="btn btn-semas-gold btn-sm scan-btn"
               data-module-id="<?= $moduleId ?>"
               data-module-name="<?= e($module['module_title']) ?>">
-        <i class="bi bi-qr-code-scan me-1"></i> Scan / Check In
+        <i class="bi <?= $hasOpenSignout ? 'bi-box-arrow-right' : 'bi-qr-code-scan' ?> me-1"></i> <?= $hasOpenSignout ? 'Sign Out' : 'Scan / Check In' ?>
       </button>
     </div>
   <?php endif; ?>

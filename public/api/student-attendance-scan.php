@@ -233,6 +233,24 @@ if (!$module) {
     exit;
 }
 
+$hasTodayRealSignInStmt = $db->prepare(
+    "SELECT 1
+     FROM class_sessions cs
+     JOIN class_attendance_logs cal ON cal.session_id = cs.session_id
+     WHERE cs.module_id = :mid
+       AND cs.session_date = :today
+       AND cal.user_id = :uid
+       AND cal.attendance_type = 'Sign In'
+       AND cal.verification_method IN ('QR','Manual')
+     LIMIT 1"
+);
+$hasTodayRealSignInStmt->execute([
+    'mid' => $moduleId,
+    'today' => ClassAttendance::now()->format('Y-m-d'),
+    'uid' => $me['user_id'],
+]);
+$hasTodayRealSignIn = (bool) $hasTodayRealSignInStmt->fetchColumn();
+
 // Optional classroom-distance enforcement. If the assigned room has
 // coordinates, attendance must be near that room; otherwise campus GPS is
 // used as the fallback.
@@ -262,7 +280,7 @@ if (!empty($module['room_id'])) {
         }
     }
 }
-if ($isManual && !$roomHasCoordinates) {
+if ($isManual && !$roomHasCoordinates && !$hasTodayRealSignIn) {
     attendance_security_log($db, (int) $me['user_id'], $moduleId, $forcedSessId, $deviceHash, $ip, 'MANUAL_ATTENDANCE_NO_ROOM_GPS', 'Manual attendance blocked because classroom GPS coordinates are not configured.', $lat, $lng);
     echo json_encode(['ok' => false, 'message' => 'Manual attendance is unavailable until this classroom has QR/GPS coordinates configured. Please scan the QR code instead.']);
     exit;
@@ -285,7 +303,7 @@ $now    = ClassAttendance::now();
 $attendanceDate = $now->format('Y-m-d');
 
 // ── Determine whether we're in Sign In window or Sign Out window ──────────
-// Sign In  : session is active AND elapsed < 20 minutes.
+// Sign In  : session is active AND elapsed <= 25 minutes.
 // Sign Out : session has ended AND within 10 minutes after end.
 // Otherwise: block scan.
 
@@ -318,7 +336,7 @@ if ($forcedSessId !== null) {
         exit;
     }
     $sessionAlreadyExisted = true;
-    $allowSignOut          = true;  // dynamic QR is valid both for sign-in and sign-out
+    $allowSignOut          = ClassAttendance::isStudentSignOutOpen((string) $session['end_time']);
 } else {
     // ── Legacy / window-based path ────────────────────────────────────────
     $todayFind = $db->prepare(
@@ -330,9 +348,7 @@ if ($forcedSessId !== null) {
     $todaySession = $todayFind->fetch();
 
     if ($todaySession) {
-        $endDt    = new DateTime($todaySession['end_time'], new DateTimeZone('Africa/Kigali'));
-        $afterEnd = $now->getTimestamp() - $endDt->getTimestamp();
-        $allowSignOut = ($afterEnd >= 0 && $afterEnd <= 900);
+        $allowSignOut = ClassAttendance::isStudentSignOutOpen((string) $todaySession['end_time']);
     }
 
     if (!$window && !$allowSignOut) {
@@ -425,25 +441,15 @@ if (!$hasRealSignIn) {
         echo json_encode(['ok' => false, 'message' => 'Sign In requires scanning the QR code. Manual check-in is only available for Sign Out, near the end of the session.']);
         exit;
     }
-    if ($statusVal === 'Absent') {
-        echo json_encode(['ok' => false, 'message' => 'The sign-in window has closed (more than 20 minutes since class started). You have been marked Absent for this session.']);
+    if (!ClassAttendance::canSelfSignIn((string) $session['start_time'])) {
+        echo json_encode(['ok' => false, 'message' => 'The sign-in window has closed (more than 25 minutes since class started). You have been marked Absent for this session.']);
         exit;
     }
     $type   = 'Sign In';
     $status = $statusVal;
 } else {
     // Student already signed in / this must be a Sign Out
-    if ($isManual) {
-        // Manual sign-out is only allowed in the 40-to-20-minute window
-        // before the session ends (QR scanning may be congested as
-        // everyone rushes to leave).
-        $sessEndDt    = new DateTime((string) $session['end_time'], new DateTimeZone('Africa/Kigali'));
-        $minutesToEnd = ($sessEndDt->getTimestamp() - $now->getTimestamp()) / 60;
-        if ($minutesToEnd > 40 || $minutesToEnd < 20) {
-            echo json_encode(['ok' => false, 'message' => 'Manual sign-out is only available between 20 and 40 minutes before the session ends. Please scan the QR code instead.']);
-            exit;
-        }
-    } elseif (!$allowSignOut && $window) {
+    if (!$allowSignOut) {
         echo json_encode(['ok' => false, 'message' => 'Sign-out is only available within 15 minutes after the session ends. Your sign-in has been recorded.']);
         exit;
     }
