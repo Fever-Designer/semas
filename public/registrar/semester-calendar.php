@@ -153,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Notify every active student when the Registrar publishes or updates a calendar.
         $studentsStmt = $db->query(
-            "SELECT u.user_id, u.full_name, u.email FROM users u
+            "SELECT u.user_id, u.full_name, u.email, u.phone_number FROM users u
              JOIN roles r ON r.role_id = u.role_id
              WHERE r.role_name = 'Student' AND u.status = 'Active'"
         );
@@ -175,7 +175,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         Mailer::dispatch();
 
-        flash('success', 'Semester calendar saved. ' . count($students) . ' student(s) notified by email.');
+        flash('success', 'Semester calendar saved. ' . count($students) . ' student(s) notified by email and WhatsApp.');
+        redirect('/registrar/semester-calendar.php');
+    }
+
+    if ($action === 'delete') {
+        $calendarId = (int) ($_POST['calendar_id'] ?? 0);
+        $delStmt = $db->prepare('SELECT semester_name, academic_year, end_date FROM semester_calendars WHERE id = :id');
+        $delStmt->execute(['id' => $calendarId]);
+        $delRow = $delStmt->fetch();
+
+        if (!$delRow) {
+            flash('error', 'Semester calendar not found.');
+        } elseif ($delRow['end_date'] <= $today) {
+            flash('error', 'Completed semester calendars are history records and cannot be deleted.');
+        } else {
+            $db->prepare('DELETE FROM semester_calendars WHERE id = :id')->execute(['id' => $calendarId]);
+            AuditLog::record(Auth::id(), 'SEMESTER_CALENDAR_DELETE', 'semester_calendars', $calendarId, "year={$delRow['academic_year']};semester={$delRow['semester_name']}");
+            flash('success', 'Semester calendar "' . $delRow['semester_name'] . ' / ' . $delRow['academic_year'] . '" deleted.');
+        }
         redirect('/registrar/semester-calendar.php');
     }
 
@@ -267,10 +285,16 @@ require __DIR__ . '/../partials/layout_top.php';
           </td>
           <td><small class="text-muted"><?= $c['notes'] ? e(mb_substr($c['notes'], 0, 50)) . (mb_strlen($c['notes']) > 50 ? '…' : '') : '/' ?></small></td>
           <td><small><?= e($c['created_by_name'] ?? '/') ?></small></td>
-          <td>
+          <td class="text-nowrap">
             <button class="btn btn-sm btn-outline-dark"
               data-bs-toggle="modal" data-bs-target="#editCal-<?= $c['id'] ?>"
               title="Edit"><i class="bi bi-pencil"></i></button>
+            <form method="POST" class="d-inline" onsubmit="return confirm('Delete &quot;<?= e($c['semester_name']) ?> / <?= e($c['academic_year']) ?>&quot;? Students already notified will not be un-notified. This cannot be undone.');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="calendar_id" value="<?= (int) $c['id'] ?>">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+            </form>
           </td>
         </tr>
 

@@ -215,7 +215,7 @@ CREATE TABLE sms_logs (
     user_id        INT NULL,
     to_phone       VARCHAR(20) NOT NULL,
     message        VARCHAR(320) NOT NULL,
-    provider       ENUM('africastalking','twilio') NOT NULL,
+    provider       ENUM('africastalking','vonage','twilio') NOT NULL DEFAULT 'twilio',
     status         ENUM('Queued','Sent','Failed') NOT NULL DEFAULT 'Queued',
     error_message  TEXT NULL,
     sent_at        DATETIME NULL,

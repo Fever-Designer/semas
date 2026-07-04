@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'message'         => $_POST['message'],
             'status'          => ($_POST['save_as'] ?? '') === 'draft' ? 'Draft' : 'Published',
             'recipients'      => $recipients,
-        ], $me, 'Head of Department', $scopeLabel, isset($_POST['send_sms']));
+        ], $me, 'Head of Department', $scopeLabel);
 
         if (($_POST['save_as'] ?? '') === 'draft') {
             flash('success', 'Announcement saved as a draft.');
@@ -225,10 +225,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="col-12"><label class="form-label small">Message</label><textarea name="message" class="form-control" rows="3" required></textarea></div>
         <div class="col-md-6">
-          <div class="form-check">
-            <input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">
-            <label class="form-check-label small" for="send_sms">Also send via SMS</label>
-          </div>
+          <div class="small text-muted">Email and SMS are sent automatically to every recipient with a phone number.</div>
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">

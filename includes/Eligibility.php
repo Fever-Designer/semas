@@ -292,8 +292,9 @@ final class Eligibility
                 $userId
             );
         }
-        if (!empty($student['phone_number']) && ($student['sms_opt_in'] ?? 1)) {
+        if (!empty($student['phone_number'])) {
             Sms::send($student['phone_number'], 'SEMAS: ' . $body, $userId);
+            WhatsApp::send($student['phone_number'], 'SEMAS: ' . $body, $userId);
         }
     }
 }

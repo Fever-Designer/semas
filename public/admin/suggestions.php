@@ -48,11 +48,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
 
     }
-    redirect('/admin/suggestions.php');
+    $redirectTab = ($_POST['tab'] ?? '') === 'staff' ? '?tab=staff' : '';
+    redirect('/admin/suggestions.php' . $redirectTab);
 }
 
 $scopeDept = Auth::role() === 'HOD' ? $user['department_id'] : null;
 $suggestions = Suggestion::adminList($scopeDept, $viewerRole);
+$mySuggestions = !$isPrincipal ? Suggestion::mySubmissions((int) $user['user_id']) : [];
+
+// Principal sees both Student and Staff submissions mixed together / split them
+// into two tabs so it's clear who each suggestion came from. Other roles only
+// ever see Student submissions (adminList() already filters those out for them).
+$tab = ($_GET['tab'] ?? 'student') === 'staff' ? 'staff' : 'student';
+if ($isPrincipal) {
+    $studentSuggestions = array_values(array_filter($suggestions, fn($s) => $s['submitter_type'] === 'Student'));
+    $staffSuggestions   = array_values(array_filter($suggestions, fn($s) => $s['submitter_type'] === 'Staff'));
+    $suggestions = $tab === 'staff' ? $staffSuggestions : $studentSuggestions;
+}
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -76,6 +88,38 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
   </form>
 </div>
+
+<?php if ($mySuggestions): ?>
+<div class="semas-card p-3 mb-3">
+  <h6 class="display-font mb-3">My Suggestions to the Principal</h6>
+  <?php foreach ($mySuggestions as $ms): ?>
+    <div class="border-bottom py-2">
+      <div class="d-flex justify-content-between align-items-start">
+        <span class="badge badge-upcoming"><?= e($ms['category']) ?></span>
+        <span class="badge badge-<?= $ms['status'] === 'Resolved' ? 'completed' : ($ms['status'] === 'Archived' ? 'cancelled' : 'urgent') ?>"><?= e($ms['status']) ?></span>
+      </div>
+      <div class="small mt-1"><?= nl2br(e($ms['message'])) ?></div>
+      <?php if ($ms['admin_reply']): ?>
+        <div class="small mt-2 ps-2" style="border-left:3px solid var(--semas-gold);">
+          <strong>Reply<?= $ms['replied_by_name'] ? ' / ' . e($ms['replied_by_name']) . ' (' . e($ms['replied_by_role'] ?? '') . ')' : '' ?>:</strong>
+          <?= nl2br(e($ms['admin_reply'])) ?>
+        </div>
+      <?php endif; ?>
+      <?php if ($ms['status'] === 'Resolved'): ?>
+        <div class="text-muted small mt-1"><i class="bi bi-check-circle-fill text-success me-1"></i>Resolved<?= $ms['resolved_at'] ? ' · ' . e($ms['resolved_at']) : '' ?></div>
+      <?php endif; ?>
+      <div class="text-muted" style="font-size:0.68rem;"><?= e($ms['created_at']) ?></div>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php if ($isPrincipal): ?>
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link <?= $tab === 'student' ? 'active' : '' ?>" href="?tab=student">Students (<?= count($studentSuggestions) ?>)</a></li>
+  <li class="nav-item"><a class="nav-link <?= $tab === 'staff' ? 'active' : '' ?>" href="?tab=staff">Staff (<?= count($staffSuggestions) ?>)</a></li>
+</ul>
 <?php endif; ?>
 
 <?php if (!$suggestions): ?>
@@ -128,6 +172,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="suggestion_id" value="<?= (int) $s['suggestion_id'] ?>">
         <input type="hidden" name="action" value="reply">
+        <input type="hidden" name="tab" value="<?= e($tab) ?>">
         <textarea name="reply" class="form-control form-control-sm mb-2" rows="2"></textarea>
         <button class="btn btn-sm btn-semas">Save Reply</button>
       </form>

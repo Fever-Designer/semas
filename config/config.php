@@ -66,6 +66,11 @@ define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'University of Kigali / SEMAS'));
 // SMS / pick ONE provider in .env: vonage | africastalking
 // ---------------------------------------------------------------------
 define('SMS_PROVIDER', env('SMS_PROVIDER', 'vonage'));
+// Twilio (twilio.com) credentials
+define('TWILIO_SID',           env('TWILIO_SID',           ''));
+define('TWILIO_TOKEN',         env('TWILIO_TOKEN',         ''));
+define('TWILIO_FROM_NUMBER',   env('TWILIO_FROM_NUMBER',   ''));
+define('TWILIO_WHATSAPP_FROM', env('TWILIO_WHATSAPP_FROM', ''));   // e.g. whatsapp:+14155238886
 // Vonage (nexmo.com) credentials / shared by SMS and WhatsApp
 define('VONAGE_API_KEY',       env('VONAGE_API_KEY',       ''));
 define('VONAGE_API_SECRET',    env('VONAGE_API_SECRET',    ''));

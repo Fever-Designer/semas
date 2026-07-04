@@ -24,7 +24,9 @@ final class WhatsApp
      */
     public static function send(string $toPhone, string $message, ?int $userId = null): bool
     {
-        $result = self::sendViaVonage($toPhone, $message);
+        $result = TWILIO_WHATSAPP_FROM !== ''
+            ? self::sendViaTwilio($toPhone, $message)
+            : self::sendViaVonage($toPhone, $message);
 
         Database::connection()->prepare(
             'INSERT INTO whatsapp_logs (user_id, to_phone, message, status, error_message, sent_at, created_at)
@@ -52,6 +54,54 @@ final class WhatsApp
         $text .= "/ _" . $senderName . " · " . $universityName . "_\n";
         $text .= "_Sent via SEMAS_";
         return $text;
+    }
+
+    /**
+     * Sends via Twilio's WhatsApp API (same Messages.json endpoint used for SMS,
+     * with a "whatsapp:" prefix on To/From). TWILIO_WHATSAPP_FROM must be set to
+     * a WhatsApp-enabled Twilio number, e.g. "whatsapp:+14155238886" (sandbox).
+     * Note: the Twilio WhatsApp Sandbox only delivers to numbers that have
+     * joined the sandbox (sent "join <code>" to that number first).
+     */
+    private static function sendViaTwilio(string $toPhone, string $message): array
+    {
+        if (TWILIO_SID === '' || TWILIO_TOKEN === '' || TWILIO_WHATSAPP_FROM === '') {
+            return ['ok' => false, 'error' => 'Twilio WhatsApp credentials not configured (TWILIO_SID, TWILIO_TOKEN, TWILIO_WHATSAPP_FROM).'];
+        }
+
+        $to = Sms::normalizePhone($toPhone);
+
+        $ch = curl_init('https://api.twilio.com/2010-04-01/Accounts/' . TWILIO_SID . '/Messages.json');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query([
+                'To'   => 'whatsapp:' . $to,
+                'From' => TWILIO_WHATSAPP_FROM,
+                'Body' => $message,
+            ]),
+            CURLOPT_USERPWD    => TWILIO_SID . ':' . TWILIO_TOKEN,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'],
+            CURLOPT_TIMEOUT    => 15,
+        ]);
+        $response = curl_exec($ch);
+        $errno    = curl_errno($ch);
+        $err      = curl_error($ch);
+        curl_close($ch);
+
+        if ($errno) {
+            return ['ok' => false, 'error' => "cURL error: $err"];
+        }
+
+        $data   = json_decode((string) $response, true);
+        $status = $data['status'] ?? null;
+
+        if (in_array($status, ['queued', 'sending', 'sent', 'delivered', 'accepted'], true)) {
+            return ['ok' => true, 'error' => null];
+        }
+
+        $errText = $data['message'] ?? ('Twilio WhatsApp error: ' . (string) $response);
+        return ['ok' => false, 'error' => $errText];
     }
 
     private static function sendViaVonage(string $toPhone, string $message): array

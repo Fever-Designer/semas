@@ -26,10 +26,9 @@ final class Announcement
      * @param array $sender Full row from users (Auth::user()).
      * @param string $senderRole Auth::role() at send time.
      * @param string|null $scopeLabel Human-readable scope, e.g. "Department of Information Technology".
-     * @param bool $sendSms Whether to also fan out over SMS.
      * @return array{announcement_id:int, recipients:int}
      */
-    public static function create(array $data, array $sender, string $senderRole, ?string $scopeLabel, bool $sendSms = false): array
+    public static function create(array $data, array $sender, string $senderRole, ?string $scopeLabel): array
     {
         $db = Database::connection();
         $status = $data['status'] ?? 'Published';
@@ -71,15 +70,15 @@ final class Announcement
             // sends fall back to Delivery::announce's full AudienceResolver.
             if (isset($data['recipients']) && is_array($data['recipients'])) {
                 $recipients = $data['recipients'];
-                self::deliverTo($recipients, $row, $sendSms);
+                self::deliverTo($recipients, $row);
             } else {
-                $recipients = Delivery::announce($row, $sendSms);
+                $recipients = Delivery::announce($row);
             }
             $reached = count($recipients);
             self::persistRecipients($announcementId, $recipients);
 
-            $db->prepare('UPDATE announcements SET recipients_count = :c, sms_sent = :s WHERE announcement_id = :id')
-               ->execute(['c' => $reached, 's' => $sendSms ? 1 : 0, 'id' => $announcementId]);
+            $db->prepare('UPDATE announcements SET recipients_count = :c, sms_sent = 1 WHERE announcement_id = :id')
+               ->execute(['c' => $reached, 'id' => $announcementId]);
         }
 
         AuditLog::record((int) $sender['user_id'], 'CREATE_ANNOUNCEMENT', 'announcements', $announcementId,
@@ -89,7 +88,7 @@ final class Announcement
     }
 
     /** Deliver to an explicit, pre-scoped recipient list (used by HOD/Dean/Lecturer send pages). */
-    private static function deliverTo(array $recipients, array $announcement, bool $sendSms): void
+    private static function deliverTo(array $recipients, array $announcement): void
     {
         $uniName    = Settings::get('university_name', 'University of Kigali');
         $senderName = $announcement['sender_name'] ?? 'SEMAS';
@@ -107,9 +106,7 @@ final class Announcement
                 );
                 WhatsApp::send($user['phone_number'], $waText, (int) $user['user_id']);
 
-                if ($sendSms && !empty($user['sms_opt_in'])) {
-                    Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
-                }
+                Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
             }
         }
         Mailer::dispatch();

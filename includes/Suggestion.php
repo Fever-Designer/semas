@@ -34,7 +34,8 @@ final class Suggestion
         $sql = "SELECT s.suggestion_id, s.category, s.message, s.status, s.admin_reply,
                        s.replied_at, s.created_at, s.resolved_at, d.department_name,
                        ru.full_name AS replied_by_name, rr.role_name AS replied_by_role,
-                       resv.full_name AS resolved_by_name, resr.role_name AS resolved_by_role
+                       resv.full_name AS resolved_by_name, resr.role_name AS resolved_by_role,
+                       CASE WHEN sr.role_name = 'Student' THEN 'Student' ELSE 'Staff' END AS submitter_type
                 FROM suggestions s
                 LEFT JOIN departments d    ON d.department_id    = s.department_id
                 LEFT JOIN users ru         ON ru.user_id         = s.replied_by
@@ -58,6 +59,23 @@ final class Suggestion
         $sql .= ' ORDER BY s.created_at DESC';
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** A user's own past submissions (with reply/status), for the submitter to track their own progress. */
+    public static function mySubmissions(int $userId): array
+    {
+        $stmt = Database::connection()->prepare(
+            "SELECT s.suggestion_id, s.category, s.message, s.status, s.admin_reply,
+                    s.replied_at, s.created_at, s.resolved_at,
+                    ru.full_name AS replied_by_name, rr.role_name AS replied_by_role
+             FROM suggestions s
+             LEFT JOIN users ru ON ru.user_id = s.replied_by
+             LEFT JOIN roles rr ON rr.role_id = ru.role_id
+             WHERE s.submitted_by_user_id = :uid
+             ORDER BY s.created_at DESC"
+        );
+        $stmt->execute(['uid' => $userId]);
         return $stmt->fetchAll();
     }
 

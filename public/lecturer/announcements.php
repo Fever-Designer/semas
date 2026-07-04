@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'message'         => $_POST['message'],
         'status'          => 'Published',
         'recipients'      => $recipients,
-    ], $me, 'Lecturer', $module['module_title'], isset($_POST['send_sms']));
+    ], $me, 'Lecturer', $module['module_title']);
 
     flash('success', "Announcement sent to {$result['recipients']} student(s) registered in \"{$module['module_title']}\".");
     redirect('/lecturer/announcements.php?module_id=' . $moduleId);
@@ -99,8 +99,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="col-12"><label class="form-label small">Message</label><textarea name="message" class="form-control" rows="3" required></textarea></div>
         <div class="col-md-6">
-          <div class="form-check"><input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">
-            <label class="form-check-label small" for="send_sms">Also send via SMS</label></div>
+          <div class="small text-muted">Email and SMS are sent automatically to every recipient with a phone number.</div>
         </div>
       </div>
       <button class="btn btn-semas mt-3" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Send to Registered Students</button>

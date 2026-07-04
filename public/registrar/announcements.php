@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'faculty_id'      => null,
         'event_id'        => null,
         'recipients'      => $recipients,
-    ], $me, 'Registrar', $scopeLabel, (bool) ($_POST['send_sms'] ?? false));
+    ], $me, 'Registrar', $scopeLabel);
 
     flash('success', "Announcement sent to {$result['recipients']} student(s).");
     redirect('/registrar/announcements.php');
@@ -153,10 +153,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <textarea name="message" class="form-control" rows="6" required maxlength="5000"></textarea>
         </div>
 
-        <div class="form-check mb-3">
-          <input type="checkbox" name="send_sms" value="1" class="form-check-input" id="sendSms">
-          <label class="form-check-label small" for="sendSms">Also send via SMS (for students who opted in)</label>
-        </div>
+        <div class="small text-muted mb-3">Email and SMS are sent automatically to every recipient with a phone number.</div>
 
         <button type="submit" id="announcementSubmitBtn" class="btn btn-semas-gold w-100">
           <i class="bi bi-megaphone-fill me-1"></i> Send Announcement

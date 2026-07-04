@@ -4,18 +4,25 @@ declare(strict_types=1);
 /**
  * Sms
  * ----
- * Sends real SMS via Africa's Talking or Vonage (Messages API) using cURL
- * (no SDK dependency required). Select the provider with SMS_PROVIDER in
- * .env. Every send attempt is logged to sms_logs regardless of outcome.
+ * Sends real SMS via Twilio, Africa's Talking, or Vonage (Messages API)
+ * using cURL (no SDK dependency required). Select the provider with
+ * SMS_PROVIDER in .env. Every send attempt is logged to sms_logs
+ * regardless of outcome.
  */
 final class Sms
 {
     public static function send(string $toPhone, string $message, ?int $userId = null): bool
     {
+        $toPhone = self::normalizePhone($toPhone);
+
         $provider = SMS_PROVIDER;
-        $result = $provider === 'vonage'
-            ? self::sendViaVonage($toPhone, $message)
-            : self::sendViaAfricasTalking($toPhone, $message);
+        if ($provider === 'twilio') {
+            $result = self::sendViaTwilio($toPhone, $message);
+        } elseif ($provider === 'vonage') {
+            $result = self::sendViaVonage($toPhone, $message);
+        } else {
+            $result = self::sendViaAfricasTalking($toPhone, $message);
+        }
 
         $db = Database::connection();
         $db->prepare(
@@ -32,6 +39,68 @@ final class Sms
         ]);
 
         return $result['ok'];
+    }
+
+    /**
+     * Converts locally-formatted Rwandan numbers (e.g. "0781132919" or
+     * "781132919") to E.164 ("+250781132919") since Twilio/Vonage/Africa's
+     * Talking all reject local-format "To" numbers. Numbers already in
+     * E.164 form (leading "+") are left untouched.
+     */
+    public static function normalizePhone(string $phone): string
+    {
+        $phone = trim($phone);
+        if ($phone === '' || $phone[0] === '+') {
+            return $phone;
+        }
+
+        $digits = preg_replace('/\D/', '', $phone);
+        if (substr($digits, 0, 1) === '0') {
+            $digits = substr($digits, 1);
+        }
+        if (substr($digits, 0, 3) === '250') {
+            return '+' . $digits;
+        }
+        return '+250' . $digits;
+    }
+
+    private static function sendViaTwilio(string $toPhone, string $message): array
+    {
+        if (TWILIO_SID === '' || TWILIO_TOKEN === '' || TWILIO_FROM_NUMBER === '') {
+            return ['ok' => false, 'error' => 'Twilio credentials not configured.'];
+        }
+
+        $ch = curl_init("https://api.twilio.com/2010-04-01/Accounts/" . TWILIO_SID . "/Messages.json");
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query([
+                'To'   => $toPhone,
+                'From' => TWILIO_FROM_NUMBER,
+                'Body' => $message,
+            ]),
+            CURLOPT_USERPWD    => TWILIO_SID . ':' . TWILIO_TOKEN,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'],
+            CURLOPT_TIMEOUT    => 15,
+        ]);
+        $response = curl_exec($ch);
+        $errno    = curl_errno($ch);
+        $err      = curl_error($ch);
+        curl_close($ch);
+
+        if ($errno) {
+            return ['ok' => false, 'error' => "cURL error: $err"];
+        }
+
+        $data = json_decode((string) $response, true);
+        $status = $data['status'] ?? null;
+
+        if (in_array($status, ['queued', 'sending', 'sent', 'delivered', 'accepted'], true)) {
+            return ['ok' => true, 'error' => null];
+        }
+
+        $errText = $data['message'] ?? ('Twilio error: ' . (string) $response);
+        return ['ok' => false, 'error' => $errText];
     }
 
     private static function sendViaVonage(string $toPhone, string $message): array

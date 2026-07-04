@@ -55,7 +55,8 @@
       "Bash(/c/xampp/mysql/bin/mysql.exe -h 127.0.0.1 -u root semas -e \"SELECT * FROM module_enrollments WHERE user_id=10;\")",
       "Bash(echo \"delete result: $?\")",
       "Bash(/c/xampp/mysql/bin/mysql.exe -h 127.0.0.1 -u root semas -e \"DESCRIBE class_sessions;\")",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(php \"C:\\\\Users\\\\USER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-semas\\\\ab35388f-ab5e-485a-bf2e-04d0c237c9eb\\\\scratchpad\\\\test_whatsapp.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"

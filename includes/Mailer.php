@@ -190,6 +190,7 @@ SQL
     public static function enqueueSemesterCalendar(array $user, array $calendar): void
     {
         $subject = 'Semester Calendar: ' . $calendar['semester_name'] . ' / Starts ' . date('d M Y', strtotime($calendar['start_date']));
+        $userId  = isset($user['user_id']) ? (int) $user['user_id'] : null;
         self::enqueue($user['email'], $subject, 'semester_calendar', [
             'full_name'     => $user['full_name'],
             'academic_year' => $calendar['academic_year'],
@@ -199,7 +200,13 @@ SQL
             'end_date'      => $calendar['end_date'],
             'notes'         => $calendar['notes'] ?? '',
             'login_url'     => APP_URL . '/auth/login.php',
-        ], isset($user['user_id']) ? (int) $user['user_id'] : null);
+        ], $userId);
+
+        $phone = $user['phone_number'] ?? $user['phone'] ?? '';
+        if ($phone) {
+            $wa = "Hi {$user['full_name']}, {$calendar['semester_name']} ({$calendar['academic_year']}) starts on " . date('d M Y', strtotime($calendar['start_date'])) . " and ends on " . date('d M Y', strtotime($calendar['end_date'])) . ". Log in to SEMAS to register for your modules. / SEMAS";
+            WhatsApp::send($phone, $wa, $userId);
+        }
     }
 
     public static function enqueueCatExamSchedule(array $user, array $schedule): void
@@ -225,6 +232,7 @@ SQL
             $smsTime = date('h:i A', strtotime($schedule['start_time'])) . '-' . date('h:i A', strtotime($schedule['end_time']));
             $sms = "Hi {$user['full_name']}, your $typeWord for {$schedule['module_title']} is on $dayOfWeek, $smsDate at $smsTime. Room: {$schedule['room']}. Invigilator: {$schedule['invigilator_name']}. / SEMAS";
             Sms::send($phone, mb_substr($sms, 0, 160), $userId);
+            WhatsApp::send($phone, $sms, $userId);
         }
     }
 
@@ -259,6 +267,7 @@ SQL
                 $sms = "Hi {$user['full_name']}, your $typeWord eligibility for {$schedule['module_title']} is NOT ALLOWED. Please visit your HoD office before $typeWord day ($smsDate). / SEMAS";
             }
             Sms::send($phone, mb_substr($sms, 0, 160), $userId);
+            WhatsApp::send($phone, $sms, $userId);
         }
     }
 
@@ -284,6 +293,7 @@ SQL
         $attachmentUrl = !empty($assignment['attachment_path'])
             ? rtrim(APP_URL, '/') . '/' . ltrim($assignment['attachment_path'], '/')
             : '';
+        $userId = isset($student['user_id']) ? (int) $student['user_id'] : null;
         self::enqueue(
             $student['email'],
             'New Assignment: ' . $assignment['title'] . ' / ' . $module['module_title'],
@@ -298,8 +308,15 @@ SQL
                 'instructions'       => $assignment['instructions'] ?? '',
                 'attachment_url'     => $attachmentUrl,
             ],
-            isset($student['user_id']) ? (int) $student['user_id'] : null
+            $userId
         );
+
+        $phone = $student['phone_number'] ?? $student['phone'] ?? '';
+        if ($phone) {
+            $sms = "Hi {$student['full_name']}, new assignment \"{$assignment['title']}\" for {$module['module_title']} is due $deadlineFormatted. Log in to SEMAS for details. / SEMAS";
+            Sms::send($phone, mb_substr($sms, 0, 160), $userId);
+            WhatsApp::send($phone, $sms, $userId);
+        }
     }
 
     // --- Convenience wrappers for every email type listed in the spec ---

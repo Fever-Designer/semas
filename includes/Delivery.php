@@ -12,7 +12,7 @@ declare(strict_types=1);
 final class Delivery
 {
     /** @return array the list of recipient user rows actually reached */
-    public static function announce(array $announcement, bool $sendSms = false): array
+    public static function announce(array $announcement): array
     {
         $recipients = AudienceResolver::resolve(
             $announcement['target_audience'],
@@ -44,10 +44,8 @@ final class Delivery
                 );
                 WhatsApp::send($user['phone_number'], $waText, (int) $user['user_id']);
 
-                // SMS / only when the sender checked "Also send via SMS" AND user opted in
-                if ($sendSms && !empty($user['sms_opt_in'])) {
-                    Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
-                }
+                // SMS / sent to every user who has a phone number, same as email and WhatsApp
+                Sms::send($user['phone_number'], $announcement['title'] . ': ' . mb_substr($announcement['message'], 0, 100), (int) $user['user_id']);
             }
         }
         Mailer::dispatch();

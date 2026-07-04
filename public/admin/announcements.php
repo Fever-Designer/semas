@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'message'         => $_POST['message'],
         'status'          => 'Published',
         'recipients'      => $recipients,
-    ], $me, 'Principal', $scopeLabel, isset($_POST['send_sms']));
+    ], $me, 'Principal', $scopeLabel);
 
     flash('success', "System announcement sent to {$result['recipients']} user(s). Scope: $scopeLabel.");
     redirect('/admin/announcements.php');
@@ -220,10 +220,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <button class="btn btn-semas" id="adminSendBtn" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()">
         <i class="bi bi-send me-1"></i> Publish &amp; Notify
       </button>
-      <div class="form-check mb-0">
-        <input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">
-        <label class="form-check-label small" for="send_sms">Also send via SMS</label>
-      </div>
+      <div class="small text-muted mb-0">Email and SMS are sent automatically to every recipient with a phone number.</div>
     </div>
   </form>
 </div>

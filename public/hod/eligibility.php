@@ -32,16 +32,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $startTime  = trim($_POST['start_time'] ?? '');
         $endTime    = trim($_POST['end_time'] ?? '');
 
-        // Exam cannot be scheduled until CAT has been scheduled for this module.
-        $catScheduledCheck = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = 'CAT'");
-        $catScheduledCheck->execute(['mid' => $moduleId]);
-        $catAlreadyScheduled = (bool) $catScheduledCheck->fetchColumn();
+        // Exam cannot be scheduled until CAT is finished for this module, i.e. the
+        // invigilator has submitted the CAT attendance to the HOD (cat_exam_submissions row exists).
+        $catFinishedCheck = $db->prepare(
+            "SELECT 1 FROM cat_exam_schedules cs
+             JOIN cat_exam_submissions sub ON sub.schedule_id = cs.schedule_id
+             WHERE cs.module_id = :mid AND cs.exam_type = 'CAT'"
+        );
+        $catFinishedCheck->execute(['mid' => $moduleId]);
+        $catFinished = (bool) $catFinishedCheck->fetchColumn();
 
         // Validate invigilator is a lecturer
         $invCheck = $db->prepare('SELECT lecturer_id FROM lecturers WHERE lecturer_id = :id');
         $invCheck->execute(['id' => $invigId]);
-        if ($examType === 'Exam' && !$catAlreadyScheduled) {
-            flash('error', 'CAT must be scheduled for this module before the Exam can be scheduled.');
+        if ($examType === 'Exam' && !$catFinished) {
+            flash('error', 'CAT must be finished (attendance submitted to HOD) for this module before the Exam can be scheduled.');
         } elseif (!$invCheck->fetch()) {
             flash('error', 'Invalid invigilator selected.');
         } elseif (!$room || !$schedDate || !$startTime || !$endTime) {
@@ -210,14 +215,19 @@ $moduleId  = (int) ($_GET['module_id'] ?? 0);
 $examType  = ($_GET['exam_type'] ?? 'CAT') === 'Exam' ? 'Exam' : 'CAT';
 $viewMode  = ($_GET['view'] ?? 'active') === 'history' ? 'history' : 'active';
 
-// Exam cannot be viewed/scheduled until CAT has been scheduled for the selected module.
-$catScheduledForModule = false;
+// Exam cannot be viewed/scheduled until CAT is finished for the selected module
+// (invigilator has submitted the CAT attendance to the HOD).
+$catFinishedForModule = false;
 if ($moduleId) {
-    $catCheckStmt = $db->prepare("SELECT 1 FROM cat_exam_schedules WHERE module_id = :mid AND exam_type = 'CAT'");
+    $catCheckStmt = $db->prepare(
+        "SELECT 1 FROM cat_exam_schedules cs
+         JOIN cat_exam_submissions sub ON sub.schedule_id = cs.schedule_id
+         WHERE cs.module_id = :mid AND cs.exam_type = 'CAT'"
+    );
     $catCheckStmt->execute(['mid' => $moduleId]);
-    $catScheduledForModule = (bool) $catCheckStmt->fetchColumn();
+    $catFinishedForModule = (bool) $catCheckStmt->fetchColumn();
 }
-if ($moduleId && $examType === 'Exam' && !$catScheduledForModule) {
+if ($moduleId && $examType === 'Exam' && !$catFinishedForModule) {
     $examType = 'CAT';
 }
 
@@ -290,12 +300,12 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="col-md-4">
       <select name="exam_type" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="CAT" <?= $examType === 'CAT' ? 'selected' : '' ?>>CAT</option>
-        <option value="Exam" <?= $examType === 'Exam' ? 'selected' : '' ?> <?= ($moduleId && !$catScheduledForModule) ? 'disabled' : '' ?>>Exam<?= ($moduleId && !$catScheduledForModule) ? ' (schedule CAT first)' : '' ?></option>
+        <option value="Exam" <?= $examType === 'Exam' ? 'selected' : '' ?> <?= ($moduleId && !$catFinishedForModule) ? 'disabled' : '' ?>>Exam<?= ($moduleId && !$catFinishedForModule) ? ' (finish CAT first)' : '' ?></option>
       </select>
     </div>
   </form>
-  <?php if ($moduleId && !$catScheduledForModule): ?>
-    <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Exam scheduling is locked until a CAT schedule exists for this module.</p>
+  <?php if ($moduleId && !$catFinishedForModule): ?>
+    <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Exam scheduling is locked until CAT is finished (attendance submitted to HOD) for this module.</p>
   <?php endif; ?>
 </div>
 

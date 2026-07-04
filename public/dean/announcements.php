@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'message'         => $_POST['message'],
         'status'          => $isDraft ? 'Draft' : 'Published',
         'recipients'      => $recipients,
-    ], $me, 'Dean', $scopeLabel, isset($_POST['send_sms']));
+    ], $me, 'Dean', $scopeLabel);
 
     if ($isDraft) {
         flash('success', 'Announcement saved as a draft (not sent yet).');
@@ -165,10 +165,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
       <button class="btn btn-semas" name="save_as" value="publish" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Publish &amp; Notify</button>
       <button class="btn btn-outline-dark" name="save_as" value="draft">Save as Draft</button>
-      <div class="form-check mb-0">
-        <input type="checkbox" name="send_sms" id="send_sms" class="form-check-input" value="1">
-        <label class="form-check-label small" for="send_sms">Also send via SMS</label>
-      </div>
+      <div class="small text-muted mb-0">Email and SMS are sent automatically to every recipient with a phone number.</div>
     </div>
   </form>
 </div>
