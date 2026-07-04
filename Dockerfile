@@ -35,6 +35,7 @@ RUN { \
         echo '    AllowOverride All'; \
         echo '    Require all granted'; \
         echo '</Directory>'; \
+        echo 'ServerName localhost'; \
     } > /etc/apache2/conf-available/semas.conf \
     && a2enconf semas
 
