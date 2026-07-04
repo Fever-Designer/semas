@@ -15,12 +15,16 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Install PHP deps first (better layer caching)
+# Install PHP deps first (better layer caching) — skip autoloader for now,
+# since composer.json's classmap points at includes/ which isn't copied in yet
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --optimize-autoloader --no-scripts
+RUN composer install --no-dev --no-interaction --no-autoloader --no-scripts
 
 # Copy the rest of the app
 COPY . .
+
+# Now that includes/ exists, generate the optimized autoloader
+RUN composer dump-autoload --no-dev --optimize
 
 # Apache should serve the public/ folder, not the repo root
 RUN sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf /etc/apache2/apache2.conf
