@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/admin/suggestions.php');
     }
 
-    $id = (int) $_POST['suggestion_id'];
+    $id = (int) ($_POST['suggestion_id'] ?? 0);
     $action = $_POST['action'] ?? '';
 
     switch ($action) {
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/admin/suggestions.php' . $redirectTab);
 }
 
-$scopeDept = Auth::role() === 'HOD' ? $user['department_id'] : null;
+$scopeDept = $viewerRole === 'HOD' ? $user['department_id'] : null;
 $suggestions = Suggestion::adminList($scopeDept, $viewerRole);
 $mySuggestions = !$isPrincipal ? Suggestion::mySubmissions((int) $user['user_id']) : [];
 
