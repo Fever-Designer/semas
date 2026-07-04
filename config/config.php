@@ -38,6 +38,7 @@ function env(string $key, $default = null)
 // Database
 // ---------------------------------------------------------------------
 define('DB_HOST', env('DB_HOST', '127.0.0.1'));
+define('DB_PORT', (int) env('DB_PORT', 3306));
 define('DB_NAME', env('DB_NAME', 'semas'));
 define('DB_USER', env('DB_USER', 'root'));
 define('DB_PASS', env('DB_PASS', ''));
