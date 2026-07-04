@@ -6,7 +6,7 @@
 --   4. Track classroom coordinates for near-room verification
 -- =====================================================================
 
-
+USE semas;
 
 ALTER TABLE cat_exam_eligibility
     ADD COLUMN attendance_percent DECIMAL(5,2) NOT NULL DEFAULT 0 AFTER absences_count,

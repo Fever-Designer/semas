@@ -14,7 +14,7 @@
 --   mysql -u root -p semas < database/migration_005.sql
 -- =====================================================================
 
-
+USE semas;
 
 -- ---------------------------------------------------------------------
 -- 0. class_sessions: tag each session with which FIXED window it belongs

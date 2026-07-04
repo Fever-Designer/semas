@@ -8,7 +8,7 @@
 --   mysql -u root -p semas < database/migration_007.sql
 -- =====================================================================
 
-
+USE semas;
 
 -- ---------------------------------------------------------------------
 -- 1. Static per-module QR secret used for the printable classroom QR.

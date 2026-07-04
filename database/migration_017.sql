@@ -4,7 +4,7 @@
 --   module intake scoping, and semester calendars.
 -- =====================================================================
 
-
+USE semas;
 
 ALTER TABLE users
     MODIFY COLUMN intake VARCHAR(10) NULL;

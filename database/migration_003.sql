@@ -5,7 +5,7 @@
 --   mysql -u root -p semas < database/migration_003.sql
 -- =====================================================================
 
-
+USE semas;
 
 -- ---------------------------------------------------------------------
 -- 1. Announcements: permanent sender snapshot (full name, role, and

@@ -4,6 +4,7 @@
 --   mysql -u root -p semas < database/migration_020.sql
 -- =====================================================================
 
+USE semas;
 
 SET FOREIGN_KEY_CHECKS = 0;
 

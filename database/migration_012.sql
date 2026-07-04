@@ -6,7 +6,7 @@
 --   mysql -u root -p semas < database/migration_012.sql
 -- =====================================================================
 
-
+USE semas;
 
 -- Safety net: ensure migration_011 tables exist before any PHP code
 -- tries to query them. These statements are all idempotent.

@@ -14,7 +14,7 @@
 --
 --   mysql -u root -p semas < database/migration_014.sql
 -- =====================================================================
-
+USE semas;
 
 ALTER TABLE class_attendance_logs
     ADD COLUMN latitude        DECIMAL(10,7) NULL AFTER ip_address,

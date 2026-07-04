@@ -4,7 +4,7 @@
 --   mysql -u root -p semas < database/migration_021.sql
 -- =====================================================================
 
-
+USE semas;
 
 ALTER TABLE sms_logs
     MODIFY provider ENUM('africastalking','vonage','twilio') NOT NULL DEFAULT 'twilio';
