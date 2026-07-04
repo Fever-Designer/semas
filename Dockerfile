@@ -36,6 +36,7 @@ RUN { \
         echo '    Require all granted'; \
         echo '</Directory>'; \
         echo 'ServerName localhost'; \
+        echo 'SetEnvIf X-Forwarded-Proto https HTTPS=on'; \
     } > /etc/apache2/conf-available/semas.conf \
     && a2enconf semas
 
