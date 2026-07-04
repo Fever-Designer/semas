@@ -1,7 +1,0 @@
-.git
-.env
-.env.example
-vendor
-node_modules
-.claude
-*.log
