@@ -9,8 +9,6 @@
 --   mysql -u root -p semas < database/migration_009.sql
 -- =====================================================================
 
-USE semas;
-
 -- ---------------------------------------------------------------------
 -- 1. Reason columns for students absent at sign-out time.
 --    Set automatically when the invigilator submits / they must give a

@@ -11,7 +11,7 @@
 --
 --   mysql -u root -p semas < database/migration_015.sql
 -- =====================================================================
-USE semas;
+
 
 CREATE TABLE IF NOT EXISTS module_attendance_submissions (
     submission_id  INT AUTO_INCREMENT PRIMARY KEY,

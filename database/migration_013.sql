@@ -3,7 +3,7 @@
 --   Adds email_queue table for async background email delivery.
 --   mysql -u root -p semas < database/migration_013.sql
 -- =====================================================================
-USE semas;
+
 
 CREATE TABLE IF NOT EXISTS email_queue (
     id             INT AUTO_INCREMENT PRIMARY KEY,

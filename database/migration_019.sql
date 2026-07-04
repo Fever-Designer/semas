@@ -8,7 +8,7 @@
 --
 --   mysql -u root -p semas < database/migration_019.sql
 -- =====================================================================
-USE semas;
+
 
 ALTER TABLE class_attendance_logs
     MODIFY COLUMN verification_method ENUM('QR','Manual','Auto') NOT NULL DEFAULT 'QR';

@@ -6,7 +6,7 @@
 --   mysql -u root -p semas < database/migration_002.sql
 -- =====================================================================
 
-USE semas;
+
 
 -- ---------------------------------------------------------------------
 -- 1. Student session type (Day / Evening / Weekend)

@@ -4,7 +4,7 @@
 --   2. Fix sms_logs.provider enum: replace 'twilio' with 'vonage'
 -- =====================================================================
 
-USE semas;
+
 
 -- 1. WhatsApp log table
 CREATE TABLE IF NOT EXISTS whatsapp_logs (
