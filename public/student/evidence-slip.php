@@ -68,42 +68,31 @@ $hmac    = hash_hmac('sha256', $iv . $cipher, APP_KEY !== '' ? APP_KEY : 'fallba
 $b64u    = function (string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); };
 $verifyToken = $b64u($iv) . '.' . $b64u($cipher) . '.' . $b64u($hmac);
 $verifyUrl   = APP_URL . '/verify-slip.php?t=' . $verifyToken;
-$qrPayload   = json_encode([
-    'type' => 'semas_slip',
-    'slip' => 'attendance',
-    'verify_url' => $verifyUrl,
-    'schedule_id' => $scheduleId,
-    'module_title' => $schedule['module_title'],
-    'student_name' => $me['full_name'],
-    'reg_number' => $me['reg_number'] ?? '',
-    'exam_type' => $schedule['exam_type'],
-    'exam_date' => $dayOfWeek . ', ' . $examDate,
-    'room' => $schedule['room'],
-    'time' => $timeRange,
-    'status' => $soutRecord['status'] ?? 'Present',
-    'issued_at' => $issuedAt,
-    'sig' => $b64u(hash_hmac('sha256', json_encode([
-        'schedule_id' => $scheduleId,
-        'user_id' => $me['user_id'],
-        'exam_type' => $schedule['exam_type'],
-        'exam_date' => $dayOfWeek . ', ' . $examDate,
-        'room' => $schedule['room'],
-        'time' => $timeRange,
-    ]), APP_KEY !== '' ? APP_KEY : 'fallback-key', true))
-]);
-$qrSig = substr($b64u(hash_hmac('sha256', $scheduleId . '|' . $me['user_id'] . '|' . $sinTime . '|' . $soutTime, APP_KEY !== '' ? APP_KEY : 'fallback-key', true)), 0, 12);
-$qrPayload = implode('|', [
-    'SA',
-    (string) $scheduleId,
-    (string) $me['user_id'],
-    strtoupper(substr((string) $schedule['exam_type'], 0, 1)),
-    date('ymd', strtotime($schedule['scheduled_date'])),
-    substr(preg_replace('/\s+/', '', (string) ($me['reg_number'] ?? '')), 0, 12),
-    date('Hi', strtotime($sinRecord['recorded_at'])),
-    date('Hi', strtotime($soutRecord['recorded_at'])),
-    $qrSig,
-]);
-$qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
+
+// Plain text is supported by ordinary QR scanners offline (unlike data: URLs,
+// which many phone cameras block). It also carries the signed online URL.
+$attendanceStatus = $soutRecord['status'] ?? 'Present';
+try {
+    $qrImage = SimpleQr::pngDataUri(SlipVerification::offlineText(
+        $schedule['exam_type'] . ' Attendance Slip',
+        [
+            ['Student', $me['full_name']],
+            ['Reg No', $me['reg_number'] ?? '/'],
+            ['Module', $schedule['module_title']],
+            ['Department', $schedule['department_name'] ?? '/'],
+            ['Assessment', $schedule['exam_type']],
+            ['Date', $examDate],
+            ['Room', $schedule['room'] ?? ($schedule['module_room'] ?? '/')],
+            ['Time', $sinTime . '-' . $soutTime],
+        ],
+        'ATTENDANCE RECORDED - ' . $attendanceStatus,
+        $verifyUrl,
+        $uniName
+    ), 6, 2);
+} catch (Throwable $e) {
+    // Retain online verification if an unusually long record exceeds QR capacity.
+    $qrImage = SimpleQr::pngDataUri($verifyUrl, 6, 2);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -139,9 +128,9 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
   .sig-info .name { font-weight: bold; font-size: 14px; color: #1E2A52; }
   .sig-line { margin-top: 12px; border-top: 1px solid #333; padding-top: 3px; font-size: 11px; color: #6B7280; }
 
-  .qr-section { margin-top: 0; text-align: center; flex: 0 0 205px; min-width: 205px; }
-  .qr-section #verifyQr { display: inline-block; padding: 10px; background: #ffffff; border: 2px solid #1E2A52; border-radius: 8px; width: 198px; height: 198px; }
-  .qr-section canvas, .qr-section img { width: 174px; height: 174px; margin: 0 auto; display: block; image-rendering: pixelated; }
+  .qr-section { margin-top: 0; text-align: center; flex: 0 0 250px; min-width: 250px; }
+  .qr-section #verifyQr { display: inline-block; padding: 8px; background: #ffffff; border: 2px solid #1E2A52; border-radius: 8px; width: 235px; height: 235px; }
+  .qr-section canvas, .qr-section img { width: 219px; height: 219px; margin: 0 auto; display: block; image-rendering: pixelated; }
   .qr-section .qr-label { font-size: 11px; color: #374151; margin-top: 6px; font-weight: bold; }
 
   .footer { background: #F6F7FB; padding: 10px 28px; font-size: 10px; color: #9CA3AF; text-align: center; border-top: 1px solid #E4E7EF; }
@@ -173,7 +162,7 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
     .sig-photo { width: 54px; height: 54px; }
     .sig-info .name { font-size: 12px; }
     .sig-info { font-size: 10px; }
-    .qr-section { flex: 0 0 190px; min-width: 190px; }
+    .qr-section { flex: 0 0 230px; min-width: 230px; }
     .footer { padding: 6px 18px; font-size: 9px; }
   }
 </style>
@@ -223,7 +212,7 @@ $qrImage = SimpleQr::pngDataUri($qrPayload, 7, 2);
       </div>
       <div class="qr-section">
         <div id="verifyQr"><img src="<?= e($qrImage) ?>" alt="Scan to verify"></div>
-        <div class="qr-label">Scan to verify</div>
+        <div class="qr-label">Scan for details (works offline) / use the included link for live verification</div>
       </div>
     </div>
   </div>

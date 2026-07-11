@@ -120,8 +120,6 @@ foreach ($allModules as $am) {
     }
 }
 
-$scanWindowOpen = stu_scan_window_open($window) || !empty($signoutSessions);
-
 // Only show modules whose session is in its live window right now / even a
 // registered Ongoing module stays hidden outside its actual class time.
 $visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today, $signoutSessions) {
@@ -133,12 +131,40 @@ $visibleModules = array_values(array_filter($allModules, function ($am) use ($wi
 // Selected module tab
 $selectedId = (int) ($_GET['module_id'] ?? ($visibleModules[0]['module_id'] ?? 0));
 
+// A student scanning the printed classroom QR lands here with module_id + a QR
+// token in the URL. If that specific module isn't currently scanable (outside
+// its live window / grace period), say so explicitly instead of silently
+// falling back to an unrelated module tab or a generic "nothing in session" message.
+$scannedModuleTitle    = null;
+$scannedModuleScanable = false;
+if ($moduleIdParam) {
+    foreach ($allModules as $am) {
+        if ((int) $am['module_id'] === $moduleIdParam) {
+            $scannedModuleTitle    = $am['module_title'];
+            $scannedModuleScanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$moduleIdParam]))
+                && $am['status'] === 'Ongoing';
+            break;
+        }
+    }
+}
+$showNoScanWindowNotice = $moduleIdParam && ($tokenParam || $qrDataParam) && !$scannedModuleScanable;
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
   <h4 class="display-font mb-0">My Attendance</h4>
 </div>
+
+<?php if ($showNoScanWindowNotice): ?>
+  <div class="alert alert-danger small mb-3 d-flex align-items-center gap-2">
+    <i class="bi bi-qr-code-scan fs-5"></i>
+    <div>
+      <strong>NO SCAN WINDOW AT THIS TIME</strong><?= $scannedModuleTitle ? ' for "' . e($scannedModuleTitle) . '"' : '' ?>.
+      Attendance can only be scanned during that module's active class session.
+    </div>
+  </div>
+<?php endif; ?>
 
 <div class="alert <?= $window ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
   <div>
@@ -359,7 +385,7 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
         <div id="reader" style="width:100%;"></div>
         <div id="scanMsg" class="mt-2"></div>
         <hr>
-        <button id="manualCheckinBtn" class="btn btn-outline-dark btn-sm w-100">Check In Without QR Scan</button>
+        <p class="text-muted small text-center mb-0">Scan the official class QR to sign in or sign out.</p>
       </div>
     </div>
   </div>
@@ -493,13 +519,9 @@ document.querySelectorAll('.scan-btn').forEach(function (btn) {
       }
       html5QrCode.stop().then(function () { html5QrCode = null; submitAttendance(activeModuleId, parsed); });
     }).catch(function () {
-      document.getElementById('reader').innerHTML = '<p class="text-muted small text-center mt-2">Camera not available. Use manual check-in below.</p>';
+      document.getElementById('reader').innerHTML = '<p class="text-muted small text-center mt-2">Camera is unavailable. Allow camera access and scan the official class QR.</p>';
     });
   });
-});
-
-document.getElementById('manualCheckinBtn').addEventListener('click', function () {
-  submitAttendance(activeModuleId, null);
 });
 
 function normalizeScannedQr(rawText) {
@@ -542,24 +564,14 @@ function getDeviceId() {
 
 function submitAttendance(moduleId, qrToken) {
   const msgEl = document.getElementById('scanMsg');
-  if (!navigator.geolocation) {
-    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Your browser does not support location, which is required to record attendance.</div>';
-    return;
-  }
-  msgEl.innerHTML = '<div class="text-muted small mt-2">Getting your location…</div>';
-  navigator.geolocation.getCurrentPosition(function (pos) {
-    doSubmitAttendance(moduleId, qrToken, pos.coords.latitude, pos.coords.longitude);
-  }, function () {
-    msgEl.innerHTML = '<div class="alert alert-danger small mt-2">Location access is required to record attendance. Please allow location access and try again.</div>';
-  }, { enableHighAccuracy: true, timeout: 10000 });
+  msgEl.innerHTML = '<div class="text-muted small mt-2">Verifying QR and registered device...</div>';
+  doSubmitAttendance(moduleId, qrToken);
 }
 
-function doSubmitAttendance(moduleId, qrPayload, lat, lng) {
+function doSubmitAttendance(moduleId, qrPayload) {
   const params = new URLSearchParams({
     module_id: moduleId,
     csrf_token: CSRF,
-    latitude: lat,
-    longitude: lng,
     device_id: getDeviceId(),
   });
   if (qrPayload) {
@@ -598,7 +610,7 @@ function doSubmitAttendance(moduleId, qrPayload, lat, lng) {
   });
 }
 
-<?php if ($scanWindowOpen && $moduleIdParam && ($tokenParam || $qrDataParam)): ?>
+<?php if ($scannedModuleScanable && $moduleIdParam && ($tokenParam || $qrDataParam)): ?>
 window.addEventListener('DOMContentLoaded', function () {
   activeModuleId = <?= (int) $moduleIdParam ?>;
   const modalEl = document.getElementById('scanModal');

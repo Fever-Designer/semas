@@ -118,10 +118,11 @@ $modSql = "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, m
            LEFT JOIN lecturers lt  ON lt.lecturer_id  = m.lecturer_id
            LEFT JOIN users u       ON u.user_id        = lt.user_id
            LEFT JOIN rooms r       ON r.room_id        = m.room_id";
+// Only Ongoing modules are worked with here / once a module is marked
+// Completed (Manage Module), it's closed off from Class Attendance.
+$modSql .= " WHERE m.status = 'Ongoing'";
 if ($isCoordinator) {
-    $modSql .= " WHERE m.session_type = 'Weekend'";
-} else {
-    $modSql .= "";
+    $modSql .= " AND m.session_type = 'Weekend'";
 }
 $modSql .= " ORDER BY m.module_title";
 $allModules = $db->query($modSql)->fetchAll();
@@ -261,11 +262,13 @@ if ($viewMode === 'overall') {
         ];
 
         $sessStmt2 = $db->prepare(
-            "SELECT session_id, session_date FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
+            "SELECT session_id, session_date, window_name FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
         );
         $sessStmt2->execute(['mid' => $amId]);
-        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today) {
-            return $s['session_date'] <= $today && !in_array($s['session_date'], $excludeDates, true);
+        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today, $am) {
+            return $s['session_date'] <= $today
+                && !in_array($s['session_date'], $excludeDates, true)
+                && hod_module_matches_attendance_window($am, (string) $s['window_name']);
         }));
         $moduleSummary[$amId]['sessions'] = count($amSessions);
 
@@ -313,6 +316,7 @@ if ($viewMode === 'overall') {
             if ($tot === 0) continue;
             $overallRows[] = [
                 'module_id' => $amId, 'module' => $am['module_title'],
+                'user_id' => $uid,
                 'name' => $stu['full_name'], 'reg' => $stu['reg_number'],
                 'p' => $p, 'l' => $l, 'a' => $a, 'total' => $tot,
                 'pct' => round(($p + $l) / $tot * 100, 1),
@@ -321,9 +325,16 @@ if ($viewMode === 'overall') {
     }
     usort($overallRows, function ($x, $y) { return $y['a'] <=> $x['a']; });
 
-    if (!empty($_GET['special'])) {
-        $overallRows = array_values(array_filter($overallRows, function ($r) { return $r['a'] >= 3; }));
+    // Headline flags are student-level totals across every module included by
+    // the active session filter. A student with 2 absences in one module and
+    // 2 in another is therefore Critical (4), rather than appearing as zero.
+    $absenceTotalsByStudent = [];
+    foreach ($overallRows as $r) {
+        $uid = (int) $r['user_id'];
+        $absenceTotalsByStudent[$uid] = ($absenceTotalsByStudent[$uid] ?? 0) + (int) $r['a'];
     }
+    $totalSpecialCases = count(array_filter($absenceTotalsByStudent, function ($count) { return $count === 3; }));
+    $totalCritical     = count(array_filter($absenceTotalsByStudent, function ($count) { return $count >= 4; }));
 
     // Group into per-module summaries / HoD/Coordinator view modules, not individual students.
     foreach ($overallRows as $r) {
@@ -339,9 +350,18 @@ if ($viewMode === 'overall') {
         $ms['pct'] = $ms['total'] > 0 ? round(($ms['p'] + $ms['l']) / $ms['total'] * 100, 1) : null;
     }
     unset($ms);
+
+    $hasOngoingModules  = (bool) $moduleSummary;
+
     if (!empty($_GET['special'])) {
-        $moduleSummary = array_filter($moduleSummary, function ($ms) {
-            return ($ms['special'] + $ms['critical']) > 0;
+        $overallRows = array_values(array_filter($overallRows, function ($r) use ($absenceTotalsByStudent) {
+            return ($absenceTotalsByStudent[(int) $r['user_id']] ?? 0) >= 3;
+        }));
+        $flaggedModuleIds = array_values(array_unique(array_map(function ($r) {
+            return (int) $r['module_id'];
+        }, $overallRows)));
+        $moduleSummary = array_filter($moduleSummary, function ($ms) use ($flaggedModuleIds) {
+            return in_array((int) $ms['module_id'], $flaggedModuleIds, true);
         });
     }
     $moduleSummary = array_values($moduleSummary);
@@ -458,10 +478,13 @@ require __DIR__ . '/../partials/layout_top.php';
   </form>
 </div>
 
+<?php if (!$hasOngoingModules): ?>
+  <div class="semas-card p-4 text-center text-muted small">No ongoing modules found for <?= e($sessionLabel) ?>.</div>
+<?php else: ?>
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
   <div class="d-flex gap-3 flex-wrap" style="font-size:.75rem;">
-    <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3+ absences</span> Special Case</span>
-    <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical</span>
+    <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3+ absences</span> Special Case (<?= $totalSpecialCases ?>)</span>
+    <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical (<?= $totalCritical ?>)</span>
   </div>
   <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
     <i class="bi bi-funnel me-1"></i> <?= !empty($_GET['special']) ? 'Showing Special Cases Only' : 'Show Special Cases Only' ?>
@@ -469,7 +492,7 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 
 <?php if (!$moduleSummary): ?>
-  <div class="semas-card p-4 text-center text-muted small">No modules found for <?= e($sessionLabel) ?>.</div>
+  <div class="semas-card p-4 text-center text-muted small">No Special Case or Critical modules found for <?= e($sessionLabel) ?>.</div>
 <?php else: ?>
 <div class="row g-3">
   <?php foreach ($moduleSummary as $ms): ?>
@@ -499,14 +522,21 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php if ($ms['special']): ?><span class="badge bg-warning text-dark me-1">⚠ <?= $ms['special'] ?> Special Case</span><?php endif; ?>
           <?php if (!$ms['critical'] && !$ms['special']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
         </div>
-        <a href="?view=overall&session=<?= e($overallSessionFilter) ?>&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark mt-auto">
-          <i class="bi bi-people me-1"></i> View More Details
-        </a>
+        <div class="d-flex gap-2 mt-auto">
+          <a href="?view=overall&session=<?= e($overallSessionFilter) ?>&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark flex-grow-1">
+            <i class="bi bi-people me-1"></i> View More Details
+          </a>
+          <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $ms['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print Attendance Sheet">
+            <i class="bi bi-printer"></i>
+          </a>
+        </div>
       </div>
     </div>
   <?php endforeach; ?>
 </div>
-<?php endif; ?>
+<?php endif; // moduleSummary (special-filtered) ?>
+
+<?php endif; // hasOngoingModules ?>
 
 <?php endif; // detailModuleId ?>
 
@@ -523,7 +553,7 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php foreach ($allModules as $am): ?>
         <option value="<?= (int) $am['module_id'] ?>"
                 <?= (int) $am['module_id'] === $moduleId ? 'selected' : '' ?>>
-          <?= e($am['module_title']) ?> / <?= e($am['session_type']) ?> [<?= e($am['status']) ?>]
+          <?= e($am['module_title']) ?> / <?= e($am['session_type']) ?>
         </option>
       <?php endforeach; ?>
     </select>

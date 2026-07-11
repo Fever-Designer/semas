@@ -32,6 +32,7 @@ $scanPayload = 'SM:' . $moduleId . ':' . $shortToken;
 $scanUrl = public_url('/student/attendance.php?module_id=' . $moduleId . '&t=' . rawurlencode($scanPayload));
 $qrImage = SimpleQr::pngDataUri($scanUrl, 10, 2);
 $brandName = Settings::get('university_name', 'University of Kigali');
+$securityRef = strtoupper(substr(hash_hmac('sha256', (string) $moduleId, $secret), 0, 16));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -51,6 +52,7 @@ $brandName = Settings::get('university_name', 'University of Kigali');
   .instruction { background: #f8f3e8; border: 3px solid #D4A24C; border-radius: 8px; padding: 16px 24px; display: inline-block; margin-top: 8px; font-size: 24px; color: #1f2937; font-weight: 700; }
   .meta { margin-top: 16px; font-size: 20px; color: #4B5563; font-weight: 700; }
   .payload { margin-top: 6px; font-size: 11px; color: #9CA3AF; word-break: break-all; }
+  .security-strip { width:100%; padding:8px; border-top:2px dashed #1E2A52; border-bottom:2px dashed #1E2A52; font-size:13px; letter-spacing:2px; color:#1E2A52; background:repeating-linear-gradient(135deg,#fff 0,#fff 8px,#f8f3e8 8px,#f8f3e8 16px); }
   @media print {
     .no-print { display: none; }
     @page { size: A4 portrait; margin: 8mm; }
@@ -73,10 +75,12 @@ $brandName = Settings::get('university_name', 'University of Kigali');
   </div>
 
   <div>
+    <div class="security-strip">ORIGINAL CLASSROOM QR &middot; REF <?= e($securityRef) ?> &middot; SESSION/TIME VALIDATED</div>
     <div class="qr-box">
       <img src="<?= e($qrImage) ?>" alt="Class attendance QR code">
     </div>
     <div class="instruction">Students: scan this QR to mark class attendance.</div>
+    <div class="meta">Scans are accepted only during the official sign-in and sign-out windows.</div>
     <div class="meta">CAT: <?= e($module['cat_date'] ?? '-') ?> &nbsp;|&nbsp; Exam: <?= e($module['exam_date'] ?? '-') ?></div>
     <div class="payload"><?= e($scanUrl) ?></div>
   </div>

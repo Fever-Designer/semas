@@ -1,28 +1,42 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Principal']);
+Auth::requireRole(['Principal', 'HOD']);
 
 $pageTitle = 'Manage Departments';
 $activeNav = 'departments';
 $db = Database::connection();
 $me = Auth::user();
+$isPrincipal = Auth::role() === 'Principal';
 
+// HOD may only edit department(s) they actually head (hod_user_id = them) —
+// creating a new department is allowed too (per spec), and immediately makes
+// the creating HOD its head so it isn't left without one. Principal is
+// unrestricted, same as before.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $action = $_POST['action'] ?? '';
     if ($action === 'create') {
-        $db->prepare('INSERT INTO departments (faculty_id, department_name, department_code) VALUES (:fac, :name, :code)')
+        $db->prepare('INSERT INTO departments (faculty_id, department_name, department_code, hod_user_id) VALUES (:fac, :name, :code, :hod)')
            ->execute([
                'fac' => (int) $_POST['faculty_id'],
                'name' => trim($_POST['department_name']),
                'code' => trim($_POST['department_code']),
+               'hod' => $isPrincipal ? null : (int) $me['user_id'],
            ]);
         $deptId = (int) $db->lastInsertId();
         AuditLog::record(Auth::id(), 'DEPARTMENT_CREATE', 'departments', $deptId);
         flash('success', 'Department created.');
     } elseif ($action === 'update') {
         $deptId = (int) $_POST['department_id'];
+        if (!$isPrincipal) {
+            $ownCheck = $db->prepare('SELECT 1 FROM departments WHERE department_id = :id AND hod_user_id = :uid');
+            $ownCheck->execute(['id' => $deptId, 'uid' => $me['user_id']]);
+            if (!$ownCheck->fetchColumn()) {
+                flash('error', 'You can only edit a department you head.');
+                redirect('/admin/departments.php');
+            }
+        }
         $db->prepare('UPDATE departments SET department_name=:name, department_code=:code, faculty_id=:fac WHERE department_id=:id')
            ->execute(['name' => trim($_POST['department_name']), 'code' => trim($_POST['department_code']), 'fac' => (int) $_POST['faculty_id'], 'id' => $deptId]);
         AuditLog::record(Auth::id(), 'DEPARTMENT_UPDATE', 'departments', $deptId);
@@ -45,23 +59,30 @@ $faculties = $db->query('SELECT faculty_id, faculty_name FROM faculties ORDER BY
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-  <div><h4 class="display-font mb-1">Manage Departments</h4></div>
+  <div>
+    <h4 class="display-font mb-1">Manage Departments</h4>
+    <?php if (!$isPrincipal): ?><p class="text-muted small mb-0">You can edit departments you head, and add new ones.</p><?php endif; ?>
+  </div>
   <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#newDeptModal"><i class="bi bi-plus-circle me-1"></i> New Department</button>
 </div>
 
 <div class="row g-3">
   <?php foreach ($departments as $d): ?>
+    <?php $canEdit = $isPrincipal || (int) $d['hod_user_id'] === (int) $me['user_id']; ?>
     <div class="col-md-4">
       <div class="semas-card p-3 h-100">
         <div class="d-flex justify-content-between align-items-start">
           <h6 class="display-font mb-1"><?= e($d['department_name']) ?></h6>
-          <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#edit-<?= (int) $d['department_id'] ?>"><i class="bi bi-pencil"></i></button>
+          <?php if ($canEdit): ?>
+            <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#edit-<?= (int) $d['department_id'] ?>"><i class="bi bi-pencil"></i></button>
+          <?php endif; ?>
         </div>
         <p class="text-muted small mb-2"><?= e($d['faculty_name'] ?? '/') ?> &middot; Code: <?= e($d['department_code']) ?></p>
         <p class="small mb-0">HOD: <?= e($d['hod_name'] ?? 'Not assigned') ?></p>
         <p class="small text-muted mb-0"><?= (int) $d['student_count'] ?> students &middot; <?= (int) $d['lecturer_count'] ?> lecturers &middot; <?= (int) $d['module_count'] ?> modules</p>
       </div>
     </div>
+    <?php if ($canEdit): ?>
     <div class="modal fade" id="edit-<?= (int) $d['department_id'] ?>" tabindex="-1">
       <div class="modal-dialog">
         <div class="modal-content">
@@ -84,6 +105,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
       </div>
     </div>
+    <?php endif; ?>
   <?php endforeach; ?>
 </div>
 

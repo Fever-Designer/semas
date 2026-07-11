@@ -27,19 +27,19 @@ declare(strict_types=1);
  * attendance entirely for the day.
  *
  * Within whichever window is currently active: first 10 minutes of the
- * window's official start -> Present; after that until the 25 minute
+ * window's official start -> Present; after that until the 20 minute
  * cutoff -> Late; beyond that student sign-in scanning is closed. Student
- * sign-out opens only after the official end time, and closes 15 minutes
+ * sign-out opens only after the official end time, and closes 10 minutes
  * later. Lecturers may manage attendance from class start until that same
- * 15-minute post-class grace period.
+ * 10-minute post-class grace period.
  */
 final class ClassAttendance
 {
     public const PRESENT_WINDOW_MINUTES = 10;
-    public const LATE_WINDOW_MINUTES = 25;
-    public const SIGN_IN_CLOSE_MINUTES = 25;
-    public const SIGN_OUT_AFTER_END_MINUTES = 15;
-    public const LECTURER_AFTER_END_MINUTES = 15;
+    public const LATE_WINDOW_MINUTES = 20;
+    public const SIGN_IN_CLOSE_MINUTES = 20;
+    public const SIGN_OUT_AFTER_END_MINUTES = 10;
+    public const LECTURER_AFTER_END_MINUTES = 10;
     private const TZ = 'Africa/Kigali';
 
     /** @return array<string,array{start:string,end:string}> 24h HH:MM strings */
@@ -138,7 +138,7 @@ final class ClassAttendance
     public static function statusFor(string $sessionStartDateTime): string
     {
         $start = new DateTime($sessionStartDateTime, new DateTimeZone(self::TZ));
-        $elapsedMinutes = (self::now()->getTimestamp() - $start->getTimestamp()) / 60;
+        $elapsedMinutes = intdiv(max(0, self::now()->getTimestamp() - $start->getTimestamp()), 60);
         if ($elapsedMinutes <= self::PRESENT_WINDOW_MINUTES) {
             return 'Present';
         }
@@ -151,8 +151,9 @@ final class ClassAttendance
     public static function canSelfSignIn(string $sessionStartDateTime): bool
     {
         $start = new DateTime($sessionStartDateTime, new DateTimeZone(self::TZ));
-        $elapsedMinutes = (self::now()->getTimestamp() - $start->getTimestamp()) / 60;
-        return $elapsedMinutes >= 0 && $elapsedMinutes <= self::SIGN_IN_CLOSE_MINUTES;
+        $elapsedSeconds = self::now()->getTimestamp() - $start->getTimestamp();
+        $elapsedMinutes = intdiv(max(0, $elapsedSeconds), 60);
+        return $elapsedSeconds >= 0 && $elapsedMinutes <= self::SIGN_IN_CLOSE_MINUTES;
     }
 
     public static function canSelfScan(string $sessionStartDateTime): bool
@@ -163,8 +164,9 @@ final class ClassAttendance
     public static function isStudentSignOutOpen(string $sessionEndDateTime): bool
     {
         $end = new DateTime($sessionEndDateTime, new DateTimeZone(self::TZ));
-        $afterEndMinutes = (self::now()->getTimestamp() - $end->getTimestamp()) / 60;
-        return $afterEndMinutes >= 0 && $afterEndMinutes <= self::SIGN_OUT_AFTER_END_MINUTES;
+        $afterEndSeconds = self::now()->getTimestamp() - $end->getTimestamp();
+        $afterEndMinutes = intdiv(max(0, $afterEndSeconds), 60);
+        return $afterEndSeconds >= 0 && $afterEndMinutes <= self::SIGN_OUT_AFTER_END_MINUTES;
     }
 
     public static function isLecturerAttendanceOpen(string $sessionStartDateTime, string $sessionEndDateTime): bool

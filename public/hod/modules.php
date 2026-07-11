@@ -70,8 +70,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // All department IDs come in as dept_ids[] (first = primary)
-        $deptIds = array_map('intval', array_filter($_POST['dept_ids'] ?? []));
+        // Departments are selected using checkboxes. Keep only real, unique IDs.
+        $validDeptIds = array_map('intval', $db->query('SELECT department_id FROM departments')->fetchAll(PDO::FETCH_COLUMN));
+        $deptIds = array_values(array_unique(array_intersect(
+            array_map('intval', (array) ($_POST['dept_ids'] ?? [])),
+            $validDeptIds
+        )));
+        // Editing checkbox order must not silently replace the owning department.
+        if ($action === 'update' && $deptIds) {
+            $currentDept = $db->prepare('SELECT department_id FROM modules WHERE module_id=:mid');
+            $currentDept->execute(['mid' => $modId]);
+            $currentDeptId = (int) $currentDept->fetchColumn();
+            if (in_array($currentDeptId, $deptIds, true)) {
+                $deptIds = array_values(array_unique(array_merge([$currentDeptId], $deptIds)));
+            }
+        }
         $primaryDeptId = $deptIds[0] ?? 0;
         $extraDeptIds  = array_slice($deptIds, 1);
         $weekendSlot = $sessionType === 'Weekend' ? (in_array($_POST['weekend_slot'] ?? '', ['Morning', 'Afternoon'], true) ? $_POST['weekend_slot'] : null) : null;
@@ -254,9 +267,13 @@ if ($isCoordinator) { $where[] = "m.session_type = 'Weekend'"; }
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $stmt = $db->prepare(
-    "SELECT m.*, d.department_name, u.full_name AS lecturer_name, u.user_id AS lecturer_user_id, l.title AS lecturer_title, r.room_name,
+    "SELECT m.*, d.department_name, d.department_code, u.full_name AS lecturer_name, u.user_id AS lecturer_user_id, l.title AS lecturer_title, r.room_name,
         (SELECT COUNT(*) FROM module_enrollments e WHERE e.module_id=m.module_id) AS student_count,
-        (SELECT GROUP_CONCAT(mi.intake ORDER BY mi.intake SEPARATOR ', ') FROM module_intakes mi WHERE mi.module_id=m.module_id) AS intakes_list
+        (SELECT GROUP_CONCAT(mi.intake ORDER BY mi.intake SEPARATOR ', ') FROM module_intakes mi WHERE mi.module_id=m.module_id) AS intakes_list,
+        (SELECT GROUP_CONCAT(ad.department_code ORDER BY (ad.department_id=m.department_id) DESC, ad.department_code SEPARATOR ', ')
+           FROM departments ad
+          WHERE ad.department_id=m.department_id
+             OR ad.department_id IN (SELECT md.department_id FROM module_departments md WHERE md.module_id=m.module_id)) AS departments_list
      FROM modules m
      LEFT JOIN departments d ON d.department_id=m.department_id
      LEFT JOIN lecturers l ON l.lecturer_id=m.lecturer_id
@@ -345,7 +362,7 @@ require __DIR__ . '/../partials/layout_top.php';
             $slot  = $m['weekend_slot'] ?? '';
             echo e($stype === 'Weekend' && $slot ? "Weekend / $slot" : $stype);
           ?></td>
-          <td><?= e($m['department_name'] ?? '/') ?></td>
+          <td><?= e($m['departments_list'] ?? $m['department_code'] ?? '/') ?></td>
           <td><?= e($m['lecturer_name'] ?? '/') ?></td>
           <td><?= e($m['room_name'] ?? '/') ?></td>
           <td><small><?= e($m['intakes_list'] ?? '/') ?></small></td>
@@ -375,10 +392,17 @@ require __DIR__ . '/../partials/layout_top.php';
 
         <!-- Edit Modal -->
         <?php
-          // Build combined dept list: primary first, then extras
-          $editDepts = [['department_id' => $m['department_id'], 'department_name' => $m['department_name']]];
-          foreach ($modExtraDeptRows as $ed) {
-              if ($ed['department_id'] != $m['department_id']) $editDepts[] = $ed;
+          // On a validation-error reopen of THIS module's edit modal, restore exactly what
+          // was submitted (so an unrelated error, e.g. a bad date, doesn't silently drop
+          // department selections back to just the primary). Otherwise build the normal
+          // combined dept list from the DB: primary first, then extras.
+          if ($reopenModal === 'edit' && $reopenEditId === $mId && $mfData) {
+              $editDepts = reconstructSelectedDepts((array) ($mfData['dept_ids'] ?? []), $departments);
+          } else {
+              $editDepts = [['department_id' => $m['department_id'], 'department_name' => $m['department_name']]];
+              foreach ($modExtraDeptRows as $ed) {
+                  if ($ed['department_id'] != $m['department_id']) $editDepts[] = $ed;
+              }
           }
         ?>
         <div class="modal fade" id="edit-<?= $mId ?>" tabindex="-1">
@@ -390,7 +414,7 @@ require __DIR__ . '/../partials/layout_top.php';
                 <input type="hidden" name="module_id" value="<?= $mId ?>">
                 <div class="modal-header"><h6 class="modal-title display-font">Edit: <?= e($m['module_title']) ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                  <?= moduleFormFields("e{$mId}", $lecturers, $editRooms, $intakeList, $sessionTypes, $m, $editDepts, $today, $m['room_id'], ($reopenModal === 'edit' && $reopenEditId === $mId) ? $mfError : '') ?>
+                  <?= moduleFormFields("e{$mId}", $lecturers, $editRooms, $intakeList, $sessionTypes, $departments, $m, $editDepts, $today, $m['room_id'], ($reopenModal === 'edit' && $reopenEditId === $mId) ? $mfError : '') ?>
                 </div>
                 <div class="modal-footer"><button class="btn btn-semas btn-sm">Save Changes</button></div>
               </form>
@@ -491,7 +515,7 @@ require __DIR__ . '/../partials/layout_top.php';
               <tr>
                 <td class="fw-semibold"><?= e($m['module_title']) ?></td>
                 <td><?= e($m['session_type'] ?? '/') ?></td>
-                <td><?= e($m['department_name'] ?? '/') ?></td>
+                <td><?= e($m['departments_list'] ?? $m['department_code'] ?? '/') ?></td>
                 <td><?= e($m['lecturer_name'] ?? '/') ?></td>
                 <td><?= e($m['room_name'] ?? '/') ?></td>
                 <td><?= (int) $m['student_count'] ?></td>
@@ -522,7 +546,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="modal-body small">
           <div class="row g-2">
             <div class="col-6"><span class="text-muted">Session</span><br><strong><?= e($m['session_type'] ?? '/') ?></strong></div>
-            <div class="col-6"><span class="text-muted">Department</span><br><strong><?= e($m['department_name'] ?? '/') ?></strong></div>
+            <div class="col-6"><span class="text-muted">Departments</span><br><strong><?= e($m['departments_list'] ?? $m['department_code'] ?? '/') ?></strong></div>
             <div class="col-6"><span class="text-muted">Lecturer</span><br><strong><?= e($m['lecturer_name'] ?? '/') ?></strong></div>
             <div class="col-6"><span class="text-muted">Room</span><br><strong><?= e($m['room_name'] ?? '/') ?></strong></div>
             <div class="col-6"><span class="text-muted">CAT</span><br><strong><?= e($m['cat_date'] ?? '/') ?></strong></div>
@@ -563,8 +587,10 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php
             $createPreFill = ($reopenModal === 'create' && $mfData) ? $mfData : [];
             $createError   = ($reopenModal === 'create') ? $mfError : '';
+            $createPreFillDepts = ($reopenModal === 'create' && !empty($mfData['dept_ids']))
+                ? reconstructSelectedDepts($mfData['dept_ids'], $departments) : [];
           ?>
-          <?= moduleFormFields('new', $lecturers, $allRooms, $intakeList, $sessionTypes, $createPreFill, [], $today, null, $createError) ?>
+          <?= moduleFormFields('new', $lecturers, $allRooms, $intakeList, $sessionTypes, $departments, $createPreFill, $createPreFillDepts, $today, null, $createError) ?>
         </div>
         <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Create Module</button></div>
       </form>
@@ -574,21 +600,41 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <?php
 /**
+ * Rebuilds a [department_id, department_name] list from raw submitted dept_ids[]
+ * values (used to restore a HOD's actual multi-department selection when a
+ * validation error reopens the form, instead of silently dropping it).
+ */
+function reconstructSelectedDepts(array $submittedIds, array $allDepartments): array
+{
+    $deptLookup = array_column($allDepartments, 'department_name', 'department_id');
+    $result = [];
+    foreach ($submittedIds as $id) {
+        $id = (int) $id;
+        if (isset($deptLookup[$id])) {
+            $result[] = ['department_id' => $id, 'department_name' => $deptLookup[$id]];
+        }
+    }
+    return $result;
+}
+
+/**
  * Renders the shared module form fields for create/edit modals.
  * @param string  $uid          Unique prefix to avoid duplicate HTML IDs
  * @param array[] $lecturers
  * @param array[] $rooms        Already-filtered available rooms
  * @param string[] $intakeList  e.g. ['JAN24','MAY24',…,'MAY26']
  * @param string[] $sessionTypes
+ * @param array[] $departments   All departments available as checkboxes
  * @param array   $mod          Existing module row (empty for create)
  * @param array[] $selectedDepts Depts already on this module (primary first)
  * @param string  $today
  * @param int|null $currentRoomId
  */
 function moduleFormFields(string $uid, array $lecturers, array $rooms, array $intakeList,
-                          array $sessionTypes, array $mod, array $selectedDepts, string $today, ?int $currentRoomId, string $error = ''): string
+                          array $sessionTypes, array $departments, array $mod, array $selectedDepts, string $today, ?int $currentRoomId, string $error = ''): string
 {
     $isCreate = empty($mod['module_id']);
+    $selectedDeptIds = array_map('intval', array_column($selectedDepts, 'department_id'));
     ob_start(); ?>
     <?php if ($error !== ''): ?>
       <div class="alert alert-danger alert-sm small py-2 mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i><?= htmlspecialchars($error) ?></div>
@@ -601,23 +647,18 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
         <input name="module_title" class="form-control form-control-sm" required value="<?= e($mod['module_title'] ?? '') ?>">
       </div>
 
-      <!-- Department search+add -->
+      <!-- Department checkboxes -->
       <div class="col-12">
-        <label class="form-label small fw-semibold">Departments <span class="text-danger">*</span> <span class="text-muted small fw-normal">(first added = primary)</span></label>
-        <div class="dept-tags d-flex flex-wrap gap-1 mb-1" id="deptTags-<?= $uid ?>">
-          <?php foreach ($selectedDepts as $sd): ?>
-            <span class="badge bg-primary d-flex align-items-center gap-1" data-dept-id="<?= $sd['department_id'] ?>">
-              <?= e($sd['department_name']) ?>
-              <button type="button" class="btn-close btn-close-white" style="font-size:.6rem;" onclick="removeDept(this,'<?= $uid ?>')"></button>
-              <input type="hidden" name="dept_ids[]" value="<?= $sd['department_id'] ?>">
-            </span>
+        <label class="form-label small fw-semibold">Departments <span class="text-danger">*</span> <span class="text-muted small fw-normal">(choose one or more)</span></label>
+        <div class="d-flex flex-wrap gap-2 mt-1">
+          <?php foreach ($departments as $department):
+            $deptId = (int) $department['department_id']; ?>
+            <div class="form-check form-check-inline" title="<?= e($department['department_name']) ?>">
+              <input type="checkbox" class="form-check-input" name="dept_ids[]" value="<?= $deptId ?>"
+                id="dept-<?= $uid ?>-<?= $deptId ?>" <?= in_array($deptId, $selectedDeptIds, true) ? 'checked' : '' ?>>
+              <label class="form-check-label small" for="dept-<?= $uid ?>-<?= $deptId ?>"><?= e($department['department_code']) ?></label>
+            </div>
           <?php endforeach; ?>
-        </div>
-        <div class="position-relative">
-          <input type="text" class="form-control form-control-sm dept-search-input" id="deptSearch-<?= $uid ?>"
-            autocomplete="off" data-uid="<?= $uid ?>">
-          <div class="dept-dropdown border rounded bg-white shadow-sm" id="deptDD-<?= $uid ?>"
-            style="display:none;position:absolute;z-index:1050;width:100%;max-height:180px;overflow-y:auto;"></div>
         </div>
       </div>
 
@@ -700,16 +741,6 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
     return (string) ob_get_clean();
 }
 
-// Department JSON for JS search
-$deptJson = json_encode(array_values(array_map(function($d) {
-    return [
-        'id'     => (int) $d['department_id'],
-        'name'   => $d['department_name'],
-        'code'   => $d['department_code'],
-        'faculty'=> $d['faculty_name'],
-    ];
-}, $departments)));
-
 // Intake data per module for pre-checking edit modals
 $moduleIntakesMap = [];
 foreach ($modules as $m) {
@@ -720,7 +751,6 @@ foreach ($modules as $m) {
 ?>
 
 <script>
-const DEPTS_DATA = <?= $deptJson ?>;
 <?php if ($reopenModal === 'create'): ?>
 document.addEventListener('DOMContentLoaded', function() {
     var m = new bootstrap.Modal(document.getElementById('newModuleModal'));
@@ -740,17 +770,6 @@ document.addEventListener('DOMContentLoaded', function() {
         intakes.forEach(function(ink) {
             var cb = document.getElementById('ink-e' + modId + '-' + ink);
             if (cb) cb.checked = true;
-        });
-    });
-
-    // Wire up department search inputs
-    document.querySelectorAll('.dept-search-input').forEach(function(input) {
-        input.addEventListener('input', function() { showDeptSuggestions(this); });
-        input.addEventListener('blur', function() {
-            setTimeout(function() {
-                var dd = document.getElementById('deptDD-' + input.dataset.uid);
-                if (dd) dd.style.display = 'none';
-            }, 200);
         });
     });
 
@@ -809,67 +828,9 @@ function refreshRoomsForSession(select) {
         });
 }
 
-function showDeptSuggestions(input) {
-    var uid = input.dataset.uid;
-    var q = input.value.toLowerCase().trim();
-    var dd = document.getElementById('deptDD-' + uid);
-    if (!q) { dd.style.display = 'none'; return; }
-
-    // Get already-selected IDs
-    var selected = getSelectedDeptIds(uid);
-    var matches = DEPTS_DATA.filter(function(d) {
-        return (d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
-            && !selected.includes(d.id);
-    }).slice(0, 8);
-
-    if (!matches.length) { dd.innerHTML = '<div class="p-2 small text-muted">No results</div>'; dd.style.display = ''; return; }
-
-    dd.innerHTML = matches.map(function(d) {
-        return '<div class="dept-option px-3 py-2 small" style="cursor:pointer;" '
-            + 'onmousedown="addDeptById(' + d.id + ',\'' + escHtml(d.name) + '\',\'' + uid + '\')">'
-            + '<strong>' + escHtml(d.name) + '</strong> <span class="text-muted">(' + escHtml(d.code) + ') / ' + escHtml(d.faculty) + '</span></div>';
-    }).join('');
-    dd.style.display = '';
-}
-
-function getSelectedDeptIds(uid) {
-    var tags = document.getElementById('deptTags-' + uid);
-    return Array.from(tags.querySelectorAll('input[name="dept_ids[]"]')).map(function(i) { return parseInt(i.value); });
-}
-
-function addDeptById(id, name, uid) {
-    var tags = document.getElementById('deptTags-' + uid);
-    if (getSelectedDeptIds(uid).includes(id)) return;
-    var span = document.createElement('span');
-    span.className = 'badge bg-primary d-flex align-items-center gap-1';
-    span.setAttribute('data-dept-id', id);
-    span.innerHTML = escHtml(name)
-        + ' <button type="button" class="btn-close btn-close-white" style="font-size:.6rem;" onclick="removeDept(this,\'' + uid + '\')"></button>'
-        + '<input type="hidden" name="dept_ids[]" value="' + id + '">';
-    tags.appendChild(span);
-    // Clear search
-    var inp = document.getElementById('deptSearch-' + uid);
-    if (inp) inp.value = '';
-    var dd = document.getElementById('deptDD-' + uid);
-    if (dd) dd.style.display = 'none';
-}
-
-function removeDept(btn, uid) {
-    btn.closest('span').remove();
-}
-
 function escHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-// Highlight hover on dropdown options
-document.addEventListener('mouseover', function(e) {
-    if (e.target.classList.contains('dept-option') || e.target.closest('.dept-option')) {
-        var opt = e.target.classList.contains('dept-option') ? e.target : e.target.closest('.dept-option');
-        opt.parentNode.querySelectorAll('.dept-option').forEach(function(o) { o.style.background = ''; });
-        opt.style.background = '#f1f5f9';
-    }
-});
 
 // ── Enroll student lookup ──────────────────────────────────────────────
 function lookupStudent(modId) {
