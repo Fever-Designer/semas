@@ -34,33 +34,55 @@ final class Otp
     public static function verify(int $userId, string $purpose, string $submittedCode): array
     {
         $db = Database::connection();
+        $submittedCode = preg_replace('/[^0-9]/', '', $submittedCode) ?? '';
+        if (!preg_match('/^[0-9]{6}$/', $submittedCode)) {
+            return ['ok' => false, 'error' => 'Enter the complete 6-digit code.'];
+        }
         $stmt = $db->prepare(
             'SELECT * FROM otp_codes
              WHERE user_id = :uid AND purpose = :purpose AND consumed_at IS NULL
-             ORDER BY otp_id DESC LIMIT 1'
+             ORDER BY otp_id DESC'
         );
         $stmt->execute(['uid' => $userId, 'purpose' => $purpose]);
-        $row = $stmt->fetch();
+        $rows = $stmt->fetchAll();
 
-        if (!$row) {
+        if (!$rows) {
             return ['ok' => false, 'error' => 'No pending OTP found. Please request a new code.'];
         }
-        if (strtotime($row['expires_at']) < time()) {
+
+        $now = new DateTimeImmutable('now');
+        $hasUnexpired = false;
+        $hasAttemptsRemaining = false;
+        foreach ($rows as $row) {
+            if (new DateTimeImmutable((string) $row['expires_at']) < $now) continue;
+            $hasUnexpired = true;
+            if ((int) $row['attempts'] >= (int) $row['max_attempts']) continue;
+            $hasAttemptsRemaining = true;
+            if (password_verify($submittedCode, (string) $row['code_hash'])) {
+                $db->prepare(
+                    'UPDATE otp_codes SET consumed_at = NOW()
+                     WHERE user_id = :uid AND purpose = :purpose AND consumed_at IS NULL'
+                )->execute(['uid' => $userId, 'purpose' => $purpose]);
+                return ['ok' => true, 'error' => null];
+            }
+        }
+
+        if (!$hasUnexpired) {
             return ['ok' => false, 'error' => 'This code has expired. Please request a new one.'];
         }
-        if ((int) $row['attempts'] >= (int) $row['max_attempts']) {
+        if (!$hasAttemptsRemaining) {
             return ['ok' => false, 'error' => 'Too many incorrect attempts. Please request a new code.'];
         }
 
-        if (!password_verify($submittedCode, $row['code_hash'])) {
-            $db->prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE otp_id = :id')
-               ->execute(['id' => $row['otp_id']]);
-            return ['ok' => false, 'error' => 'Incorrect code.'];
+        foreach ($rows as $row) {
+            if (new DateTimeImmutable((string) $row['expires_at']) >= $now
+                && (int) $row['attempts'] < (int) $row['max_attempts']) {
+                $db->prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE otp_id = :id')
+                   ->execute(['id' => $row['otp_id']]);
+                break;
+            }
         }
-
-        $db->prepare('UPDATE otp_codes SET consumed_at = NOW() WHERE otp_id = :id')
-           ->execute(['id' => $row['otp_id']]);
-        return ['ok' => true, 'error' => null];
+        return ['ok' => false, 'error' => 'Incorrect code. Check the latest password-reset email and try again.'];
     }
 
     private static function setting(string $key, $default)

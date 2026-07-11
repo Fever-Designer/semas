@@ -64,6 +64,11 @@ function lecturer_module_has_open_attendance(PDO $db, array $module, string $tod
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
+    $holidayToday = ClassAttendance::holidayToday();
+    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+        flash('error', 'Attendance cannot be created or changed on a Public Holiday.');
+        redirect('/lecturer/class-attendance.php');
+    }
     $action   = $_POST['action']    ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
 
@@ -409,7 +414,7 @@ if ($module) {
             && lecturer_module_matches_window($module, ['name' => (string) $s['window_name']]);
     }));
 
-    foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
+    foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
         $holidayMap[$h['holiday_date']] = true;
     }
 

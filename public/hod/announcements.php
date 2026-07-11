@@ -81,7 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Holiday / Umuganda create ──────────────────────────────────────────
     if ($action === 'holiday_create') {
-        $type = $_POST['holiday_type'] === 'Umuganda' ? 'Umuganda' : 'Public Holiday';
+        $type = $isCoordinator ? 'Umuganda' : ($_POST['holiday_type'] === 'Umuganda' ? 'Umuganda' : 'Public Holiday');
+        $holidayDate = trim((string) ($_POST['holiday_date'] ?? ''));
+        $dateValue = DateTime::createFromFormat('Y-m-d', $holidayDate);
+        if (!$dateValue || $dateValue->format('Y-m-d') !== $holidayDate || $holidayDate < date('Y-m-d')) {
+            flash('error', 'Please choose a valid current or future date.');
+            redirect('/hod/announcements.php?tab=holidays');
+        }
+        if ($type === 'Umuganda' && $dateValue->format('N') !== '6') {
+            flash('error', 'Umuganda can only be set on a Saturday.');
+            redirect('/hod/announcements.php?tab=holidays');
+        }
         try {
             $db->prepare(
                 'INSERT INTO holidays (holiday_date, title, holiday_type,
@@ -89,13 +99,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     notes, created_by)
                  VALUES (:date, :title, :type, :ms, :me_, :as_, :ae, :notes, :uid)'
             )->execute([
-                'date'  => $_POST['holiday_date'],
+                'date'  => $holidayDate,
                 'title' => trim($_POST['title']),
                 'type'  => $type,
-                'ms'    => $type === 'Umuganda' ? ($_POST['override_morning_start']   ?: '13:30') : null,
-                'me_'   => $type === 'Umuganda' ? ($_POST['override_morning_end']     ?: '16:30') : null,
-                'as_'   => $type === 'Umuganda' ? ($_POST['override_afternoon_start'] ?: '17:00') : null,
-                'ae'    => $type === 'Umuganda' ? ($_POST['override_afternoon_end']   ?: '20:30') : null,
+                'ms'    => $type === 'Umuganda' ? '13:30' : null,
+                'me_'   => $type === 'Umuganda' ? '16:30' : null,
+                'as_'   => $type === 'Umuganda' ? '17:00' : null,
+                'ae'    => $type === 'Umuganda' ? '20:30' : null,
                 'notes' => trim($_POST['notes'] ?? '') ?: null,
                 'uid'   => $me['user_id'],
             ]);
@@ -119,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status'          => 'Published',
                     'recipients'      => $affected,
                 ], $me, 'Head of Department', 'University-wide (Weekend students)', false);
-                flash('success', 'Umuganda added. ' . count($affected) . ' weekend student(s) notified via email and announcement board.');
+                flash('success', 'Umuganda added. ' . count($affected) . ' weekend student(s) notified by email, WhatsApp, and announcement board.');
             } else {
                 // Public Holiday → notify all active students or weekend students only for coordinators
                 $studentCondition = $isCoordinator ? "AND u.session_type = 'Weekend'" : '';
@@ -138,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status'          => 'Published',
                     'recipients'      => $allStudents,
                 ], $me, 'Head of Department', $isCoordinator ? 'University-wide (Weekend students)' : 'University-wide (All students)', false);
-                flash('success', ($isCoordinator ? 'Public holiday added. ' : 'Public holiday added. ') . count($allStudents) . ' student(s) notified via email and announcement board.');
+                flash('success', 'Public Holiday added. ' . count($allStudents) . ' student(s) notified by email, WhatsApp, and announcement board.');
             }
         } catch (PDOException $e) {
             flash('error', $e->getCode() === '23000' ? 'A holiday is already registered for that date.' : 'Could not save.');
@@ -149,6 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Holiday delete ─────────────────────────────────────────────────────
     if ($action === 'holiday_delete') {
         $holidayId = (int) $_POST['holiday_id'];
+        if ($isCoordinator) {
+            $guard = $db->prepare("SELECT 1 FROM holidays WHERE holiday_id = :id AND holiday_type = 'Umuganda'");
+            $guard->execute(['id' => $holidayId]);
+            if (!$guard->fetchColumn()) {
+                flash('error', 'Coordinators can only remove Umuganda dates.');
+                redirect('/hod/announcements.php?tab=holidays');
+            }
+        }
         $db->prepare('DELETE FROM holidays WHERE holiday_id = :id')->execute(['id' => $holidayId]);
         AuditLog::record(Auth::id(), 'HOLIDAY_DELETE', 'holidays', $holidayId);
         flash('success', 'Removed.');
@@ -288,10 +306,13 @@ require __DIR__ . '/../partials/layout_top.php';
         <form method="post">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="holiday_create">
-          <div class="modal-header"><h6 class="modal-title display-font">Add Holiday / Umuganda</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-header"><h6 class="modal-title display-font"><?= $isCoordinator ? 'Add Umuganda' : 'Add Holiday / Umuganda' ?></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <div class="mb-2"><label class="form-label small">Date</label><input type="date" name="holiday_date" class="form-control form-control-sm" required></div>
             <div class="mb-2"><label class="form-label small">Title</label><input name="title" class="form-control form-control-sm" required></div>
+            <?php if ($isCoordinator): ?>
+              <input type="hidden" name="holiday_type" id="holidayType" value="Umuganda">
+            <?php else: ?>
             <div class="mb-2">
               <label class="form-label small">Type</label>
               <select name="holiday_type" id="holidayType" class="form-select form-select-sm" onchange="toggleUmuganda()">
@@ -299,12 +320,13 @@ require __DIR__ . '/../partials/layout_top.php';
                 <option value="Umuganda">Umuganda / notifies weekend students only</option>
               </select>
             </div>
-            <div id="umugandaFields" style="display:none;">
+            <?php endif; ?>
+            <div id="umugandaFields" style="<?= $isCoordinator ? '' : 'display:none;' ?>">
               <div class="row g-2">
-                <div class="col-6"><label class="form-label small">Morning Start</label><input type="time" name="override_morning_start" class="form-control form-control-sm" value="13:30"></div>
-                <div class="col-6"><label class="form-label small">Morning End</label><input type="time" name="override_morning_end" class="form-control form-control-sm" value="16:30"></div>
-                <div class="col-6"><label class="form-label small">Afternoon Start</label><input type="time" name="override_afternoon_start" class="form-control form-control-sm" value="17:00"></div>
-                <div class="col-6"><label class="form-label small">Afternoon End</label><input type="time" name="override_afternoon_end" class="form-control form-control-sm" value="20:30"></div>
+                <div class="col-6"><label class="form-label small">Morning Start</label><input type="time" class="form-control form-control-sm" value="13:30" readonly></div>
+                <div class="col-6"><label class="form-label small">Morning End</label><input type="time" class="form-control form-control-sm" value="16:30" readonly></div>
+                <div class="col-6"><label class="form-label small">Afternoon Start</label><input type="time" class="form-control form-control-sm" value="17:00" readonly></div>
+                <div class="col-6"><label class="form-label small">Afternoon End</label><input type="time" class="form-control form-control-sm" value="20:30" readonly></div>
               </div>
             </div>
             <div class="mb-2 mt-2"><label class="form-label small">Notes (optional)</label><input name="notes" class="form-control form-control-sm"></div>

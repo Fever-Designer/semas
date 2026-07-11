@@ -38,7 +38,7 @@ $showPublicHolidayNotice = $holiday && $holiday['holiday_type'] === 'Public Holi
 
 // Holidays
 $holidayMap = [];
-foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
+foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
     $holidayMap[$h['holiday_date']] = true;
 }
 
@@ -113,10 +113,12 @@ function stu_signout_session(PDO $db, array $module, int $userId, string $today)
 }
 
 $signoutSessions = [];
-foreach ($allModules as $am) {
-    $outSession = stu_signout_session($db, $am, (int) $me['user_id'], $today);
-    if ($outSession) {
-        $signoutSessions[(int) $am['module_id']] = $outSession;
+if (!$showPublicHolidayNotice) {
+    foreach ($allModules as $am) {
+        $outSession = stu_signout_session($db, $am, (int) $me['user_id'], $today);
+        if ($outSession) {
+            $signoutSessions[(int) $am['module_id']] = $outSession;
+        }
     }
 }
 

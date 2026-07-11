@@ -95,8 +95,8 @@ final class ClassAttendance
 
         if ($holiday && $holiday['holiday_type'] === 'Umuganda' && $now->format('N') === '6') {
             $candidates = [
-                'UmugandaMorning'   => ['start' => substr($holiday['override_morning_start'] ?? '13:30', 0, 5), 'end' => substr($holiday['override_morning_end'] ?? '16:30', 0, 5)],
-                'UmugandaAfternoon' => ['start' => substr($holiday['override_afternoon_start'] ?? '17:00', 0, 5), 'end' => substr($holiday['override_afternoon_end'] ?? '20:30', 0, 5)],
+                'UmugandaMorning'   => ['start' => '13:30', 'end' => '16:30'],
+                'UmugandaAfternoon' => ['start' => '17:00', 'end' => '20:30'],
             ];
             foreach ($candidates as $name => $def) {
                 $start = DateTime::createFromFormat('Y-m-d H:i', $today . ' ' . $def['start'], new DateTimeZone(self::TZ));

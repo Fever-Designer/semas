@@ -43,10 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  VALUES (:date, :title, :type, :ms, :me_, :as_, :ae, :notes, :uid)'
             )->execute([
                 'date' => $holidayDate, 'title' => $title, 'type' => $type,
-                'ms' => $type === 'Umuganda' ? ($_POST['override_morning_start'] ?: '13:30') : null,
-                'me_' => $type === 'Umuganda' ? ($_POST['override_morning_end'] ?: '16:30') : null,
-                'as_' => $type === 'Umuganda' ? ($_POST['override_afternoon_start'] ?: '17:00') : null,
-                'ae' => $type === 'Umuganda' ? ($_POST['override_afternoon_end'] ?: '20:30') : null,
+                'ms' => $type === 'Umuganda' ? '13:30' : null,
+                'me_' => $type === 'Umuganda' ? '16:30' : null,
+                'as_' => $type === 'Umuganda' ? '17:00' : null,
+                'ae' => $type === 'Umuganda' ? '20:30' : null,
                 'notes' => trim($_POST['notes'] ?? '') ?: null, 'uid' => $me['user_id'],
             ]);
             $holidayId = (int) $db->lastInsertId();
@@ -63,13 +63,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'message' => "Umuganda falls on {$holidayDate}. Weekend classes are rescheduled: Morning session 13:30/16:30, Afternoon session 17:00/20:30.",
                     'status' => 'Published', 'recipients' => $weekendStudents,
                 ], $me, 'Head of Department', 'University-wide (Weekend students)', false);
+            } else {
+                $allStudents = $db->query(
+                    "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
+                     WHERE r.role_name = 'Student' AND u.status = 'Active'"
+                )->fetchAll();
+                $holidayMessage = $title . " on {$holidayDate} is a Public Holiday. No attendance is required and attendance scanning is disabled for the day."
+                    . (trim($_POST['notes'] ?? '') ? ' Note: ' . trim($_POST['notes']) : '');
+                $result = Announcement::create([
+                    'title' => 'Public Holiday / ' . $title . ' (' . $holidayDate . ')',
+                    'category' => 'General Notice',
+                    'priority' => 'High',
+                    'target_audience' => 'All Students',
+                    'message' => $holidayMessage,
+                    'status' => 'Published',
+                    'recipients' => $allStudents,
+                ], $me, 'Head of Department', 'University-wide (All students)', false);
             }
-            flash('success', ucfirst($type) . ' added' . ($type === 'Umuganda' ? ' and weekend students notified.' : '.'));
+            flash('success', $type === 'Umuganda'
+                ? 'Umuganda added. Weekend students were notified by email and WhatsApp where a phone number is available.'
+                : 'Public Holiday added. All active students were notified by email and WhatsApp where a phone number is available.');
         } catch (PDOException $e) {
             flash('error', $e->getCode() === '23000' ? 'A holiday is already registered for that date.' : 'Could not save.');
         }
     } elseif ($action === 'delete') {
         $holidayId = (int) $_POST['holiday_id'];
+        if ($isCoordinator) {
+            $guard = $db->prepare("SELECT 1 FROM holidays WHERE holiday_id = :id AND holiday_type = 'Umuganda'");
+            $guard->execute(['id' => $holidayId]);
+            if (!$guard->fetchColumn()) {
+                flash('error', 'Coordinators can only remove Umuganda dates.');
+                redirect('/hod/holidays.php');
+            }
+        }
         $db->prepare('DELETE FROM holidays WHERE holiday_id = :id')->execute(['id' => $holidayId]);
         AuditLog::record(Auth::id(), 'HOLIDAY_DELETE', 'holidays', $holidayId);
         flash('success', 'Removed.');
@@ -135,10 +161,10 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php endif; ?>
           <div id="umugandaFields" style="<?= $isCoordinator ? '' : 'display:none;' ?>">
             <div class="row g-2">
-              <div class="col-6"><label class="form-label small">Morning Start</label><input type="time" name="override_morning_start" class="form-control form-control-sm" value="13:30"></div>
-              <div class="col-6"><label class="form-label small">Morning End</label><input type="time" name="override_morning_end" class="form-control form-control-sm" value="16:30"></div>
-              <div class="col-6"><label class="form-label small">Afternoon Start</label><input type="time" name="override_afternoon_start" class="form-control form-control-sm" value="17:00"></div>
-              <div class="col-6"><label class="form-label small">Afternoon End</label><input type="time" name="override_afternoon_end" class="form-control form-control-sm" value="20:30"></div>
+              <div class="col-6"><label class="form-label small">Morning Start</label><input type="time" class="form-control form-control-sm" value="13:30" readonly></div>
+              <div class="col-6"><label class="form-label small">Morning End</label><input type="time" class="form-control form-control-sm" value="16:30" readonly></div>
+              <div class="col-6"><label class="form-label small">Afternoon Start</label><input type="time" class="form-control form-control-sm" value="17:00" readonly></div>
+              <div class="col-6"><label class="form-label small">Afternoon End</label><input type="time" class="form-control form-control-sm" value="20:30" readonly></div>
             </div>
           </div>
           <div class="mb-2 mt-2"><label class="form-label small">Notes (optional)</label><input name="notes" class="form-control form-control-sm"></div>

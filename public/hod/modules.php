@@ -41,6 +41,17 @@ function hodAvailableRooms(PDO $db, string $sessionType = '', int $excludeModule
     return $stmt->fetchAll();
 }
 
+function hodRequireCoordinatorWeekendScope(PDO $db, int $moduleId, bool $isCoordinator): void
+{
+    if (!$isCoordinator) return;
+    $guard = $db->prepare("SELECT 1 FROM modules WHERE module_id = :mid AND session_type = 'Weekend'");
+    $guard->execute(['mid' => $moduleId]);
+    if (!$guard->fetchColumn()) {
+        flash('error', 'Coordinators can only manage Weekend modules.');
+        redirect('/hod/modules.php');
+    }
+}
+
 // ── POST handlers ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -55,6 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lecUserId = (int) ($_POST['lecturer_user_id'] ?? 0);
         $roomId    = (int) ($_POST['room_id'] ?? 0) ?: null;
         $modId     = $action === 'update' ? (int) $_POST['module_id'] : 0;
+        if ($action === 'update') {
+            hodRequireCoordinatorWeekendScope($db, $modId, $isCoordinator);
+        }
 
         // Resolve user_id → lecturers.lecturer_id (auto-create row for HOD/Coordinator who can teach)
         $lecId = 0;
@@ -178,6 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'reopen') {
         $modId = (int) $_POST['module_id'];
+        hodRequireCoordinatorWeekendScope($db, $modId, $isCoordinator);
         $db->prepare("UPDATE modules SET status='Ongoing' WHERE module_id=:id")->execute(['id' => $modId]);
         flash('success', 'Module reopened.');
         redirect('/hod/modules.php');
@@ -185,6 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete_module') {
         $modId = (int) $_POST['module_id'];
+        hodRequireCoordinatorWeekendScope($db, $modId, $isCoordinator);
         Module::deleteModule($db, $modId);
         AuditLog::record(Auth::id(), 'MODULE_DELETE', 'modules', $modId);
         flash('success', 'Module deleted.');
@@ -193,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'enroll_student') {
         $modId  = (int) $_POST['module_id'];
+        hodRequireCoordinatorWeekendScope($db, $modId, $isCoordinator);
         $regNum = trim($_POST['search_reg_number'] ?? '');
         $exceptionType = trim($_POST['exception_type'] ?? '');
         $stuStmt = $db->prepare("SELECT u.user_id, u.full_name FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' AND u.reg_number=:rn AND u.status='Active'");
@@ -238,6 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'de_register') {
         $modId  = (int) $_POST['module_id'];
+        hodRequireCoordinatorWeekendScope($db, $modId, $isCoordinator);
         $userId = (int) $_POST['user_id'];
         $statusStmt = $db->prepare('SELECT status FROM modules WHERE module_id = :mid');
         $statusStmt->execute(['mid' => $modId]);

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
-Auth::requireRole(['Principal', 'HOD']);
+Auth::requireRole(['Principal']);
 
 $pageTitle = 'Manage Departments';
 $activeNav = 'departments';

@@ -57,7 +57,7 @@ require __DIR__ . '/../partials/auth_top.php';
       <p class="text-muted small">Enter the 6-digit code emailed to you.</p>
       <form method="post">
         <?= csrf_field() ?>
-        <div class="mb-3"><input name="code" class="form-control otp-input" inputmode="numeric" maxlength="6" required></div>
+        <div class="mb-3"><input name="code" class="form-control otp-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></div>
         <button class="btn btn-semas w-100">Verify Code</button>
       </form>
     <?php else: ?>

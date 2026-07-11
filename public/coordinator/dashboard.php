@@ -58,7 +58,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="semas-card p-3 mb-4">
   <div class="d-flex gap-2 flex-wrap">
-    <a href="<?= APP_URL ?>/coordinator/modules.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-journal-plus me-1"></i> Manage Weekend Modules</a>
+    <a href="<?= APP_URL ?>/hod/modules.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-journal-plus me-1"></i> Manage Weekend Modules</a>
     <a href="<?= APP_URL ?>/coordinator/announcements.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-megaphone me-1"></i> Announcements</a>
     <a href="<?= APP_URL ?>/admin/suggestions.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-chat-left-text-fill me-1"></i> Suggestion Box</a>
   </div>
@@ -67,7 +67,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="semas-card p-3">
   <h6 class="display-font mb-3">Recent Weekend Modules</h6>
   <?php if (!$recentModules): ?>
-    <p class="text-muted small mb-0">No Weekend modules yet. <a href="<?= APP_URL ?>/coordinator/modules.php">Create one</a>.</p>
+    <p class="text-muted small mb-0">No Weekend modules yet. <a href="<?= APP_URL ?>/hod/modules.php">Create one</a>.</p>
   <?php else: ?>
     <table class="table table-sm align-middle">
       <thead><tr><th>Module</th><th>Department</th><th>Lecturer</th><th>Status</th></tr></thead>

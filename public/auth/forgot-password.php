@@ -9,6 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $email = trim($_POST['email'] ?? '');
     $method = $_POST['method'] ?? 'link';
+    if ($method === 'otp') {
+        unset($_SESSION['pending_reset_uid'], $_SESSION['reset_otp_verified']);
+    }
 
     $db = Database::connection();
     $stmt = $db->prepare("SELECT * FROM users WHERE email = :email AND status != 'Deactivated'");

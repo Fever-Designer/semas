@@ -88,7 +88,6 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
         <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements &amp; Holidays</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'departments' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/departments.php"><i class="bi bi-building"></i> My Department</a>
         <div class="nav-section-label">More</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'suggestions' ? 'active' : '' ?>" href="<?= APP_URL ?>/admin/suggestions.php"><i class="bi bi-chat-left-text-fill"></i> Suggestion Box</a>
       <?php endif; ?>
@@ -121,7 +120,7 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
 
       <?php if ($roleLabel === 'Coordinator'): ?>
         <div class="nav-section-label">Weekend Academic</div>
-        <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Weekend Modules</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Weekend Modules</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>

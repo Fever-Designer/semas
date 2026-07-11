@@ -229,6 +229,11 @@ if (!$module) {
 // ── Date-bounds enforcement ───────────────────────────────────────────
 // Attendance is only valid within the module's start_date to end_date.
 $today = ClassAttendance::now()->format('Y-m-d');
+$holidayToday = ClassAttendance::holidayToday();
+if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+    echo json_encode(['ok' => false, 'message' => 'Today is a Public Holiday. Attendance scanning is disabled and no attendance is required.']);
+    exit;
+}
 if ($module['start_date'] && $today < $module['start_date']) {
     echo json_encode(['ok' => false, 'message' => 'This module has not started yet. Attendance begins on ' . date('d M Y', strtotime($module['start_date'])) . '.']);
     exit;

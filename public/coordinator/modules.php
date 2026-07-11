@@ -2,6 +2,9 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['Coordinator']);
+// Use the shared HoD implementation so Coordinator receives the same module
+// features. That page applies a strict Weekend-only scope for this role.
+redirect('/hod/modules.php');
 Module::autoCompleteExpired();
 
 $pageTitle  = 'Weekend Modules';

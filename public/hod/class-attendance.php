@@ -36,8 +36,22 @@ function hod_module_matches_attendance_window(array $module, string $windowName)
 // ── POST handlers ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
+    $holidayToday = ClassAttendance::holidayToday();
+    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+        flash('error', 'Attendance cannot be created or changed on a Public Holiday.');
+        redirect('/hod/class-attendance.php' . ($isCoordinator ? '?session=Weekend' : ''));
+    }
     $action   = $_POST['action']    ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
+
+    if ($isCoordinator && $moduleId) {
+        $weekendGuard = $db->prepare("SELECT 1 FROM modules WHERE module_id = :mid AND session_type = 'Weekend'");
+        $weekendGuard->execute(['mid' => $moduleId]);
+        if (!$weekendGuard->fetchColumn()) {
+            flash('error', 'Coordinators can only manage Weekend module attendance.');
+            redirect('/hod/class-attendance.php?session=Weekend');
+        }
+    }
 
     if ($action === 'manual_mark') {
         $sessionId = (int) ($_POST['session_id'] ?? 0);
@@ -174,7 +188,7 @@ if ($module) {
             && hod_module_matches_attendance_window($module, (string) $s['window_name']);
     }));
 
-    foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
+    foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
         $holidayMap[$h['holiday_date']] = true;
     }
 
@@ -228,7 +242,7 @@ $overallRows    = [];
 
 if ($viewMode === 'overall') {
     $allHolidays = [];
-    foreach ($db->query("SELECT holiday_date FROM holidays")->fetchAll() as $h) {
+    foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
         $allHolidays[$h['holiday_date']] = true;
     }
 
@@ -528,6 +542,9 @@ require __DIR__ . '/../partials/layout_top.php';
           </a>
           <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $ms['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print Attendance Sheet">
             <i class="bi bi-printer"></i>
+          </a>
+          <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $ms['module_id'] ?>" class="btn btn-sm btn-outline-success" title="Download Attendance Excel">
+            <i class="bi bi-file-earmark-excel"></i>
           </a>
         </div>
       </div>

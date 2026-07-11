@@ -52,8 +52,11 @@ final class AttendanceSheet
              ORDER BY session_date ASC, start_time ASC"
         );
         $sessStmt->execute(['mid' => $moduleId, 'start_date' => $startDate, 'today' => $today]);
-        $sessions = array_values(array_filter($sessStmt->fetchAll(), function ($s) use ($module, $excludeDates) {
-            return !in_array($s['session_date'], $excludeDates, true)
+        $holidayRows = $db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll(PDO::FETCH_COLUMN);
+        $publicHolidays = array_fill_keys(array_map('strval', $holidayRows), true);
+        $sessions = array_values(array_filter($sessStmt->fetchAll(), function ($s) use ($module, $excludeDates, $publicHolidays) {
+            return !isset($publicHolidays[$s['session_date']])
+                && !in_array($s['session_date'], $excludeDates, true)
                 && self::windowMatchesModule($module, (string) $s['window_name']);
         }));
 
@@ -127,12 +130,16 @@ final class AttendanceSheet
         $end    = new DateTime($module['end_date']);
         $today  = new DateTime('today');
         $effectiveEnd = $end < $today ? $end : $today;
+        $holidayRows = Database::connection()
+            ->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $publicHolidays = array_fill_keys(array_map('strval', $holidayRows), true);
         $dates  = [];
         while ($cursor <= $effectiveEnd) {
             $dateStr      = $cursor->format('Y-m-d');
             $isWeekendDay = ((int) $cursor->format('N')) >= 6;
             $dayMatches   = $isWeekendSession ? $isWeekendDay : !$isWeekendDay;
-            if ($dayMatches && !in_array($dateStr, $exclude, true)) {
+            if ($dayMatches && !isset($publicHolidays[$dateStr]) && !in_array($dateStr, $exclude, true)) {
                 $dates[] = $dateStr;
             }
             $cursor->modify('+1 day');

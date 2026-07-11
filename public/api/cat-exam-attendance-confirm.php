@@ -42,6 +42,10 @@ if (!$schedule || (int) $schedule['invigilator_id'] !== (int) $lecturer['lecture
     echo json_encode(['ok' => false, 'message' => 'Schedule not found or you are not the assigned invigilator.']);
     exit;
 }
+if (Auth::role() === 'Coordinator' && ($schedule['session_type'] ?? '') !== 'Weekend') {
+    echo json_encode(['ok' => false, 'message' => 'Coordinators can only manage Weekend CAT/Exam attendance.']);
+    exit;
+}
 
 // Block all changes once submitted
 $submittedStmt = $db->prepare('SELECT submission_id FROM cat_exam_submissions WHERE schedule_id = :id');
@@ -358,20 +362,26 @@ if ($action === 'submit') {
              VALUES (:sid, :by, :notes)"
         )->execute(['sid' => $scheduleId, 'by' => $me['user_id'], 'notes' => trim($_POST['submission_notes'] ?? '')]);
 
+        // The final Exam attendance submission ends the module lifecycle and
+        // closes any class-attendance sessions that may still be open.
+        if ($schedule['exam_type'] === 'Exam') {
+            $db->prepare("UPDATE modules SET status = 'Completed' WHERE module_id = :mid AND status = 'Ongoing'")
+               ->execute(['mid' => $schedule['module_id']]);
+            $db->prepare("UPDATE class_sessions SET status = 'Closed' WHERE module_id = :mid AND status = 'Open'")
+               ->execute(['mid' => $schedule['module_id']]);
+        }
+
         $db->commit();
     } catch (Throwable $e) {
         $db->rollBack();
         throw $e;
     }
 
-    // If this was an Exam, automatically mark the module as Completed
-    if ($schedule['exam_type'] === 'Exam') {
-        $db->prepare("UPDATE modules SET status = 'Completed' WHERE module_id = :mid AND status = 'Ongoing'")
-           ->execute(['mid' => $schedule['module_id']]);
-    }
-
     AuditLog::record(Auth::id(), 'CAT_EXAM_SUBMIT', 'cat_exam_schedules', $scheduleId);
-    echo json_encode(['ok' => true, 'message' => 'Attendance list submitted to HOD successfully.']);
+    $message = $schedule['exam_type'] === 'Exam'
+        ? 'Final Exam attendance submitted to HOD. The module is now Completed and class attendance is closed.'
+        : 'Attendance list submitted to HOD successfully.';
+    echo json_encode(['ok' => true, 'message' => $message]);
     exit;
 }
 

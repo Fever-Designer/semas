@@ -4,10 +4,10 @@ declare(strict_types=1);
 /**
  * Module
  * ------
- * Houses the "auto-complete a module once its exam date has passed" rule
- * so every page that lists modules (HOD, Lecturer, Student) applies it the
- * same way, lazily, on page load / there's no cron job in this stack, so
- * this runs as a cheap idempotent UPDATE at the top of those pages instead.
+ * Keeps module/class attendance lifecycle state synchronized lazily on page
+ * load (this stack has no cron job). Reaching the module end date closes class
+ * attendance. A module becomes Completed only after its final Exam attendance
+ * list has been formally submitted to the HOD.
  */
 final class Module
 {
@@ -15,9 +15,26 @@ final class Module
 
     public static function autoCompleteExpired(): void
     {
-        Database::connection()->exec(
-            "UPDATE modules SET status = 'Completed'
-             WHERE status = 'Ongoing' AND exam_date IS NOT NULL AND exam_date < CURDATE()"
+        $db = Database::connection();
+        $db->exec(
+            "UPDATE class_sessions cs
+             JOIN modules m ON m.module_id = cs.module_id
+             SET cs.status = 'Closed'
+             WHERE cs.status = 'Open'
+               AND m.end_date IS NOT NULL
+               AND m.end_date < CURDATE()"
+        );
+        $db->exec(
+            "UPDATE modules m
+             SET m.status = 'Completed'
+             WHERE m.status = 'Ongoing'
+               AND EXISTS (
+                   SELECT 1
+                   FROM cat_exam_schedules ces
+                   JOIN cat_exam_submissions sub ON sub.schedule_id = ces.schedule_id
+                   WHERE ces.module_id = m.module_id
+                     AND ces.exam_type = 'Exam'
+               )"
         );
     }
 

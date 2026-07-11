@@ -194,7 +194,7 @@ final class Eligibility
             return [];
         }
 
-        $holidayRows = $db->query('SELECT holiday_date FROM holidays')->fetchAll(PDO::FETCH_COLUMN);
+        $holidayRows = $db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll(PDO::FETCH_COLUMN);
         $holidays = array_fill_keys(array_map('strval', $holidayRows), true);
         $excluded = [];
         if ($catDate) {

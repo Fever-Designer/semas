@@ -45,7 +45,10 @@ final class Suggestion
                 LEFT JOIN users su         ON su.user_id         = s.submitted_by_user_id
                 LEFT JOIN roles sr         ON sr.role_id         = su.role_id";
         $params = [];
-        $where = [];
+        // Once staff replies, remove the item from every staff/admin work
+        // queue. It remains available only in the original submitter's private
+        // mySubmissions() history together with the reply and final status.
+        $where = ['s.admin_reply IS NULL'];
         if ($viewerRole !== 'Principal') {
             $where[] = "sr.role_name = 'Student'";
         }
@@ -53,9 +56,7 @@ final class Suggestion
             $where[] = 's.department_id = :dept';
             $params['dept'] = $scopeDepartmentId;
         }
-        if ($where) {
-            $sql .= ' WHERE ' . implode(' AND ', $where);
-        }
+        $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ORDER BY s.created_at DESC';
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
