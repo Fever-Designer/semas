@@ -85,14 +85,7 @@ function redirect(string $path): void
 
 function public_url(string $path = ''): string
 {
-    $appPath = rtrim((string) (parse_url(APP_URL, PHP_URL_PATH) ?: ''), '/');
     $path = '/' . ltrim($path, '/');
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if ($host !== '') {
-        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-        return ($https ? 'https' : 'http') . '://' . $host . $appPath . $path;
-    }
     return rtrim(APP_URL, '/') . $path;
 }
 
