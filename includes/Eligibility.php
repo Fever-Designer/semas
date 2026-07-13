@@ -11,8 +11,9 @@ declare(strict_types=1);
  * 0-2 missed days => Allowed. Exactly 2 missed days sends a warning email.
  * 3+ missed days  => Not Allowed.
  *
- * Present and Late count as attended only when the student also signed out.
- * Missing sign-out is tracked as Left Early and counts as a missed day.
+ * Present requires both Sign In and Sign Out. Sign Out without Sign In is
+ * Late. Missing both actions, or Sign In without Sign Out, is Absent.
+ * Every two Late days add one effective absence for eligibility.
  */
 final class Eligibility
 {
@@ -57,7 +58,7 @@ final class Eligibility
             return 0;
         }
 
-        $expectedDates = self::expectedAttendanceDates($db, $module, $examType);
+        $expectedDates = self::expectedAttendanceDates($module, $examType);
         $totalSessions = count($expectedDates);
 
         $studentsStmt = $db->prepare('SELECT user_id FROM module_enrollments WHERE module_id = :mid');
@@ -70,8 +71,11 @@ final class Eligibility
             $present = $metrics['present'];
             $late = $metrics['late'];
             $leftEarly = $metrics['left_early'];
-            $missed = max(0, $totalSessions - $present - $late);
-            $attendancePct = $totalSessions === 0 ? 100.0 : round((($present + $late) / max(1, $totalSessions)) * 100, 2);
+            $rawAbsences = max(0, $totalSessions - $present - $late);
+            $missed = $rawAbsences + intdiv($late, 2);
+            $attendancePct = $totalSessions === 0
+                ? 100.0
+                : round((max(0, $totalSessions - $missed) / max(1, $totalSessions)) * 100, 2);
             $requiresReview = false;
             $systemDecision = $missed <= self::MAX_ALLOWED_MISSED_DAYS ? 'Allowed' : 'Not Allowed';
             $hodDecision = 'Approved';
@@ -165,8 +169,44 @@ final class Eligibility
         return $row ?: null;
     }
 
-    /** @return string[] YYYY-MM-DD dates that should count for this assessment. */
-    private static function expectedAttendanceDates(PDO $db, array $module, string $examType): array
+    /**
+     * Recalculate already-generated eligibility lists affected by a Public
+     * Holiday change. Weekend modules are intentionally outside this rule.
+     */
+    public static function refreshForPublicHoliday(string $holidayDate): int
+    {
+        $db = Database::connection();
+        $stmt = $db->prepare(
+            "SELECT DISTINCT ce.module_id, ce.exam_type
+             FROM cat_exam_eligibility ce
+             JOIN modules m ON m.module_id = ce.module_id
+             WHERE m.session_type IN ('Day','Evening')
+               AND (m.start_date IS NULL OR m.start_date <= :holiday_date)
+               AND (m.end_date IS NULL OR m.end_date >= :holiday_date2)"
+        );
+        $stmt->execute(['holiday_date' => $holidayDate, 'holiday_date2' => $holidayDate]);
+
+        $refreshed = 0;
+        foreach ($stmt->fetchAll() as $row) {
+            self::generate((int) $row['module_id'], (string) $row['exam_type']);
+            $refreshed++;
+        }
+        return $refreshed;
+    }
+
+    /**
+     * Return the scheduled teaching dates that should count for this
+     * assessment. Eligibility uses the same calendar as the attendance
+     * register so students are not marked absent on non-teaching days.
+     *
+     * AttendanceSheet::expectedClassDates() already excludes CAT/Exam dates
+     * and Public Holidays. A holiday may therefore remain visible as
+     * "Holiday" in an attendance matrix while contributing neither a session
+     * nor an absence to CAT/Exam eligibility.
+     *
+     * @return string[] YYYY-MM-DD dates that should count for this assessment.
+     */
+    private static function expectedAttendanceDates(array $module, string $examType): array
     {
         $moduleStart = $module['start_date'] ?? null;
         $catDate = $module['cat_date'] ?? null;
@@ -202,23 +242,12 @@ final class Eligibility
             return [];
         }
 
-        $holidayRows = $db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll(PDO::FETCH_COLUMN);
-        $holidays = array_fill_keys(array_map('strval', $holidayRows), true);
-        $excluded = [];
-        if ($catDate) {
-            $excluded[$catDate] = true;
-        }
-        if ($examDate) {
-            $excluded[$examDate] = true;
-        }
-
         $dates = [];
-        for ($day = clone $start; $day <= $end; $day->modify('+1 day')) {
-            $date = $day->format('Y-m-d');
-            if (isset($holidays[$date]) || isset($excluded[$date])) {
-                continue;
+        foreach (AttendanceSheet::expectedClassDates($module) as $date) {
+            $classDate = new DateTime($date);
+            if ($classDate >= $start && $classDate <= $end) {
+                $dates[] = $date;
             }
-            $dates[] = $date;
         }
 
         return $dates;
@@ -245,9 +274,9 @@ final class Eligibility
         $stmt = $db->prepare(
             "SELECT
                 cs.session_date,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND si.status = 'Present' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_present,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND si.status = 'Late' AND so.attendance_id IS NOT NULL THEN 1 ELSE 0 END) AS has_late,
-                MAX(CASE WHEN si.attendance_id IS NOT NULL AND si.verification_method IN ('QR','Manual') AND so.attendance_id IS NULL THEN 1 ELSE 0 END) AS has_left_early
+                MAX(CASE WHEN si.verification_method IN ('QR','Manual') AND so.verification_method IN ('QR','Manual') THEN 1 ELSE 0 END) AS has_present,
+                MAX(CASE WHEN (si.attendance_id IS NULL OR si.verification_method NOT IN ('QR','Manual')) AND so.verification_method IN ('QR','Manual') THEN 1 ELSE 0 END) AS has_late,
+                MAX(CASE WHEN si.verification_method IN ('QR','Manual') AND so.attendance_id IS NULL THEN 1 ELSE 0 END) AS has_left_early
              FROM class_sessions cs
              LEFT JOIN class_attendance_logs si ON si.session_id = cs.session_id AND si.user_id = :uid AND si.attendance_type = 'Sign In'
              LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id AND so.user_id = :uid2 AND so.attendance_type = 'Sign Out'

@@ -51,6 +51,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $holidayId = (int) $db->lastInsertId();
             AuditLog::record(Auth::id(), 'HOLIDAY_CREATE', 'holidays', $holidayId, "type=$type");
+            $holidayModules = $type === 'Public Holiday'
+                ? ClassAttendance::markPublicHolidaySessions($db, $holidayDate, (int) $me['user_id'])
+                : 0;
+            if ($type === 'Public Holiday') {
+                Eligibility::refreshForPublicHoliday($holidayDate);
+            }
 
             if ($type === 'Umuganda') {
                 $weekendStudents = $db->query(
@@ -66,9 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $allStudents = $db->query(
                     "SELECT u.* FROM users u JOIN roles r ON r.role_id = u.role_id
-                     WHERE r.role_name = 'Student' AND u.status = 'Active'"
+                     WHERE r.role_name = 'Student' AND u.status = 'Active'
+                       AND COALESCE(u.session_type, '') <> 'Weekend'"
                 )->fetchAll();
-                $holidayMessage = $title . " on {$holidayDate} is a Public Holiday. No attendance is required and attendance scanning is disabled for the day."
+                $holidayMessage = $title . " on {$holidayDate} is a Public Holiday for Day and Evening students. Attendance is automatically marked Holiday and scanning is disabled. Weekend classes continue normally."
                     . (trim($_POST['notes'] ?? '') ? ' Note: ' . trim($_POST['notes']) : '');
                 $result = Announcement::create([
                     'title' => 'Public Holiday / ' . $title . ' (' . $holidayDate . ')',
@@ -82,12 +89,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('success', $type === 'Umuganda'
                 ? 'Umuganda added. Weekend students were notified by email and WhatsApp where a phone number is available.'
-                : 'Public Holiday added. All active students were notified by email and WhatsApp where a phone number is available.');
+                : "Public Holiday added. Attendance was marked Holiday for {$holidayModules} Day/Evening module(s); Weekend students were excluded.");
         } catch (PDOException $e) {
             flash('error', $e->getCode() === '23000' ? 'A holiday is already registered for that date.' : 'Could not save.');
         }
     } elseif ($action === 'delete') {
         $holidayId = (int) $_POST['holiday_id'];
+        $holidayStmt = $db->prepare('SELECT holiday_date, holiday_type FROM holidays WHERE holiday_id = :id');
+        $holidayStmt->execute(['id' => $holidayId]);
+        $holidayRow = $holidayStmt->fetch();
         if ($isCoordinator) {
             $guard = $db->prepare("SELECT 1 FROM holidays WHERE holiday_id = :id AND holiday_type = 'Umuganda'");
             $guard->execute(['id' => $holidayId]);
@@ -97,6 +107,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $db->prepare('DELETE FROM holidays WHERE holiday_id = :id')->execute(['id' => $holidayId]);
+        if ($holidayRow && $holidayRow['holiday_type'] === 'Public Holiday') {
+            ClassAttendance::unmarkPublicHolidaySessions($db, (string) $holidayRow['holiday_date']);
+            Eligibility::refreshForPublicHoliday((string) $holidayRow['holiday_date']);
+        }
         AuditLog::record(Auth::id(), 'HOLIDAY_DELETE', 'holidays', $holidayId);
         flash('success', 'Removed.');
     }

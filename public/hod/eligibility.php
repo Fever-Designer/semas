@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $count = Eligibility::generate($moduleId, $examType);
 
         AuditLog::record(Auth::id(), 'ELIGIBILITY_GENERATE', 'modules', $moduleId, "exam_type=$examType;count=$count");
-        flash('success', "Generated/refreshed $examType eligibility for $count student(s). 0-2 missed attendance days are Allowed; 2 missed days triggers a warning email; 3+ missed days are Not Allowed.");
+        flash('success', "Generated/refreshed $examType eligibility for $count student(s). Two Late days count as one absence; 0-2 effective absences are Allowed, while 3+ are Not Allowed.");
     } elseif ($action === 'decide') {
         $examType = $_POST['exam_type'] === 'Exam' ? 'Exam' : 'CAT';
 
@@ -387,7 +387,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-3">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Student</th><th>Reg No.</th><th>Attendance</th><th>Days</th><th>P</th><th>L</th><th>Left Early</th><th>Missed</th><th>System</th><th>Review</th><th>Final</th><th>Action</th></tr></thead>
+        <thead><tr><th>Student</th><th>Reg No.</th><th>Attendance</th><th>Days</th><th>P</th><th>L</th><th>Sign In / No Out</th><th>Effective Absences</th><th>System</th><th>Review</th><th>Final</th><th>Action</th></tr></thead>
         <tbody>
           <?php foreach ($list as $row): ?>
             <?php
@@ -395,8 +395,11 @@ require __DIR__ . '/../partials/layout_top.php';
               $review = !empty($row['requires_review']);
               $systemLabel = $review ? 'Requires HoD Approval' : $row['system_decision'];
               $systemClass = $row['system_decision'] === 'Allowed' ? 'badge-completed' : ($review ? 'badge-urgent' : 'badge-cancelled');
+              $missed = (int) $row['absences_count'];
+              $riskLabel = $missed >= 4 ? 'Critical' : ($missed === 3 ? 'Special Case' : ($missed === 2 ? 'Warning' : ''));
+              $riskClass = $missed >= 4 ? 'bg-danger' : ($missed === 3 ? 'bg-warning text-dark' : 'bg-info text-dark');
             ?>
-            <tr>
+            <tr style="<?= $missed >= 4 ? 'background:#f8d7da;' : ($missed >= 2 ? 'background:#fff3cd;' : '') ?>">
               <td><?= e($row['full_name']) ?></td>
               <td><?= e($row['reg_number'] ?? '/') ?></td>
               <td><strong><?= number_format($pct, 1) ?>%</strong></td>
@@ -404,7 +407,10 @@ require __DIR__ . '/../partials/layout_top.php';
               <td><?= (int) ($row['present_count'] ?? 0) ?></td>
               <td><?= (int) ($row['late_count'] ?? 0) ?></td>
               <td><?= (int) ($row['left_early_count'] ?? 0) ?></td>
-              <td><?= (int) $row['absences_count'] ?></td>
+              <td>
+                <strong><?= $missed ?></strong>
+                <?php if ($riskLabel): ?><span class="badge <?= $riskClass ?> ms-1"><?= e($riskLabel) ?></span><?php endif; ?>
+              </td>
               <td><span class="badge <?= $systemClass ?>"><?= e($systemLabel) ?></span></td>
               <td><span class="badge <?= $row['hod_decision'] === 'Pending' ? 'badge-urgent' : 'bg-secondary' ?>"><?= e($row['hod_decision']) ?></span></td>
               <td><span class="badge <?= $row['final_decision'] === 'Allowed' ? 'badge-completed' : 'badge-cancelled' ?>"><?= e($row['final_decision']) ?></span></td>

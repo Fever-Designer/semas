@@ -4,8 +4,8 @@ require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireRole(['HOD', 'Coordinator']);
 Module::autoCompleteExpired();
 
-$pageTitle     = 'Class Attendance';
-$activeNav     = 'class-attendance';
+$pageTitle     = 'Attendance & Module Reports';
+$activeNav     = 'hod-attendance';
 $db            = Database::connection();
 $me            = Auth::user();
 $today         = ClassAttendance::now()->format('Y-m-d');
@@ -37,7 +37,7 @@ function hod_module_matches_attendance_window(array $module, string $windowName)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $holidayToday = ClassAttendance::holidayToday();
-    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday' && (int) ClassAttendance::now()->format('N') < 6) {
         flash('error', 'Attendance cannot be created or changed on a Public Holiday.');
         redirect('/hod/class-attendance.php' . ($isCoordinator ? '?session=Weekend' : ''));
     }
@@ -79,14 +79,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
                  VALUES (:sid, :uid, 'Sign In', 'Absent', 'Auto')"
             )->execute(['sid' => $sessionId, 'uid' => $userId]);
-        } else {
+        } elseif ($mark === 'Present') {
             $db->prepare(
                 "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, checkin_time)
-                 VALUES (:sid, :uid, 'Sign In', :st, 'Manual', NOW())"
-            )->execute(['sid' => $sessionId, 'uid' => $userId, 'st' => $mark]);
+                 VALUES (:sid, :uid, 'Sign In', 'Present', 'Manual', NOW())"
+            )->execute(['sid' => $sessionId, 'uid' => $userId]);
             $db->prepare(
                 "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
                  VALUES (:sid, :uid, 'Sign Out', 'Present', 'Manual')"
+            )->execute(['sid' => $sessionId, 'uid' => $userId]);
+        } else {
+            $db->prepare(
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
+                 VALUES (:sid, :uid, 'Sign In', 'Absent', 'Auto')"
+            )->execute(['sid' => $sessionId, 'uid' => $userId]);
+            $db->prepare(
+                "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method)
+                 VALUES (:sid, :uid, 'Sign Out', 'Late', 'Manual')"
             )->execute(['sid' => $sessionId, 'uid' => $userId]);
         }
         AuditLog::record(Auth::id(), 'MANUAL_MARK_ATTENDANCE', 'class_sessions', $sessionId, "user={$userId};mark={$mark}");
@@ -217,8 +226,10 @@ if ($module) {
             && hod_module_matches_attendance_window($module, (string) $s['window_name']);
     }));
 
-    foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
-        $holidayMap[$h['holiday_date']] = true;
+    if (($module['session_type'] ?? '') !== 'Weekend') {
+        foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
+            $holidayMap[$h['holiday_date']] = true;
+        }
     }
 
     $stuStmt = $db->prepare(
@@ -258,10 +269,10 @@ if ($module) {
 
 function att_status(?array $e, string $date, string $today): string
 {
-    if (!$e || $e['is_auto'])                                return $date <= $today ? 'A' : '';
-    if ($e['in_status'] === 'Present' && $e['out_time'])     return 'P';
-    if ($e['in_status'] === 'Late'    && $e['out_time'])     return 'L';
-    return 'A';
+    if (!$e) return $date <= $today ? 'A' : '';
+    if (!$e['is_auto'] && $e['out_time']) return 'P';
+    if ($e['is_auto'] && $e['out_time']) return 'L';
+    return $date <= $today ? 'A' : '';
 }
 
 // ── Overall Attendance (cross-module, special-case detection) ──────────────
@@ -299,7 +310,9 @@ if ($viewMode === 'overall') {
             'p' => 0,
             'l' => 0,
             'a' => 0,
+            'effective_a' => 0,
             'total' => 0,
+            'warning' => 0,
             'special' => 0,
             'critical' => 0,
             'pct' => null,
@@ -316,7 +329,9 @@ if ($viewMode === 'overall') {
                 && !in_array($s['session_date'], $excludeDates, true)
                 && hod_module_matches_attendance_window($am, (string) $s['window_name']);
         }));
-        $moduleSummary[$amId]['sessions'] = count($amSessions);
+        $moduleSummary[$amId]['sessions'] = count(array_filter($amSessions, function ($s) use ($am, $allHolidays) {
+            return ($am['session_type'] ?? '') === 'Weekend' || !isset($allHolidays[$s['session_date']]);
+        }));
 
         $stuStmt2 = $db->prepare(
             "SELECT u.user_id, u.full_name, u.reg_number
@@ -352,7 +367,8 @@ if ($viewMode === 'overall') {
             $uid = (int) $stu['user_id'];
             $p = 0; $l = 0; $a = 0;
             foreach ($amSessions as $s) {
-                if (isset($allHolidays[$s['session_date']]) || $s['session_date'] > $today) continue;
+                $isAffectedHoliday = ($am['session_type'] ?? '') !== 'Weekend' && isset($allHolidays[$s['session_date']]);
+                if ($isAffectedHoliday || $s['session_date'] > $today) continue;
                 $fs = att_status($amMap[(int) $s['session_id']][$uid] ?? null, $s['session_date'], $today);
                 if ($fs === 'P') $p++;
                 elseif ($fs === 'L') $l++;
@@ -365,22 +381,18 @@ if ($viewMode === 'overall') {
                 'user_id' => $uid,
                 'name' => $stu['full_name'], 'reg' => $stu['reg_number'],
                 'p' => $p, 'l' => $l, 'a' => $a, 'total' => $tot,
-                'pct' => round(($p + $l) / $tot * 100, 1),
+                'effective_a' => $a + intdiv($l, 2),
+                'pct' => round((max(0, $tot - ($a + intdiv($l, 2))) / $tot) * 100, 1),
             ];
         }
     }
-    usort($overallRows, function ($x, $y) { return $y['a'] <=> $x['a']; });
+    usort($overallRows, function ($x, $y) { return $y['effective_a'] <=> $x['effective_a']; });
 
-    // Headline flags are student-level totals across every module included by
-    // the active session filter. A student with 2 absences in one module and
-    // 2 in another is therefore Critical (4), rather than appearing as zero.
-    $absenceTotalsByStudent = [];
-    foreach ($overallRows as $r) {
-        $uid = (int) $r['user_id'];
-        $absenceTotalsByStudent[$uid] = ($absenceTotalsByStudent[$uid] ?? 0) + (int) $r['a'];
-    }
-    $totalSpecialCases = count(array_filter($absenceTotalsByStudent, function ($count) { return $count === 3; }));
-    $totalCritical     = count(array_filter($absenceTotalsByStudent, function ($count) { return $count >= 4; }));
+    // Risk and eligibility are module-specific: absences from unrelated
+    // modules must never be added together. Each row is one student/module.
+    $totalWarnings     = count(array_filter($overallRows, function ($r) { return (int) $r['effective_a'] === 2; }));
+    $totalSpecialCases = count(array_filter($overallRows, function ($r) { return (int) $r['effective_a'] === 3; }));
+    $totalCritical     = count(array_filter($overallRows, function ($r) { return (int) $r['effective_a'] >= 4; }));
 
     // Group into per-module summaries / HoD/Coordinator view modules, not individual students.
     foreach ($overallRows as $r) {
@@ -388,20 +400,22 @@ if ($viewMode === 'overall') {
         $moduleSummary[$mid]['p'] += $r['p'];
         $moduleSummary[$mid]['l'] += $r['l'];
         $moduleSummary[$mid]['a'] += $r['a'];
+        $moduleSummary[$mid]['effective_a'] += $r['effective_a'];
         $moduleSummary[$mid]['total'] += $r['total'];
-        if ($r['a'] >= 4) { $moduleSummary[$mid]['critical']++; }
-        elseif ($r['a'] >= 3) { $moduleSummary[$mid]['special']++; }
+        if ($r['effective_a'] >= 4) { $moduleSummary[$mid]['critical']++; }
+        elseif ($r['effective_a'] >= 3) { $moduleSummary[$mid]['special']++; }
+        elseif ($r['effective_a'] === 2) { $moduleSummary[$mid]['warning']++; }
     }
     foreach ($moduleSummary as &$ms) {
-        $ms['pct'] = $ms['total'] > 0 ? round(($ms['p'] + $ms['l']) / $ms['total'] * 100, 1) : null;
+        $ms['pct'] = $ms['total'] > 0 ? round((max(0, $ms['total'] - $ms['effective_a']) / $ms['total']) * 100, 1) : null;
     }
     unset($ms);
 
     $hasOngoingModules  = (bool) $moduleSummary;
 
     if (!empty($_GET['special'])) {
-        $overallRows = array_values(array_filter($overallRows, function ($r) use ($absenceTotalsByStudent) {
-            return ($absenceTotalsByStudent[(int) $r['user_id']] ?? 0) >= 3;
+        $overallRows = array_values(array_filter($overallRows, function ($r) {
+            return (int) $r['effective_a'] >= 2;
         }));
         $flaggedModuleIds = array_values(array_unique(array_map(function ($r) {
             return (int) $r['module_id'];
@@ -420,7 +434,10 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h4 class="display-font mb-0">Class Attendance Analytics</h4>
+  <div>
+    <h4 class="display-font mb-0">Attendance &amp; Module Reports</h4>
+    <div class="text-muted small">Monitor attendance risk and generate detailed reports for each module.</div>
+  </div>
 </div>
 
 <?php if ($viewMode === 'overall'): ?>
@@ -436,7 +453,11 @@ require __DIR__ . '/../partials/layout_top.php';
   ?>
   <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
     <h6 class="display-font mb-0"><?= e($detailModuleTitle) ?> / Student Breakdown</h6>
-    <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i> Back to Modules</a>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $detailModuleId ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer me-1"></i>Print Report</a>
+      <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $detailModuleId ?>" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Excel Report</a>
+      <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i>Back to Modules</a>
+    </div>
   </div>
 
   <?php if (!$detailRows): ?>
@@ -458,21 +479,23 @@ require __DIR__ . '/../partials/layout_top.php';
         </thead>
         <tbody>
           <?php foreach ($detailRows as $r):
-            $rowBg = $r['a'] >= 4 ? '#f8d7da' : ($r['a'] >= 3 ? '#fff3cd' : '');
+            $rowBg = $r['effective_a'] >= 4 ? '#f8d7da' : ($r['effective_a'] >= 2 ? '#fff3cd' : '');
           ?>
           <tr style="<?= $rowBg ? "background:$rowBg;" : '' ?>">
             <td class="fw-semibold"><?= e($r['name']) ?></td>
             <td style="color:#666;"><?= e($r['reg'] ?? '/') ?></td>
             <td class="text-center"><?= $r['p'] ?></td>
             <td class="text-center"><?= $r['l'] ?></td>
-            <td class="text-center fw-bold"><?= $r['a'] ?></td>
+            <td class="text-center fw-bold"><?= $r['a'] ?><div class="text-muted" style="font-size:.65rem;"><?= $r['effective_a'] ?> effective</div></td>
             <td class="text-center"><?= $r['total'] ?></td>
-            <td class="text-center fw-bold" style="color:<?= $r['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format($r['pct'], 1) ?>%</td>
+            <td class="text-center fw-bold" style="color:<?= $r['effective_a'] >= 3 ? '#721c24' : ($r['effective_a'] === 2 ? '#856404' : '#155724') ?>;"><?= number_format($r['pct'], 1) ?>%</td>
             <td class="text-center">
-              <?php if ($r['a'] >= 4): ?>
-                <span class="badge bg-danger">⛔ Critical</span>
-              <?php elseif ($r['a'] >= 3): ?>
-                <span class="badge bg-warning text-dark">⚠ Special Case</span>
+              <?php if ($r['effective_a'] >= 4): ?>
+                <span class="badge bg-danger">⛔ Critical / Not Allowed</span>
+              <?php elseif ($r['effective_a'] >= 3): ?>
+                <span class="badge bg-warning text-dark">⚠ Special Case / Not Allowed</span>
+              <?php elseif ($r['effective_a'] === 2): ?>
+                <span class="badge bg-info text-dark">⚠ Warning / 1 absence remaining</span>
               <?php else: ?>
                 <span class="text-muted">/</span>
               <?php endif; ?>
@@ -529,16 +552,17 @@ require __DIR__ . '/../partials/layout_top.php';
 <?php else: ?>
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
   <div class="d-flex gap-3 flex-wrap" style="font-size:.75rem;">
-    <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3+ absences</span> Special Case (<?= $totalSpecialCases ?>)</span>
-    <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical (<?= $totalCritical ?>)</span>
+    <span><span class="px-2 py-0 rounded fw-bold" style="background:#d1ecf1;color:#0c5460;">⚠ 2 absences</span> Warning (<?= $totalWarnings ?>)</span>
+    <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3 absences</span> Special Case / Not Allowed (<?= $totalSpecialCases ?>)</span>
+    <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical / Not Allowed (<?= $totalCritical ?>)</span>
   </div>
   <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
-    <i class="bi bi-funnel me-1"></i> <?= !empty($_GET['special']) ? 'Showing Special Cases Only' : 'Show Special Cases Only' ?>
+    <i class="bi bi-funnel me-1"></i> <?= !empty($_GET['special']) ? 'Showing At-Risk Students (2+)' : 'Show At-Risk Students (2+)' ?>
   </a>
 </div>
 
 <?php if (!$moduleSummary): ?>
-  <div class="semas-card p-4 text-center text-muted small">No Special Case or Critical modules found for <?= e($sessionLabel) ?>.</div>
+  <div class="semas-card p-4 text-center text-muted small">No students with two or more absences found for <?= e($sessionLabel) ?>.</div>
 <?php else: ?>
 <div class="row g-3">
   <?php foreach ($moduleSummary as $ms): ?>
@@ -559,24 +583,25 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php if ($ms['pct'] === null): ?>
             <span class="text-muted small">No attendance data yet</span>
           <?php else: ?>
-            <span class="fw-bold fs-5" style="color:<?= $ms['pct'] >= 75 ? '#155724' : '#721c24' ?>;"><?= number_format((float) $ms['pct'], 1) ?>%</span>
+            <span class="fw-bold fs-5" style="color:<?= ($ms['critical'] || $ms['special']) ? '#721c24' : ($ms['warning'] ? '#856404' : '#155724') ?>;"><?= number_format((float) $ms['pct'], 1) ?>%</span>
             <span class="text-muted small"> avg attendance</span>
           <?php endif; ?>
         </div>
         <div class="mb-2">
-          <?php if ($ms['critical']): ?><span class="badge bg-danger me-1">⛔ <?= $ms['critical'] ?> Critical</span><?php endif; ?>
-          <?php if ($ms['special']): ?><span class="badge bg-warning text-dark me-1">⚠ <?= $ms['special'] ?> Special Case</span><?php endif; ?>
-          <?php if (!$ms['critical'] && !$ms['special']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
+          <?php if ($ms['critical']): ?><span class="badge bg-danger me-1">⛔ <?= $ms['critical'] ?> Critical / Not Allowed</span><?php endif; ?>
+          <?php if ($ms['special']): ?><span class="badge bg-warning text-dark me-1">⚠ <?= $ms['special'] ?> Special Case / Not Allowed</span><?php endif; ?>
+          <?php if ($ms['warning']): ?><span class="badge bg-info text-dark me-1">⚠ <?= $ms['warning'] ?> Warning</span><?php endif; ?>
+          <?php if (!$ms['critical'] && !$ms['special'] && !$ms['warning']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
         </div>
-        <div class="d-flex gap-2 mt-auto">
+        <div class="d-flex gap-2 mt-auto flex-wrap">
           <a href="?view=overall&session=<?= e($overallSessionFilter) ?>&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark flex-grow-1">
-            <i class="bi bi-people me-1"></i> View More Details
+            <i class="bi bi-people me-1"></i>Student Details
           </a>
-          <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $ms['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print Attendance Sheet">
-            <i class="bi bi-printer"></i>
+          <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $ms['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print module attendance report">
+            <i class="bi bi-printer me-1"></i>Print
           </a>
-          <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $ms['module_id'] ?>" class="btn btn-sm btn-outline-success" title="Download Attendance Excel">
-            <i class="bi bi-file-earmark-excel"></i>
+          <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $ms['module_id'] ?>" class="btn btn-sm btn-outline-success" title="Download module attendance Excel report">
+            <i class="bi bi-file-earmark-excel me-1"></i>Excel
           </a>
         </div>
       </div>
@@ -672,10 +697,10 @@ require __DIR__ . '/../partials/layout_top.php';
 <!-- Legend -->
 <div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.75rem;">
   <span><span class="px-2 py-0 rounded fw-bold" style="background:#d4edda;color:#155724;">P ✓</span> Present</span>
-  <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">L</span> Late</span>
-  <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">A</span> Absent / No sign-out</span>
+  <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">L</span> Late / Sign Out only</span>
+  <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">A</span> Absent / no scans or no Sign Out</span>
   <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">H</span> Holiday</span>
-  <span class="ms-auto text-muted">Eligibility: ≥ 75%</span>
+  <span class="ms-auto text-muted">2 Late = 1 absence &middot; 2 effective absences: Warning &middot; 3+: Not Allowed</span>
 </div>
 
 <!-- Attendance register table -->
@@ -725,8 +750,9 @@ require __DIR__ . '/../partials/layout_top.php';
               elseif ($fs === 'A') $aCnt++;
           }
           $total   = $pCnt + $lCnt + $aCnt;
-          $pct     = $total > 0 ? round(($pCnt + $lCnt) / $total * 100, 1) : 0;
-          $eligible = $pct >= 75;
+          $effectiveAbsences = $aCnt + intdiv($lCnt, 2);
+          $pct = $total > 0 ? round((max(0, $total - $effectiveAbsences) / $total) * 100, 1) : 0;
+          $eligible = $effectiveAbsences <= Eligibility::MAX_ALLOWED_MISSED_DAYS;
         ?>
         <tr>
           <td class="text-center text-muted"><?= $idx + 1 ?></td>
@@ -745,7 +771,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
           <?php elseif ($fs === ''): ?>
             <td class="text-center" style="color:#ddd;">/</td>
-          <?php elseif (!$entry || $entry['is_auto']): ?>
+          <?php elseif (!$entry || ($entry['is_auto'] && empty($entry['out_time']))): ?>
             <td class="text-center" style="background:#f8d7da;padding:3px 2px;">
               <div class="fw-bold" style="color:#721c24;">A</div>
               <button type="button" class="btn btn-link p-0" style="font-size:.58rem;color:#aaa;line-height:1;"
@@ -780,11 +806,12 @@ require __DIR__ . '/../partials/layout_top.php';
           <td class="text-center fw-bold" style="background:#f8d7da;color:#721c24;"><?= $aCnt ?></td>
           <td class="text-center fw-semibold"><?= $total ?></td>
           <td class="text-center fw-bold">
-            <span style="color:<?= $eligible ? '#155724' : '#721c24' ?>;"><?= number_format($pct, 1) ?>%</span>
+            <span style="color:<?= !$eligible ? '#721c24' : ($effectiveAbsences === 2 ? '#856404' : '#155724') ?>;"><?= number_format($pct, 1) ?>%</span>
+            <div class="text-muted" style="font-size:.6rem;"><?= $effectiveAbsences ?> effective absence(s)</div>
             <?php if ($total > 0): ?>
-              <i class="bi <?= $eligible ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger' ?>"
+              <i class="bi <?= !$eligible ? 'bi-x-circle-fill text-danger' : ($effectiveAbsences === 2 ? 'bi-exclamation-triangle-fill text-warning' : 'bi-check-circle-fill text-success') ?>"
                  style="font-size:.65rem;vertical-align:middle;"
-                 title="<?= $eligible ? 'Eligible for exam' : 'Below eligibility threshold' ?>"></i>
+                 title="<?= $eligible ? ($effectiveAbsences === 2 ? 'Warning: one effective absence remaining' : 'Good standing') : 'Not Allowed: three or more effective absences' ?>"></i>
             <?php endif; ?>
           </td>
         </tr>

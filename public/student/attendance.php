@@ -36,7 +36,9 @@ $modStmt = $db->prepare(
 $modStmt->execute(['uid' => $me['user_id']]);
 $allModules = $modStmt->fetchAll();
 
-$showPublicHolidayNotice = $holiday && $holiday['holiday_type'] === 'Public Holiday';
+$showPublicHolidayNotice = $holiday
+    && $holiday['holiday_type'] === 'Public Holiday'
+    && (int) ClassAttendance::now()->format('N') < 6;
 
 // Holidays
 $holidayMap = [];
@@ -68,10 +70,10 @@ function stu_within_dates(array $module, string $today): bool
 
 function stu_att_status(?array $e, string $date, string $today): string
 {
-    if (!$e || $e['is_auto'])                                return $date <= $today ? 'A' : '';
-    if ($e['in_status'] === 'Present' && $e['out_time'])     return 'P';
-    if ($e['in_status'] === 'Late'    && $e['out_time'])     return 'L';
-    return 'A';
+    if (!$e) return $date <= $today ? 'A' : '';
+    if (!$e['is_auto'] && $e['out_time']) return 'P';
+    if ($e['is_auto'] && $e['out_time']) return 'L';
+    return $date <= $today ? 'A' : '';
 }
 
 function stu_scan_window_open(?array $window): bool
@@ -153,13 +155,10 @@ if (!$showPublicHolidayNotice) {
     }
 }
 
-// Only show modules whose session is in its live window right now / even a
-// registered Ongoing module stays hidden outside its actual class time.
-$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today, $signoutSessions, $demoSessions) {
-    $moduleId = (int) $am['module_id'];
-    return ((stu_window_matches($am, $window) && stu_within_dates($am, $today))
-            || isset($signoutSessions[$moduleId]) || isset($demoSessions[$moduleId]))
-        && $am['status'] === 'Ongoing';
+// My Attendance is a live action page: expose a module only after its lecturer
+// explicitly opens Sign In or Sign Out. A timetable window alone is not enough.
+$visibleModules = array_values(array_filter($allModules, static function (array $module) use ($demoSessions): bool {
+    return isset($demoSessions[(int) $module['module_id']]);
 }));
 
 // Selected module tab
@@ -175,8 +174,7 @@ if ($moduleIdParam) {
     foreach ($allModules as $am) {
         if ((int) $am['module_id'] === $moduleIdParam) {
             $scannedModuleTitle    = $am['module_title'];
-            $scannedModuleScanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today))
-                    || isset($signoutSessions[$moduleIdParam]) || isset($demoSessions[$moduleIdParam]))
+            $scannedModuleScanable = isset($demoSessions[$moduleIdParam])
                 && $am['status'] === 'Ongoing';
             break;
         }
@@ -188,7 +186,10 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
-  <h4 class="display-font mb-0">My Attendance</h4>
+  <div>
+    <h4 class="display-font mb-0">My Attendance</h4>
+    <div class="text-muted small">Modules appear only while your lecturer has Sign In or Sign Out open.</div>
+  </div>
 </div>
 
 <?php if ($showNoScanWindowNotice): ?>
@@ -201,7 +202,7 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 <?php endif; ?>
 
-<div class="alert <?= $window ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+<div class="alert <?= $demoSessions ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
   <div>
     <?php if ($showPublicHolidayNotice): ?>
       <i class="bi bi-info-circle me-1"></i>
@@ -210,12 +211,8 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php $activeDemo = reset($demoSessions); ?>
       <i class="bi bi-broadcast me-1"></i> Lecturer-controlled attendance is active:
       <strong><?= ($activeDemo['attendance_phase'] ?? '') === 'SignOut' ? 'Sign Out' : 'Sign In' ?></strong>
-    <?php elseif ($window): ?>
-      <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
-    <?php elseif ($signoutSessions): ?>
-      <i class="bi bi-box-arrow-right me-1"></i> Sign-out is open for your completed class session.
     <?php else: ?>
-      <i class="bi bi-clock-history me-1"></i> No active class session window right now.
+      <i class="bi bi-clock-history me-1"></i> No live attendance has been opened by a lecturer right now.
     <?php endif; ?>
   </div>
   <div class="text-end">
@@ -251,8 +248,9 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 <?php elseif (!$visibleModules): ?>
   <div class="semas-card p-5 text-center text-muted">
-    <i class="bi bi-clock-history" style="font-size:2.5rem;opacity:.3;"></i>
-    <p class="mt-3 mb-0">None of your modules are in session right now. Modules only appear here during their actual class time.</p>
+    <i class="bi bi-broadcast" style="font-size:2.5rem;opacity:.3;"></i>
+    <p class="mt-3 mb-1">No live attendance is open right now.</p>
+    <div class="small">A module will appear here when its lecturer opens Sign In or Sign Out.</div>
   </div>
 <?php else: ?>
 
@@ -264,8 +262,7 @@ require __DIR__ . '/../partials/layout_top.php';
         $amId = (int) $am['module_id'];
         $isActive = $amId === $selectedId;
         $demoPhase = $demoSessions[$amId]['attendance_phase'] ?? null;
-        $scanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today))
-                || isset($signoutSessions[$amId]) || $demoPhase !== null) && $am['status'] === 'Ongoing';
+        $scanable = $demoPhase !== null && $am['status'] === 'Ongoing';
       ?>
       <a href="?module_id=<?= $amId ?>"
          class="btn btn-sm text-nowrap <?= $isActive ? 'btn-semas' : 'btn-outline-secondary' ?>"
@@ -292,6 +289,12 @@ foreach ($visibleModules as $am) {
     if ((int) $am['module_id'] === $selectedId) { $module = $am; break; }
 }
 if (!$module) { $module = $visibleModules[0]; $selectedId = (int) $module['module_id']; }
+
+// Public Holidays apply to Day/Evening attendance only. Weekend students
+// retain their normal weekend register even if the date exists in holidays.
+if (($module['session_type'] ?? '') === 'Weekend') {
+    $holidayMap = [];
+}
 
 $moduleId = $selectedId;
 
@@ -345,8 +348,10 @@ foreach ($sessions as $s) {
     elseif ($fs === 'A') $aCnt++;
 }
 $total    = $pCnt + $lCnt + $aCnt;
-$pct      = $total > 0 ? round(($pCnt + $lCnt) / $total * 100, 1) : 0;
-$eligible = $pct >= 75;
+$effectiveAbsences = $aCnt + intdiv($lCnt, 2);
+$pct = $total > 0 ? round((max(0, $total - $effectiveAbsences) / $total) * 100, 1) : 0;
+$eligible = $effectiveAbsences <= Eligibility::MAX_ALLOWED_MISSED_DAYS;
+$attendanceWarning = $effectiveAbsences === Eligibility::WARNING_MISSED_DAYS;
 
 $lTitle   = $module['lecturer_title'] ?? '';
 $lName    = $module['lecturer_name']  ?? 'TBA';
@@ -356,8 +361,7 @@ $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slo
 $hasOpenSignout = isset($signoutSessions[$moduleId]);
 $demoPhase = $demoSessions[$moduleId]['attendance_phase'] ?? null;
 $isDemoSignout = $demoPhase === 'SignOut';
-$isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $window) && stu_within_dates($module, $today))
-        || $hasOpenSignout || $demoPhase !== null) && $module['status'] === 'Ongoing';
+$isScanable = $demoPhase !== null && $module['status'] === 'Ongoing';
 ?>
 
 <!-- Module info + summary card -->
@@ -385,20 +389,26 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
           <span><span class="fw-bold text-success"><?= $pCnt ?></span> Present</span>
           <span><span class="fw-bold text-warning"><?= $lCnt ?></span> Late</span>
           <span><span class="fw-bold text-danger"><?= $aCnt ?></span> Absent</span>
+          <span><span class="fw-bold"><?= $effectiveAbsences ?></span> Effective Absences</span>
           <span class="text-muted"><?= $total ?> total</span>
         </div>
         <div class="progress mb-1" style="height:6px;">
           <?php $pctBar = min(100, $pct); ?>
-          <div class="progress-bar <?= $eligible ? 'bg-success' : 'bg-danger' ?>" style="width:<?= $pctBar ?>%;"></div>
+          <div class="progress-bar <?= !$eligible ? 'bg-danger' : ($attendanceWarning ? 'bg-warning' : 'bg-success') ?>" style="width:<?= $pctBar ?>%;"></div>
         </div>
         <div class="d-flex justify-content-between">
           <span>
-            <strong style="color:<?= $eligible ? '#155724' : '#721c24' ?>;"><?= number_format($pct, 1) ?>% attendance</strong>
+            <strong style="color:<?= !$eligible ? '#721c24' : ($attendanceWarning ? '#856404' : '#155724') ?>;"><?= number_format($pct, 1) ?>% attendance</strong>
           </span>
           <span>
             <?php if ($total > 0): ?>
-              <i class="bi <?= $eligible ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger' ?>"></i>
-              <?= $eligible ? '<span class="text-success">Eligible</span>' : '<span class="text-danger">Not eligible</span>' ?>
+              <?php if (!$eligible): ?>
+                <i class="bi bi-x-circle-fill text-danger"></i> <span class="text-danger">Not Allowed / 3+ effective absences</span>
+              <?php elseif ($attendanceWarning): ?>
+                <i class="bi bi-exclamation-triangle-fill text-warning"></i> <span class="text-warning">Warning / 1 absence remaining</span>
+              <?php else: ?>
+                <i class="bi bi-check-circle-fill text-success"></i> <span class="text-success">Good Standing</span>
+              <?php endif; ?>
             <?php else: ?>
               <span class="text-muted">No classes yet</span>
             <?php endif; ?>
@@ -445,8 +455,9 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
 
 <div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.75rem;">
   <span><span class="px-2 rounded fw-bold" style="background:#d4edda;color:#155724;">P ✓</span> Present (signed in + out)</span>
-  <span><span class="px-2 rounded fw-bold" style="background:#fff3cd;color:#856404;">L</span> Late</span>
-  <span><span class="px-2 rounded fw-bold" style="background:#f8d7da;color:#721c24;">A</span> Absent / No sign-out</span>
+  <span><span class="px-2 rounded fw-bold" style="background:#fff3cd;color:#856404;">L</span> Late (Sign Out only)</span>
+  <span><span class="px-2 rounded fw-bold" style="background:#f8d7da;color:#721c24;">A</span> Absent (no scans or no Sign Out)</span>
+  <span class="ms-auto text-muted">2 Late days = 1 effective absence</span>
   <span><span class="px-2 rounded fw-bold" style="background:#fff3cd;color:#856404;">H</span> Holiday</span>
 </div>
 
@@ -495,7 +506,7 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>
           <?php elseif ($fs === ''): ?>
             <td class="text-center" style="color:#ddd;">/</td>
-          <?php elseif (!$entry || $entry['is_auto']): ?>
+          <?php elseif (!$entry || ($entry['is_auto'] && empty($entry['out_time']))): ?>
             <td class="text-center fw-bold" style="background:#f8d7da;color:#721c24;">A</td>
           <?php else: ?>
             <?php
@@ -520,7 +531,7 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
           <td class="text-center fw-bold" style="background:#f8d7da;color:#721c24;"><?= $aCnt ?></td>
           <td class="text-center fw-semibold"><?= $total ?></td>
           <td class="text-center fw-bold">
-            <span style="color:<?= $eligible ? '#155724' : '#721c24' ?>;"><?= number_format($pct, 1) ?>%</span>
+            <span style="color:<?= !$eligible ? '#721c24' : ($attendanceWarning ? '#856404' : '#155724') ?>;"><?= number_format($pct, 1) ?>%</span>
           </td>
         </tr>
       </tbody>

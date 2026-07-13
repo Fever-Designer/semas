@@ -12,8 +12,8 @@ declare(strict_types=1);
  * Both a student (self-scan, Sign In then later Sign Out / see
  * api/student-attendance-scan.php) and a lecturer (manual roster search,
  * or scanning the student's personal QR / see api/class-scan-confirm.php)
- * can record an entry; both paths funnel through statusFor() below so the
- * Present/Late/Absent rule is always identical either way.
+ * can record an entry. The final decision is resolved from the Sign In and
+ * Sign Out pair by AttendanceSheet::decisionForLogs().
  *
  *   Day Session:             08:00 / 11:30
  *   Evening Session:         18:00 / 20:00
@@ -26,9 +26,9 @@ declare(strict_types=1);
  * hours apply instead (see currentWindow()). A Public Holiday disables
  * attendance entirely for the day.
  *
- * Within whichever window is currently active: first 10 minutes of the
- * window's official start -> Present; after that until the 20 minute
- * cutoff -> Late; beyond that student sign-in scanning is closed. Student
+ * Within whichever window is currently active, Sign In remains available
+ * until its cutoff. Late is not based on elapsed minutes: it means the
+ * student missed Sign In and recorded Sign Out only. Student
  * sign-out opens only after the official end time, and closes 10 minutes
  * later. Lecturers may manage attendance from class start until that same
  * 10-minute post-class grace period.
@@ -129,8 +129,8 @@ final class ClassAttendance
 
     /**
      * Returns the currently active session window, or null if no window is
-     * open right now (Cairo time) / including because today is a Public
-     * Holiday (attendance is fully disabled) or because today is an
+     * open right now (Cairo time) / including because today is a weekday
+     * Public Holiday (Day/Evening attendance is disabled) or because today is an
      * Umuganda day with its own override hours instead of the normal
      * weekend windows.
      */
@@ -143,8 +143,8 @@ final class ClassAttendance
         $holidayStmt->execute(['d' => $today]);
         $holiday = $holidayStmt->fetch();
 
-        if ($holiday && $holiday['holiday_type'] === 'Public Holiday') {
-            return null; // No scanning allowed at all on a public holiday.
+        if ($holiday && $holiday['holiday_type'] === 'Public Holiday' && !self::isWeekend($now)) {
+            return null; // Public Holidays do not cancel Weekend modules.
         }
 
         if ($holiday && $holiday['holiday_type'] === 'Umuganda' && $now->format('N') === '6') {
@@ -177,6 +177,83 @@ final class ClassAttendance
         return null;
     }
 
+    /**
+     * Create a closed attendance column for every affected Day/Evening module.
+     * The holidays table is the actual Holiday mark for every enrolled student;
+     * no Absent rows are inserted. Weekend modules are deliberately excluded.
+     */
+    public static function markPublicHolidaySessions(PDO $db, string $holidayDate, int $createdBy): int
+    {
+        $date = DateTime::createFromFormat('Y-m-d', $holidayDate);
+        if (!$date || $date->format('Y-m-d') !== $holidayDate || (int) $date->format('N') >= 6) {
+            return 0;
+        }
+
+        $modulesStmt = $db->prepare(
+            "SELECT module_id, session_type
+             FROM modules
+             WHERE session_type IN ('Day','Evening')
+               AND status IN ('Scheduled','Ongoing')
+               AND (start_date IS NULL OR start_date <= :holiday_date)
+               AND (end_date IS NULL OR end_date >= :holiday_date2)"
+        );
+        $modulesStmt->execute(['holiday_date' => $holidayDate, 'holiday_date2' => $holidayDate]);
+
+        $insert = $db->prepare(
+            "INSERT IGNORE INTO class_sessions
+                (module_id, session_date, window_name, start_time, end_time, qr_secret, status, created_by)
+             VALUES (:mid, :date, :window, :start_time, :end_time, :secret, 'Closed', :created_by)"
+        );
+        $close = $db->prepare(
+            "UPDATE class_sessions SET status = 'Closed'
+             WHERE module_id = :mid AND session_date = :date AND window_name = :window"
+        );
+        $removeAutomaticAbsences = $db->prepare(
+            "DELETE cal FROM class_attendance_logs cal
+             JOIN class_sessions cs ON cs.session_id = cal.session_id
+             WHERE cs.module_id = :mid AND cs.session_date = :date
+               AND cs.window_name = :window AND cal.verification_method = 'Auto'"
+        );
+
+        $affected = 0;
+        foreach ($modulesStmt->fetchAll() as $module) {
+            $isEvening = $module['session_type'] === 'Evening';
+            $window = $isEvening ? 'Evening' : 'Day';
+            $start = $isEvening ? '18:00:00' : '08:00:00';
+            $end = $isEvening ? '20:00:00' : '11:30:00';
+            $params = ['mid' => (int) $module['module_id'], 'date' => $holidayDate, 'window' => $window];
+
+            $insert->execute($params + [
+                'start_time' => $holidayDate . ' ' . $start,
+                'end_time' => $holidayDate . ' ' . $end,
+                'secret' => QrService::generateSecret(),
+                'created_by' => $createdBy,
+            ]);
+            $close->execute($params);
+            $removeAutomaticAbsences->execute($params);
+            $affected++;
+        }
+
+        return $affected;
+    }
+
+    /** Remove empty Holiday placeholders if an HOD removes the holiday. */
+    public static function unmarkPublicHolidaySessions(PDO $db, string $holidayDate): void
+    {
+        $stmt = $db->prepare(
+            "DELETE cs FROM class_sessions cs
+             JOIN modules m ON m.module_id = cs.module_id
+             WHERE cs.session_date = :date
+               AND m.session_type IN ('Day','Evening')
+               AND NOT EXISTS (
+                   SELECT 1 FROM class_attendance_logs cal
+                   WHERE cal.session_id = cs.session_id
+                     AND cal.verification_method IN ('QR','Manual')
+               )"
+        );
+        $stmt->execute(['date' => $holidayDate]);
+    }
+
     /** Human label for nav/page copy, e.g. "Day Session (08:00/11:30)". */
     public static function describeWindow(array $window): string
     {
@@ -188,16 +265,13 @@ final class ClassAttendance
         return ($labels[$window['name']] ?? $window['name']) . ' (' . $window['start']->format('H:i') . '/' . $window['end']->format('H:i') . ')';
     }
 
-    /** @return string 'Present'|'Late'|'Absent' based on minutes elapsed since the window's official start. */
+    /** Sign In itself is Present while open; the final paired decision may later become Absent. */
     public static function statusFor(string $sessionStartDateTime): string
     {
         $start = new DateTime($sessionStartDateTime, new DateTimeZone(self::TZ));
         $elapsedMinutes = intdiv(max(0, self::now()->getTimestamp() - $start->getTimestamp()), 60);
-        if ($elapsedMinutes <= self::PRESENT_WINDOW_MINUTES) {
+        if ($elapsedMinutes <= self::SIGN_IN_CLOSE_MINUTES) {
             return 'Present';
-        }
-        if ($elapsedMinutes <= self::LATE_WINDOW_MINUTES) {
-            return 'Late';
         }
         return 'Absent';
     }

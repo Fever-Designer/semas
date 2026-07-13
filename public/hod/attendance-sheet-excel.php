@@ -32,9 +32,10 @@ if (!$module) {
 }
 
 $students   = AttendanceSheet::students($db, $moduleId);
-$classDates = AttendanceSheet::expectedClassDates($module);
+$classDates = AttendanceSheet::expectedClassDates($module, true);
 $sessLabel  = AttendanceSheet::sessionLabel($module);
 $metrics    = AttendanceSheet::currentMetrics($db, $moduleId, $module);
+$decisions  = AttendanceSheet::decisionsByDate($db, $moduleId, $module, $classDates);
 $effectiveEnd = empty($classDates) ? date('Y-m-d') : end($classDates);
 reset($classDates);
 
@@ -90,6 +91,10 @@ foreach ($students as $s) {
     $sheet->setCellValueByColumnAndRow(7, $row, (int) $m['absent']);
     $sheet->setCellValueByColumnAndRow(8, $row, (int) $m['total']);
     $sheet->setCellValueByColumnAndRow(9, $row, number_format((float) $m['percent'], 1) . '%');
+    $dateCol = 10;
+    foreach ($classDates as $date) {
+        $sheet->setCellValueByColumnAndRow($dateCol++, $row, $decisions[(int) $s['user_id']][$date] ?? 'Absent');
+    }
     $sheet->getStyleByColumnAndRow(1, $row, $lastCol, $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
     $row++;
 }

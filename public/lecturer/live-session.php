@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
+
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireTeachingAccess();
 
-$pageTitle = 'Class Attendance / Start Session';
+$pageTitle = 'Manage Attendance / Live Session';
 $activeNav = 'class-attendance';
 $db        = Database::connection();
 $me        = Auth::user();
@@ -28,6 +29,31 @@ foreach ($myModules as $m) {
     if ((int) $m['module_id'] === $moduleId) { $module = $m; break; }
 }
 
+$manualRoster = [];
+if ($module) {
+    $rosterStmt = $db->prepare(
+        "SELECT u.user_id, u.full_name, u.reg_number, u.photo_path,
+                COALESCE(d.department_name, '') AS department_name
+         FROM module_enrollments e
+         JOIN users u ON u.user_id = e.user_id
+         LEFT JOIN departments d ON d.department_id = u.department_id
+         WHERE e.module_id = :mid AND u.status = 'Active'
+         ORDER BY u.full_name"
+    );
+    $rosterStmt->execute(['mid' => $moduleId]);
+    foreach ($rosterStmt->fetchAll() as $student) {
+        $manualRoster[] = [
+            'user_id' => (int) $student['user_id'],
+            'full_name' => $student['full_name'],
+            'reg_number' => $student['reg_number'],
+            'department' => $student['department_name'],
+            'photo_url' => !empty($student['photo_path'])
+                ? APP_URL . '/' . $student['photo_path']
+                : 'https://ui-avatars.com/api/?name=' . urlencode((string) $student['full_name']) . '&background=1E2A52&color=fff',
+        ];
+    }
+}
+
 $moduleQrImage = null;
 if ($module && !empty($module['module_qr_secret'])) {
     $secret = (string) $module['module_qr_secret'];
@@ -48,12 +74,9 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h4 class="display-font mb-0">Class Attendance</h4>
+    <h4 class="display-font mb-0">Manage Attendance / Live Session</h4>
     <div class="text-muted small">Start and control the Sign In and Sign Out session.</div>
   </div>
-  <a href="<?= APP_URL ?>/lecturer/class-attendance.php" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-arrow-left me-1"></i> View Register
-  </a>
 </div>
 
 <?php if (!$myModules): ?>
@@ -96,6 +119,12 @@ require __DIR__ . '/../partials/layout_top.php';
       </p>
 
       <div class="d-flex flex-wrap justify-content-center gap-2 mb-3" id="phaseControls">
+        <?php if (Auth::role() === 'Lecturer'): ?>
+          <button type="button" class="btn btn-semas-gold btn-sm d-none" id="profileManualAttendanceBtn"
+                  data-bs-toggle="modal" data-bs-target="#profileManualAttendanceModal">
+            <i class="bi bi-person-check-fill me-1"></i>Manual Attendance
+          </button>
+        <?php endif; ?>
         <button type="button" class="btn btn-success btn-sm" id="startSignInBtn" onclick="startPhase('SignIn')">
           <i class="bi bi-box-arrow-in-right me-1"></i>Start Sign In
         </button>
@@ -156,11 +185,53 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
+<!-- Profile-verified manual attendance, kept inside the main live feature. -->
+<div class="modal fade" id="profileManualAttendanceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font">Manual Attendance</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold">Student Registration Number</label>
+        <div class="input-group">
+          <input id="profileManualReg" class="form-control" inputmode="numeric" maxlength="10" autocomplete="off">
+          <button type="button" class="btn btn-outline-dark" id="profileManualSearchBtn">
+            <i class="bi bi-search me-1"></i>Retrieve Profile
+          </button>
+        </div>
+        <div id="profileManualFeedback" class="alert alert-danger small py-2 px-3 mt-2 mb-0" style="display:none;"></div>
+        <div id="profileManualPreview" class="border rounded p-3 mt-3" style="display:none;">
+          <div class="d-flex gap-3 align-items-center">
+            <img id="profileManualPhoto" src="" alt="Student profile"
+                 style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
+            <div>
+              <div class="fw-semibold fs-6" id="profileManualName"></div>
+              <div class="text-muted small" id="profileManualRegDisplay"></div>
+              <div class="text-muted small" id="profileManualDepartment"></div>
+              <div class="mt-2"><span class="badge badge-completed">Profile verified</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-dark btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-semas-gold btn-sm" id="profileManualConfirmBtn" style="display:none;">
+          <i class="bi bi-person-check me-1"></i>Confirm Manual Attendance
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const CSRF     = '<?= csrf_token() ?>';
 const BASE     = window.SEMAS_BASE_URL;
 const MOD_ID   = <?= $moduleId ?>;
+const PROFILE_MANUAL_ROSTER = <?= json_encode($manualRoster, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 let sessionId  = null;
+let profileManualStudentId = null;
 
 function phaseRequest(action, phase) {
     const params = new URLSearchParams({action: action, module_id: MOD_ID, csrf_token: CSRF});
@@ -186,7 +257,8 @@ function phaseRequest(action, phase) {
 }
 
 function setButtonVisible(id, visible) {
-    document.getElementById(id).classList.toggle('d-none', !visible);
+    const button = document.getElementById(id);
+    if (button) button.classList.toggle('d-none', !visible);
 }
 
 function renderPhaseState(data) {
@@ -199,6 +271,7 @@ function renderPhaseState(data) {
     setButtonVisible('closeSignInBtn', phase === 'SignIn');
     setButtonVisible('startSignOutBtn', !!sessionId && phase === 'Inactive' && !completed);
     setButtonVisible('closeSignOutBtn', phase === 'SignOut');
+    setButtonVisible('profileManualAttendanceBtn', active);
 
     if (active) {
         document.getElementById('qrStatus').textContent = phase === 'SignIn' ? 'Sign In Active' : 'Sign Out Active';
@@ -232,8 +305,17 @@ function closePhase(phase) {
     phaseRequest('close_phase', phase);
 }
 
-function manualMark(userId) {
-    const msg = document.getElementById('manualAttendanceMsg');
+function manualMark(userId, fromProfileModal = false) {
+    const msg = fromProfileModal
+        ? document.getElementById('profileManualFeedback')
+        : document.getElementById('manualAttendanceMsg');
+    if (!sessionId) {
+        msg.style.display = '';
+        msg.className = 'alert alert-danger small py-2 px-3 mt-2 mb-0';
+        msg.textContent = 'Start the Sign In or Sign Out phase before recording manual attendance.';
+        return;
+    }
+    msg.style.display = '';
     msg.className = 'small mb-2 text-muted';
     msg.textContent = 'Recording manual attendance...';
     fetch(BASE + '/api/lecturer-session-qr.php', {
@@ -250,13 +332,83 @@ function manualMark(userId) {
     .then(data => {
         msg.className = 'small mb-2 ' + (data.ok ? 'text-success' : 'text-danger');
         msg.textContent = data.message;
-        if (data.ok) loadRoster();
+        if (data.ok) {
+            loadRoster();
+            if (fromProfileModal) {
+                setTimeout(function () {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('profileManualAttendanceModal')).hide();
+                    resetProfileManualLookup();
+                }, 650);
+            }
+        }
     })
     .catch(() => {
         msg.className = 'small mb-2 text-danger';
         msg.textContent = 'Could not record manual attendance.';
     });
 }
+
+function resetProfileManualLookup() {
+    profileManualStudentId = null;
+    document.getElementById('profileManualPreview').style.display = 'none';
+    document.getElementById('profileManualConfirmBtn').style.display = 'none';
+    const feedback = document.getElementById('profileManualFeedback');
+    feedback.style.display = 'none';
+    feedback.textContent = '';
+}
+
+function retrieveProfileForManualAttendance() {
+    resetProfileManualLookup();
+    const input = document.getElementById('profileManualReg');
+    const reg = input.value.trim().toLowerCase();
+    const feedback = document.getElementById('profileManualFeedback');
+    if (!reg) {
+        feedback.style.display = '';
+        feedback.textContent = 'Enter the student registration number.';
+        return;
+    }
+    const student = PROFILE_MANUAL_ROSTER.find(function (row) {
+        return String(row.reg_number || '').toLowerCase() === reg;
+    });
+    if (!student) {
+        feedback.style.display = '';
+        feedback.textContent = 'No active student with that registration number is enrolled in this module.';
+        return;
+    }
+
+    profileManualStudentId = student.user_id;
+    document.getElementById('profileManualPhoto').src = student.photo_url || '';
+    document.getElementById('profileManualName').textContent = student.full_name || '-';
+    document.getElementById('profileManualRegDisplay').textContent = 'Reg. No: ' + (student.reg_number || '-');
+    document.getElementById('profileManualDepartment').textContent = student.department || 'Department not assigned';
+    document.getElementById('profileManualPreview').style.display = '';
+    document.getElementById('profileManualConfirmBtn').style.display = '';
+}
+
+function openManualProfile(userId) {
+    const student = PROFILE_MANUAL_ROSTER.find(function (row) {
+        return Number(row.user_id) === Number(userId);
+    });
+    if (!student) return;
+    document.getElementById('profileManualReg').value = student.reg_number || '';
+    retrieveProfileForManualAttendance();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('profileManualAttendanceModal')).show();
+}
+
+document.getElementById('profileManualSearchBtn').addEventListener('click', retrieveProfileForManualAttendance);
+document.getElementById('profileManualReg').addEventListener('input', function () {
+    this.value = this.value.replace(/\D+/g, '').slice(0, 10);
+    resetProfileManualLookup();
+});
+document.getElementById('profileManualReg').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        retrieveProfileForManualAttendance();
+    }
+});
+document.getElementById('profileManualConfirmBtn').addEventListener('click', function () {
+    if (profileManualStudentId) manualMark(profileManualStudentId, true);
+});
 
 function loadRoster() {
     if (!sessionId) return;
@@ -291,14 +443,12 @@ function loadRoster() {
             if (data.phase === 'SignIn') {
                 manualAction = s.in_time
                     ? '<span class="text-success small">Recorded</span>'
-                    : '<button type="button" class="btn btn-success btn-sm py-0" onclick="manualMark(' + s.user_id + ')">Mark In</button>';
+                    : '<button type="button" class="btn btn-success btn-sm py-0" onclick="openManualProfile(' + s.user_id + ')">Mark In</button>';
             } else if (data.phase === 'SignOut') {
                 if (s.out_time) {
                     manualAction = '<span class="text-success small">Recorded</span>';
-                } else if (s.in_time) {
-                    manualAction = '<button type="button" class="btn btn-primary btn-sm py-0" onclick="manualMark(' + s.user_id + ')">Mark Out</button>';
                 } else {
-                    manualAction = '<span class="text-danger small">No Sign In</span>';
+                    manualAction = '<button type="button" class="btn btn-primary btn-sm py-0" onclick="openManualProfile(' + s.user_id + ')">' + (s.in_time ? 'Mark Out' : 'Mark Out (Late)') + '</button>';
                 }
             }
             html += '<td class="text-center">' + manualAction + '</td>';

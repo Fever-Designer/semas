@@ -114,7 +114,7 @@ window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_U
       <?php if (Auth::canAccessTeachingMenu()): ?>
         <div class="nav-section-label">My Teaching</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/modules.php"><i class="bi bi-journal-bookmark-fill"></i> My Modules</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'class-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'class-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/live-session.php"><i class="bi bi-calendar3-week-fill"></i> Manage Attendance</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam' ? 'active' : '' ?>" href="<?= APP_URL ?>/lecturer/cat-exam-attendance.php"><i class="bi bi-pencil-square"></i> CAT / Exam Attendance</a>
         <a class="nav-link" href="<?= APP_URL ?>/lecturer/announcements.php"><i class="bi bi-megaphone-fill"></i> Module Announcements</a>
       <?php endif; ?>
@@ -135,7 +135,7 @@ window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_U
       <?php if ($roleLabel === 'HOD'): ?>
         <div class="nav-section-label">Academic Authority</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Manage Modules</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-bar-chart-line-fill"></i> Attendance Reports</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements &amp; Holidays</a>
@@ -172,7 +172,7 @@ window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_U
       <?php if ($roleLabel === 'Coordinator'): ?>
         <div class="nav-section-label">Weekend Academic</div>
         <a class="nav-link <?= ($activeNav ?? '') === 'modules' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/modules.php"><i class="bi bi-journal-bookmark-fill"></i> Weekend Modules</a>
-        <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-calendar3-week-fill"></i> Class Attendance</a>
+        <a class="nav-link <?= ($activeNav ?? '') === 'hod-attendance' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/class-attendance.php"><i class="bi bi-bar-chart-line-fill"></i> Attendance Reports</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'eligibility' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/eligibility.php"><i class="bi bi-clipboard2-check-fill"></i> CAT/Exam Eligibility</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'cat-exam-submissions' ? 'active' : '' ?>" href="<?= APP_URL ?>/hod/cat-exam-submissions.php"><i class="bi bi-send-check-fill"></i> CAT/Exam Submissions</a>
         <a class="nav-link <?= ($activeNav ?? '') === 'announcements' && basename($_SERVER['SCRIPT_NAME']) === 'announcements.php' ? 'active' : '' ?>" href="<?= APP_URL ?>/coordinator/announcements.php"><i class="bi bi-megaphone-fill"></i> Announcements</a>

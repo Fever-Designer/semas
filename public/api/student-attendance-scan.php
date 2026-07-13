@@ -254,7 +254,9 @@ if (!$module) {
 // Attendance is only valid within the module's start_date to end_date.
 $today = ClassAttendance::now()->format('Y-m-d');
 $holidayToday = ClassAttendance::holidayToday();
-if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+if ($holidayToday
+    && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday'
+    && ($module['session_type'] ?? '') !== 'Weekend') {
     echo json_encode(['ok' => false, 'message' => 'Today is a Public Holiday. Attendance scanning is disabled and no attendance is required.']);
     exit;
 }
@@ -345,7 +347,7 @@ if ($forcedSessId !== null) {
 
     if (!$window && !$allowSignOut) {
         $holiday = ClassAttendance::holidayToday();
-        $msg     = $holiday && $holiday['holiday_type'] === 'Public Holiday'
+        $msg     = $holiday && $holiday['holiday_type'] === 'Public Holiday' && ($module['session_type'] ?? '') !== 'Weekend'
             ? 'Today is a public holiday / no attendance scanning is required.'
             : 'There is no active class session window right now.';
         echo json_encode(['ok' => false, 'message' => $msg]);
@@ -434,11 +436,12 @@ $hasRealSignIn = (bool) $realSignInRow->fetch();
 
 $statusVal = ClassAttendance::statusFor($session['start_time']);
 
-if (!$hasRealSignIn) {
-    if ($isDemoSession && $manualPhase === 'SignOut') {
-        echo json_encode(['ok' => false, 'message' => 'You must sign in during the lecturer\'s Sign In phase before you can sign out.']);
-        exit;
-    }
+if (!$hasRealSignIn && $allowSignOut) {
+    // The student reached class after the lecturer closed Sign In. Recording
+    // Sign Out alone is the evidence used by SEMAS to decide Late.
+    $type = 'Sign Out';
+    $status = 'Late';
+} elseif (!$hasRealSignIn) {
     // Attempting Sign In / must always be a QR scan, manual check-in is not allowed.
     if ($isManual) {
         echo json_encode(['ok' => false, 'message' => 'Sign In requires scanning the QR code. Manual check-in is only available for Sign Out, near the end of the session.']);
@@ -527,8 +530,8 @@ try {
     } else {
         $db->prepare(
             "INSERT INTO class_attendance_logs (session_id, user_id, attendance_type, status, verification_method, ip_address, checkin_time, device_id)
-             VALUES (:s, :u, 'Sign Out', 'Present', 'QR', :ip, NOW(), :dev)"
-        )->execute($deviceParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'ip' => $ip]);
+             VALUES (:s, :u, 'Sign Out', :status, 'QR', :ip, NOW(), :dev)"
+        )->execute($deviceParams + ['s' => $session['session_id'], 'u' => $me['user_id'], 'status' => $status, 'ip' => $ip]);
     }
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {
@@ -547,7 +550,9 @@ if ($type === 'Sign In' && $status === 'Absent') {
     trigger_absence_warning($db, $me, $module, $session);
 }
 
-$label = $type === 'Sign In' ? "Checked in / marked <strong>$status</strong>." : 'Signed out successfully.';
+$label = $type === 'Sign In'
+    ? "Checked in / marked <strong>$status</strong>."
+    : ($status === 'Late' ? 'Signed out successfully / attendance marked <strong>Late</strong>.' : 'Signed out successfully.');
 echo json_encode(['ok' => true, 'message' => $label, 'type' => $type, 'status' => $status]);
 
 // ── Warning helper ────────────────────────────────────────────────────────

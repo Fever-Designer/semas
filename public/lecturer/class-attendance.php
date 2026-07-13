@@ -1,10 +1,17 @@
 <?php
 declare(strict_types=1);
+
+// Retired lecturer screen: all attendance management now lives in the live
+// feature. Preserve old bookmarks by forwarding their query parameters.
+$query = $_SERVER['QUERY_STRING'] ?? '';
+header('Location: live-session.php' . ($query !== '' ? '?' . $query : ''));
+exit;
+
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireTeachingAccess();
 Module::autoCompleteExpired();
 
-$pageTitle = 'Class Attendance';
+$pageTitle = 'Manage Attendance';
 $activeNav = 'class-attendance';
 $db        = Database::connection();
 $me        = Auth::user();
@@ -65,9 +72,9 @@ function lecturer_module_has_open_attendance(PDO $db, array $module, string $tod
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $holidayToday = ClassAttendance::holidayToday();
-    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday') {
+    if ($holidayToday && ($holidayToday['holiday_type'] ?? '') === 'Public Holiday' && (int) ClassAttendance::now()->format('N') < 6) {
         flash('error', 'Attendance cannot be created or changed on a Public Holiday.');
-        redirect('/lecturer/class-attendance.php');
+        redirect('/lecturer/live-session.php');
     }
     $action   = $_POST['action']    ?? '';
     $moduleId = (int) ($_POST['module_id'] ?? 0);
@@ -78,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mark      = $_POST['mark_status'] ?? '';
         if (!in_array($mark, ['Present', 'Late', 'Absent'], true) || !$sessionId || !$userId) {
             flash('error', 'Invalid mark request.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         // Locked if a Pending/Approved submission covers this session's date.
@@ -91,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($sdRow) {
             if ($rangeError = ClassAttendance::moduleDateRangeError($sdRow, (string) $sdRow['session_date'])) {
                 flash('error', $rangeError);
-                redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+                redirect('/lecturer/live-session.php?module_id=' . $moduleId);
             }
             $coveringType = attendance_window_for_date($sdRow['session_date'], $sdRow['cat_date'], $sdRow['exam_date']);
             if ($coveringType) {
@@ -102,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $lockCheck->execute(['mid' => $moduleId, 'type' => $coveringType]);
                 if ($lockCheck->fetch()) {
                     flash('error', "This session's attendance has been submitted for $coveringType and is locked. Ask the HOD/Coordinator to reject the submission if a correction is needed.");
-                    redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+                    redirect('/lecturer/live-session.php?module_id=' . $moduleId);
                 }
             }
         }
@@ -123,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $endGraceDt->modify('+' . ClassAttendance::LECTURER_AFTER_END_MINUTES . ' minutes');
                 flash('error', 'Manual marking is only allowed during the class session ('
                     . $startDt->format('H:i') . ' / ' . $endGraceDt->format('H:i') . ').');
-                redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+                redirect('/lecturer/live-session.php?module_id=' . $moduleId);
             }
             $signInTime  = $sessData['start_time'];
             $signOutTime = $sessData['end_time'];
@@ -148,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         AuditLog::record(Auth::id(), 'MANUAL_MARK_ATTENDANCE', 'class_sessions', $sessionId, "user={$userId};mark={$mark}");
         flash('success', 'Attendance updated.');
-        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        redirect('/lecturer/live-session.php?module_id=' . $moduleId);
     }
 
     if ($action === 'manual_auto_mark') {
@@ -156,11 +163,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirmedUserId = (int) ($_POST['confirmed_user_id'] ?? 0);
         if (!$moduleId || $regNum === '') {
             flash('error', 'Registration number is required.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         if (!$confirmedUserId) {
             flash('error', 'Please search and confirm the student profile before recording attendance.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $modStmt = $db->prepare(
@@ -173,11 +180,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $modRow = $modStmt->fetch();
         if (!$modRow || (int) $modRow['lecturer_user_id'] !== (int) $me['user_id']) {
             flash('error', 'Module not found or not assigned to you.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         if ($rangeError = ClassAttendance::moduleDateRangeError($modRow)) {
             flash('error', $rangeError);
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $window = ClassAttendance::currentWindow();
@@ -192,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $student = $stuStmt->fetch();
         if (!$student) {
             flash('error', 'The confirmed student profile does not match an active enrolled student.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $todayForAttendance = ClassAttendance::now()->format('Y-m-d');
@@ -207,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $session = $find->fetch();
         } elseif ($window) {
             flash('error', 'This module does not match the active session window.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         if (!$session && $window) {
@@ -254,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$session || $session['status'] !== 'Open') {
             flash('error', 'No open class session is available for manual attendance.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $uid = (int) $student['user_id'];
@@ -262,14 +269,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $signedOut->execute(['sid' => $session['session_id'], 'uid' => $uid]);
         if ($signedOut->fetchColumn()) {
             flash('error', 'Attendance has already been recorded.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $realSignIn = $db->prepare("SELECT 1 FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In' AND verification_method IN ('QR','Manual')");
         $realSignIn->execute(['sid' => $session['session_id'], 'uid' => $uid]);
         if ($realSignIn->fetchColumn()) {
             flash('error', 'Attendance has already been recorded.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
 
         $status = 'Present';
@@ -318,7 +325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         AuditLog::record(Auth::id(), 'MANUAL_SIGNIN_ATTENDANCE', 'class_sessions', (int) $session['session_id'], "user={$uid};status={$status}");
         flash('success', $student['full_name'] . ' signed manually as Present with class start/end times.');
-        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        redirect('/lecturer/live-session.php?module_id=' . $moduleId);
     }
 
     if ($action === 'create_session') {
@@ -326,22 +333,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $windowName = trim($_POST['window_name']  ?? '');
         if (!$sessDate || !$windowName || !$moduleId) {
             flash('error', 'Date and window are required.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         $modStatus = $db->prepare("SELECT status, start_date, end_date FROM modules WHERE module_id = :mid");
         $modStatus->execute(['mid' => $moduleId]);
         $sessionModule = $modStatus->fetch();
         if (!$sessionModule || $sessionModule['status'] !== 'Ongoing') {
             flash('error', 'This module is Completed / class attendance can no longer be recorded.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         if ($sessDate > $today) {
             flash('error', 'Attendance sessions cannot be created for a future date.');
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         if ($rangeError = ClassAttendance::moduleDateRangeError($sessionModule, $sessDate)) {
             flash('error', $rangeError);
-            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
         $defaultTimes = [
             'Day' => ['08:00:00','11:30:00'], 'Evening' => ['18:00:00','20:00:00'],
@@ -369,10 +376,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (PDOException $e) {
             flash('error', 'Session already exists for this date/window, or an error occurred.');
         }
-        redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        redirect('/lecturer/live-session.php?module_id=' . $moduleId);
     }
 
-    redirect('/lecturer/class-attendance.php');
+    redirect('/lecturer/live-session.php');
 }
 
 // ── Lecturer's modules ─────────────────────────────────────────────────────
@@ -435,8 +442,10 @@ if ($module) {
             && lecturer_module_matches_window($module, ['name' => (string) $s['window_name']]);
     }));
 
-    foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
-        $holidayMap[$h['holiday_date']] = true;
+    if (($module['session_type'] ?? '') !== 'Weekend') {
+        foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll() as $h) {
+            $holidayMap[$h['holiday_date']] = true;
+        }
     }
 
     $stuStmt = $db->prepare(
@@ -507,10 +516,10 @@ foreach ($students as $stu) {
 
 function lec_att_status(?array $e, string $date, string $today): string
 {
-    if (!$e || $e['is_auto'])                                return $date <= $today ? 'A' : '';
-    if ($e['in_status'] === 'Present' && $e['out_time'])     return 'P';
-    if ($e['in_status'] === 'Late'    && $e['out_time'])     return 'L';
-    return 'A';
+    if (!$e) return $date <= $today ? 'A' : '';
+    if (!$e['is_auto'] && $e['out_time']) return 'P';
+    if ($e['is_auto'] && $e['out_time']) return 'L';
+    return $date <= $today ? 'A' : '';
 }
 
 // ── Module-wide "All Numbers" summary ───────────────────────────────────────
@@ -524,16 +533,16 @@ foreach ($students as $stu) {
     foreach ($sessions as $s) {
         if (isset($holidayMap[$s['session_date']]) || $s['session_date'] > $today) continue;
         $entry = $attMap[(int) $s['session_id']][$uid] ?? null;
-        if (!$entry || $entry['is_auto']) {
+        if (!$entry || ($entry['is_auto'] && empty($entry['out_time']))) {
             $summary['missed_signin']++;
             $studentAbsences++;
+        } elseif ($entry['is_auto'] && !empty($entry['out_time'])) {
+            $summary['late']++;
         } elseif (empty($entry['out_time'])) {
             $summary['no_signout']++;
             $studentAbsences++;
-        } elseif ($entry['in_status'] === 'Present') {
+        } else {
             $summary['present']++;
-        } elseif ($entry['in_status'] === 'Late') {
-            $summary['late']++;
         }
     }
     if ($studentAbsences >= 3) $summary['students_at_risk']++;
@@ -561,10 +570,10 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
-  <h4 class="display-font mb-0">Class Attendance</h4>
-  <a href="<?= APP_URL ?>/lecturer/live-session.php<?= $moduleId ? '?module_id=' . $moduleId : '' ?>"
+  <h4 class="display-font mb-0">Manage Attendance</h4>
+  <a href="<?= APP_URL ?>/lecturer/live-session.php?panel=live<?= $moduleId ? '&amp;module_id=' . $moduleId : '' ?>"
      class="btn btn-sm btn-semas-gold">
-    <i class="bi bi-qr-code me-1"></i> Start Attendance
+    <i class="bi bi-broadcast me-1"></i> Live Session Controls
   </a>
 </div>
 
@@ -573,7 +582,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div>
     <?php if ($window): ?>
       <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
-    <?php elseif ($holidayToday && $holidayToday['holiday_type'] === 'Public Holiday'): ?>
+    <?php elseif ($holidayToday && $holidayToday['holiday_type'] === 'Public Holiday' && (int) $nowDt->format('N') < 6): ?>
       <i class="bi bi-info-circle me-1"></i> Today is a <strong>Public Holiday</strong> / no attendance scanning today.
     <?php else: ?>
       <i class="bi bi-clock-history me-1"></i> No active class session window right now.
@@ -975,6 +984,17 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
   </div>
 </div>
+
+<?php if (!empty($_GET['open_manual']) && $module): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('manualAttendanceModal');
+    if (modal && window.bootstrap) {
+        bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+});
+</script>
+<?php endif; ?>
 
 <!-- Manual Mark Modal -->
 <div class="modal fade" id="markModal" tabindex="-1">

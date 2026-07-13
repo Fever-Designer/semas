@@ -429,7 +429,7 @@ require __DIR__ . '/partials/layout_top.php';
           <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
           <p class="text-muted small mb-2"><?= (int) $m['student_count'] ?> student(s) registered &middot; <?= e($m['session_type'] ?? 'Any') ?></p>
           <div class="d-flex flex-wrap gap-1">
-            <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas">Attendance</a>
+            <a href="<?= APP_URL ?>/lecturer/live-session.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas">Manage Attendance</a>
             <a href="<?= APP_URL ?>/lecturer/announcements.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark">Announce</a>
             <a href="<?= APP_URL ?>/lecturer/assignments.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark">Assignments</a>
           </div>

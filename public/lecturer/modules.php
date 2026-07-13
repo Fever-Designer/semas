@@ -87,12 +87,12 @@ function module_card(array $m, ?array $todaySchedule = null): void {
           </a>
         <?php endif; ?>
         <?php if ($m['status'] === 'Ongoing'): ?>
-          <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas"><i class="bi bi-camera-fill me-1"></i>Attendance</a>
+          <a href="<?= APP_URL ?>/lecturer/live-session.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-semas"><i class="bi bi-camera-fill me-1"></i>Manage Attendance</a>
           <a href="<?= APP_URL ?>/lecturer/assignments.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-file-earmark-plus me-1"></i>Send Assignment</a>
           <a href="<?= APP_URL ?>/lecturer/announcements.php?module_id=<?= (int) $m['module_id'] ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-megaphone me-1"></i>Announce</a>
         <?php endif; ?>
-        <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>&tab=history" class="btn btn-sm btn-outline-dark"><i class="bi bi-clock-history me-1"></i>View Attendance</a>
-        <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= (int) $m['module_id'] ?>&export=csv" class="btn btn-sm btn-outline-dark"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+        <a href="<?= APP_URL ?>/lecturer/live-session.php?module_id=<?= (int) $m['module_id'] ?>&tab=history" class="btn btn-sm btn-outline-dark"><i class="bi bi-clock-history me-1"></i>View Attendance</a>
+        <a href="<?= APP_URL ?>/lecturer/live-session.php?module_id=<?= (int) $m['module_id'] ?>&export=csv" class="btn btn-sm btn-outline-dark"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
         <a href="<?= APP_URL ?>/lecturer/attendance-pdf.php?module_id=<?= (int) $m['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
       </div>
     </div>

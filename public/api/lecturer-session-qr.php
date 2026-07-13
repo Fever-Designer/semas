@@ -292,16 +292,14 @@ if ($action === 'manual_mark') {
                AND verification_method IN ('QR','Manual')"
         );
         $signedIn->execute(['sid' => $sessionId, 'uid' => $studentId]);
-        if (!$signedIn->fetchColumn()) {
-            echo json_encode(['ok' => false, 'message' => 'The student did not sign in and cannot be signed out.']);
-            exit;
-        }
+        $hasRealSignIn = (bool) $signedIn->fetchColumn();
+        $signOutStatus = $hasRealSignIn ? 'Present' : 'Late';
         try {
             $db->prepare(
                 "INSERT INTO class_attendance_logs
                     (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
-                 VALUES (:sid, :uid, 'Sign Out', 'Present', 'Manual', :by, NOW())"
-            )->execute(['sid' => $sessionId, 'uid' => $studentId, 'by' => Auth::id()]);
+                 VALUES (:sid, :uid, 'Sign Out', :status, 'Manual', :by, NOW())"
+            )->execute(['sid' => $sessionId, 'uid' => $studentId, 'status' => $signOutStatus, 'by' => Auth::id()]);
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {
                 echo json_encode(['ok' => false, 'message' => 'This student is already signed out.']);
@@ -310,7 +308,9 @@ if ($action === 'manual_mark') {
             throw $e;
         }
         $attendanceType = 'Sign Out';
-        $message = 'Student manually signed out.';
+        $message = $hasRealSignIn
+            ? 'Student manually signed out and is Present.'
+            : 'Student manually signed out without Sign In and is Late.';
     }
 
     AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_MANUAL_' . strtoupper(str_replace(' ', '_', $attendanceType)), 'class_sessions', $sessionId, 'student_user_id=' . $studentId);
@@ -516,12 +516,11 @@ if ($action === 'status') {
     $list = [];
     foreach ($students as $s) {
         $vm  = $s['verification_method'] ?? 'Auto';
-        $st  = $s['signin_status'] ?? 'Absent';
         $hasRecordedSignIn = in_array($vm, ['QR', 'Manual'], true);
-        if ($vm === 'Auto')           { $disp = 'A'; $absent++; }
-        elseif ($st === 'Present')    { $disp = 'P'; $present++; }
-        elseif ($st === 'Late')       { $disp = 'L'; $late++; }
-        else                          { $disp = 'A'; $absent++; }
+        $hasRecordedSignOut = !empty($s['signout_time']);
+        if ($hasRecordedSignIn && $hasRecordedSignOut) { $disp = 'P'; $present++; }
+        elseif (!$hasRecordedSignIn && $hasRecordedSignOut) { $disp = 'L'; $late++; }
+        else { $disp = 'A'; $absent++; }
         $list[] = [
             'user_id'  => (int) $s['user_id'],
             'name'     => $s['full_name'],

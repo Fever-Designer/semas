@@ -28,9 +28,10 @@ if (!$module) {
 }
 
 $students  = AttendanceSheet::students($db, $moduleId);
-$classDates = AttendanceSheet::expectedClassDates($module);
+$classDates = AttendanceSheet::expectedClassDates($module, true);
 $sessLabel = AttendanceSheet::sessionLabel($module);
 $metrics = AttendanceSheet::currentMetrics($db, $moduleId, $module);
+$decisions = AttendanceSheet::decisionsByDate($db, $moduleId, $module, $classDates);
 $effectiveEnd = empty($classDates)
     ? date('Y-m-d')
     : end($classDates);
@@ -115,7 +116,9 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
         <td class="col-num"><?= (int) $m['absent'] ?></td>
         <td class="col-num"><?= (int) $m['total'] ?></td>
         <td class="col-pct"><?= e(number_format((float) $m['percent'], 1)) ?>%</td>
-        <?php foreach ($classDates as $d): ?><td class="date-col">&nbsp;</td><?php endforeach; ?>
+        <?php foreach ($classDates as $d): ?>
+          <td class="date-col"><?= e($decisions[(int) $s['user_id']][$d] ?? 'Absent') ?></td>
+        <?php endforeach; ?>
       </tr>
     <?php endforeach; ?>
     <?php for ($extra = 0; $extra < 5; $extra++): ?>

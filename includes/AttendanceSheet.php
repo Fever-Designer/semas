@@ -7,6 +7,27 @@ declare(strict_types=1);
 final class AttendanceSheet
 {
     /**
+     * Resolve one attendance session from the two required student actions.
+     * Present = real Sign In + Sign Out; Late = Sign Out only; every other
+     * combination (including Sign In without Sign Out) is Absent.
+     */
+    public static function decisionForLogs(?array $signIn, ?array $signOut): string
+    {
+        $hasRealSignIn = $signIn
+            && in_array((string) ($signIn['verification_method'] ?? ''), ['QR', 'Manual'], true);
+        $hasRealSignOut = $signOut
+            && in_array((string) ($signOut['verification_method'] ?? ''), ['QR', 'Manual'], true);
+
+        if ($hasRealSignIn && $hasRealSignOut) {
+            return 'Present';
+        }
+        if (!$hasRealSignIn && $hasRealSignOut) {
+            return 'Late';
+        }
+        return 'Absent';
+    }
+
+    /**
      * Create closed attendance sessions for scheduled class days that have
      * already passed without a QR/manual session. Enrolled students are
      * pre-marked Absent (Auto), matching the normal session-creation flow.
@@ -152,8 +173,9 @@ final class AttendanceSheet
         $sessStmt->execute(['mid' => $moduleId, 'start_date' => $startDate, 'today' => $today]);
         $holidayRows = $db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll(PDO::FETCH_COLUMN);
         $publicHolidays = array_fill_keys(array_map('strval', $holidayRows), true);
-        $sessions = array_values(array_filter($sessStmt->fetchAll(), function ($s) use ($module, $excludeDates, $publicHolidays) {
-            return !isset($publicHolidays[$s['session_date']])
+        $excludePublicHolidays = ($module['session_type'] ?? '') !== 'Weekend';
+        $sessions = array_values(array_filter($sessStmt->fetchAll(), function ($s) use ($module, $excludeDates, $publicHolidays, $excludePublicHolidays) {
+            return (!$excludePublicHolidays || !isset($publicHolidays[$s['session_date']]))
                 && !in_array($s['session_date'], $excludeDates, true)
                 && self::windowMatchesModule($module, (string) $s['window_name']);
         }));
@@ -165,6 +187,7 @@ final class AttendanceSheet
                 'present' => 0,
                 'late' => 0,
                 'absent' => 0,
+                'effective_absences' => 0,
                 'total' => 0,
                 'percent' => 0.0,
             ];
@@ -193,17 +216,20 @@ final class AttendanceSheet
                 $sid = (int) $session['session_id'];
                 $signIn = $logs[$sid][$userId]['Sign In'] ?? null;
                 $signOut = $logs[$sid][$userId]['Sign Out'] ?? null;
-                $isReal = $signIn && in_array((string) $signIn['verification_method'], ['QR', 'Manual'], true);
-                if ($isReal && $signIn['status'] === 'Present' && $signOut) {
+                $decision = self::decisionForLogs($signIn, $signOut);
+                if ($decision === 'Present') {
                     $row['present']++;
-                } elseif ($isReal && $signIn['status'] === 'Late' && $signOut) {
+                } elseif ($decision === 'Late') {
                     $row['late']++;
                 } else {
                     $row['absent']++;
                 }
             }
             $row['total'] = $row['present'] + $row['late'] + $row['absent'];
-            $row['percent'] = $row['total'] > 0 ? round((($row['present'] + $row['late']) / $row['total']) * 100, 1) : 0.0;
+            $row['effective_absences'] = $row['absent'] + intdiv($row['late'], 2);
+            $row['percent'] = $row['total'] > 0
+                ? round((max(0, $row['total'] - $row['effective_absences']) / $row['total']) * 100, 1)
+                : 0.0;
         }
         unset($row);
 
@@ -217,7 +243,7 @@ final class AttendanceSheet
      *  place that logic lives / the printed/exported sheet itself carries no
      *  explanatory text, it just shows the resulting dates.
      *  @return string[] Y-m-d dates, ascending. */
-    public static function expectedClassDates(array $module): array
+    public static function expectedClassDates(array $module, bool $includePublicHolidays = false): array
     {
         if (empty($module['start_date']) || empty($module['end_date'])) {
             return [];
@@ -237,12 +263,97 @@ final class AttendanceSheet
             $dateStr      = $cursor->format('Y-m-d');
             $isWeekendDay = ((int) $cursor->format('N')) >= 6;
             $dayMatches   = $isWeekendSession ? $isWeekendDay : !$isWeekendDay;
-            if ($dayMatches && !isset($publicHolidays[$dateStr]) && !in_array($dateStr, $exclude, true)) {
+            $isAffectedPublicHoliday = !$includePublicHolidays && !$isWeekendSession && isset($publicHolidays[$dateStr]);
+            if ($dayMatches && !$isAffectedPublicHoliday && !in_array($dateStr, $exclude, true)) {
                 $dates[] = $dateStr;
             }
             $cursor->modify('+1 day');
         }
         return $dates;
+    }
+
+    /**
+     * Build the printable decision for every student on every displayed date.
+     * Missing real attendance on a past teaching date is Absent; a Public
+     * Holiday applies only to Day/Evening modules and takes precedence over
+     * any automatic absence placeholder.
+     *
+     * @param string[] $classDates
+     * @return array<int,array<string,string>> [user_id][Y-m-d] => decision
+     */
+    public static function decisionsByDate(PDO $db, int $moduleId, array $module, array $classDates): array
+    {
+        if (!$classDates) {
+            return [];
+        }
+
+        $holidayMap = [];
+        if (($module['session_type'] ?? '') !== 'Weekend') {
+            foreach ($db->query("SELECT holiday_date FROM holidays WHERE holiday_type = 'Public Holiday'")->fetchAll(PDO::FETCH_COLUMN) as $date) {
+                $holidayMap[(string) $date] = true;
+            }
+        }
+
+        $dateSet = array_fill_keys($classDates, true);
+        $sessionStmt = $db->prepare(
+            'SELECT session_id, session_date, window_name
+             FROM class_sessions
+             WHERE module_id = :mid
+             ORDER BY session_date, start_time, session_id'
+        );
+        $sessionStmt->execute(['mid' => $moduleId]);
+        $sessionsByDate = [];
+        $sessionIds = [];
+        foreach ($sessionStmt->fetchAll() as $session) {
+            $date = (string) $session['session_date'];
+            if (!isset($dateSet[$date]) || !self::windowMatchesModule($module, (string) $session['window_name'])) {
+                continue;
+            }
+            $sid = (int) $session['session_id'];
+            $sessionsByDate[$date][] = $sid;
+            $sessionIds[] = $sid;
+        }
+
+        $logs = [];
+        if ($sessionIds) {
+            $placeholders = implode(',', array_fill(0, count($sessionIds), '?'));
+            $logStmt = $db->prepare(
+                "SELECT session_id, user_id, attendance_type, status, verification_method
+                 FROM class_attendance_logs
+                 WHERE session_id IN ($placeholders)"
+            );
+            $logStmt->execute($sessionIds);
+            foreach ($logStmt->fetchAll() as $log) {
+                $logs[(int) $log['session_id']][(int) $log['user_id']][(string) $log['attendance_type']] = $log;
+            }
+        }
+
+        $decisions = [];
+        foreach (self::students($db, $moduleId) as $student) {
+            $userId = (int) $student['user_id'];
+            foreach ($classDates as $date) {
+                if (isset($holidayMap[$date])) {
+                    $decisions[$userId][$date] = 'Holiday';
+                    continue;
+                }
+
+                $present = false;
+                $late = false;
+                foreach ($sessionsByDate[$date] ?? [] as $sessionId) {
+                    $signIn = $logs[$sessionId][$userId]['Sign In'] ?? null;
+                    $signOut = $logs[$sessionId][$userId]['Sign Out'] ?? null;
+                    $decision = self::decisionForLogs($signIn, $signOut);
+                    if ($decision === 'Present') {
+                        $present = true;
+                    } elseif ($decision === 'Late') {
+                        $late = true;
+                    }
+                }
+                $decisions[$userId][$date] = $present ? 'Present' : ($late ? 'Late' : 'Absent');
+            }
+        }
+
+        return $decisions;
     }
 
     public static function sessionLabel(array $module): string

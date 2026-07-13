@@ -104,6 +104,134 @@ foreach ($modules as $m) {
 $overallRate = $overallTotal > 0 ? round($overallAttended / $overallTotal * 100) : 0;
 $sessionLabel = $sessionFilter !== '' ? $sessionFilter : 'All Sessions';
 
+// Local predictive attendance analysis. Keeping this calculation inside SEMAS
+// avoids sending student records to a third-party AI service. The score blends
+// the student's complete module history with the three most recent decisions.
+$absenceRisks = [];
+$lateRisks = [];
+if ($modules) {
+    $moduleIds = array_values(array_unique(array_map(static fn(array $module): int => (int) $module['module_id'], $modules)));
+    $moduleIdSql = implode(',', $moduleIds);
+    $historyStmt = $db->query(
+        "SELECT m.module_id, m.module_title, d.department_name,
+                u.user_id, u.full_name, u.reg_number, cs.session_date,
+                CASE
+                    WHEN MAX(CASE WHEN si.verification_method IN ('QR','Manual') AND so.verification_method IN ('QR','Manual') THEN 1 ELSE 0 END) = 1 THEN 'Present'
+                    WHEN MAX(CASE WHEN (si.attendance_id IS NULL OR si.verification_method NOT IN ('QR','Manual')) AND so.verification_method IN ('QR','Manual') THEN 1 ELSE 0 END) = 1 THEN 'Late'
+                    ELSE 'Absent'
+                END AS attendance_decision
+         FROM modules m
+         JOIN module_enrollments me ON me.module_id = m.module_id
+         JOIN users u ON u.user_id = me.user_id AND u.status = 'Active'
+         LEFT JOIN departments d ON d.department_id = m.department_id
+         JOIN class_sessions cs ON cs.module_id = m.module_id
+             AND cs.session_date <= CURDATE()
+             AND (m.cat_date IS NULL OR cs.session_date <> m.cat_date)
+             AND (m.exam_date IS NULL OR cs.session_date <> m.exam_date)
+         LEFT JOIN class_attendance_logs si ON si.session_id = cs.session_id
+             AND si.user_id = u.user_id AND si.attendance_type = 'Sign In'
+         LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id
+             AND so.user_id = u.user_id AND so.attendance_type = 'Sign Out'
+         LEFT JOIN holidays h ON h.holiday_date = cs.session_date AND h.holiday_type = 'Public Holiday'
+         WHERE m.module_id IN ($moduleIdSql)
+           AND (m.session_type = 'Weekend' OR h.holiday_id IS NULL)
+         GROUP BY m.module_id, m.module_title, d.department_name,
+                  u.user_id, u.full_name, u.reg_number, cs.session_date
+         ORDER BY m.module_id, u.user_id, cs.session_date"
+    );
+
+    $studentHistories = [];
+    foreach ($historyStmt->fetchAll() as $historyRow) {
+        $historyKey = (int) $historyRow['module_id'] . ':' . (int) $historyRow['user_id'];
+        if (!isset($studentHistories[$historyKey])) {
+            $studentHistories[$historyKey] = [
+                'module_id' => (int) $historyRow['module_id'],
+                'module_title' => $historyRow['module_title'],
+                'department_name' => $historyRow['department_name'],
+                'user_id' => (int) $historyRow['user_id'],
+                'full_name' => $historyRow['full_name'],
+                'reg_number' => $historyRow['reg_number'],
+                'decisions' => [],
+            ];
+        }
+        $studentHistories[$historyKey]['decisions'][] = $historyRow['attendance_decision'];
+    }
+
+    // The module summary uses the same paired-action decisions as the risk
+    // model, rather than treating a raw Sign In row as final attendance.
+    $moduleDecisionTotals = [];
+    foreach ($studentHistories as $history) {
+        $mid = (int) $history['module_id'];
+        $moduleDecisionTotals[$mid] ??= ['Present' => 0, 'Late' => 0, 'Absent' => 0];
+        foreach ($history['decisions'] as $decision) {
+            $moduleDecisionTotals[$mid][$decision]++;
+        }
+    }
+    foreach ($modules as &$moduleRow) {
+        $decisionCounts = $moduleDecisionTotals[(int) $moduleRow['module_id']] ?? ['Present' => 0, 'Late' => 0, 'Absent' => 0];
+        $moduleRow['present_count'] = $decisionCounts['Present'];
+        $moduleRow['late_count'] = $decisionCounts['Late'];
+        $moduleRow['absent_count'] = $decisionCounts['Absent'];
+        $moduleRow['total_signins'] = array_sum($decisionCounts);
+        $effectiveAbsences = $decisionCounts['Absent'] + intdiv($decisionCounts['Late'], 2);
+        $moduleRow['attended_signins'] = max(0, $moduleRow['total_signins'] - $effectiveAbsences);
+    }
+    unset($moduleRow);
+
+    foreach ($studentHistories as $history) {
+        $decisions = $history['decisions'];
+        $totalDecisions = count($decisions);
+        if ($totalDecisions < 3) {
+            continue; // Insufficient history for a useful pattern prediction.
+        }
+
+        $absent = count(array_filter($decisions, static fn(string $decision): bool => $decision === 'Absent'));
+        $late = count(array_filter($decisions, static fn(string $decision): bool => $decision === 'Late'));
+        $attended = $totalDecisions - $absent;
+        $recent = array_slice($decisions, -3);
+        $recentAbsent = count(array_filter($recent, static fn(string $decision): bool => $decision === 'Absent'));
+        $recentLate = count(array_filter($recent, static fn(string $decision): bool => $decision === 'Late'));
+
+        $absenceScore = (int) round(min(0.99, (0.65 * ($absent / $totalDecisions)) + (0.35 * ($recentAbsent / count($recent)))) * 100);
+        if ($absent >= 2 && $absenceScore >= 35) {
+            $absenceRisks[] = $history + [
+                'total' => $totalDecisions,
+                'absent' => $absent,
+                'recent_absent' => $recentAbsent,
+                'score' => $absenceScore,
+                'level' => $absenceScore >= 65 || $absent >= 3 ? 'High' : 'Watch',
+            ];
+        }
+
+        $lateRate = $attended > 0 ? $late / $attended : 0;
+        $lateScore = (int) round(min(0.99, (0.70 * $lateRate) + (0.30 * ($recentLate / count($recent)))) * 100);
+        if ($late >= 2 && $lateScore >= 40) {
+            $lateRisks[] = $history + [
+                'total' => $totalDecisions,
+                'attended' => $attended,
+                'late' => $late,
+                'recent_late' => $recentLate,
+                'score' => $lateScore,
+                'level' => $lateScore >= 70 ? 'Persistent' : 'Frequent',
+            ];
+        }
+    }
+
+    usort($absenceRisks, static fn(array $a, array $b): int => [$b['score'], $b['absent']] <=> [$a['score'], $a['absent']]);
+    usort($lateRisks, static fn(array $a, array $b): int => [$b['score'], $b['late']] <=> [$a['score'], $a['late']]);
+    $absenceRisks = array_slice($absenceRisks, 0, 20);
+    $lateRisks = array_slice($lateRisks, 0, 20);
+}
+
+// Recalculate the cards after applying the paired Sign In/Sign Out rules.
+$overallTotal = 0;
+$overallAttended = 0;
+foreach ($modules as $moduleRow) {
+    $overallTotal += (int) $moduleRow['total_signins'];
+    $overallAttended += (int) $moduleRow['attended_signins'];
+}
+$overallRate = $overallTotal > 0 ? round($overallAttended / $overallTotal * 100) : 0;
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Module &amp; Attendance Reports</h4>
@@ -114,7 +242,7 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <div class="row g-3 mb-4">
   <div class="col-md-4"><div class="stat-card"><div class="stat-label">Ongoing Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= count($modules) ?></div></div></div>
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Total Sign-Ins Recorded</div><div class="stat-value"><?= $overallTotal ?></div></div></div>
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Attendance Decisions Recorded</div><div class="stat-value"><?= $overallTotal ?></div></div></div>
   <div class="col-md-4"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
     <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
   </div></div>
@@ -139,6 +267,68 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
     <div class="col-md-2"><button class="btn btn-sm btn-semas w-100"><i class="bi bi-search me-1"></i> Filter</button></div>
   </form>
+</div>
+
+<div class="semas-card p-3 mb-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h6 class="display-font mb-1"><i class="bi bi-stars me-1" style="color:var(--semas-gold);"></i> AI Attendance Insights</h6>
+      <div class="text-muted small">Predictive indicators from each student's module history and three most recent attendance decisions. At least three recorded sessions are required.</div>
+    </div>
+    <span class="badge bg-light text-dark border">Local &amp; explainable</span>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-6">
+      <div class="border rounded h-100 p-2">
+        <div class="d-flex justify-content-between align-items-center px-1 mb-2">
+          <strong><i class="bi bi-person-exclamation text-danger me-1"></i> Likely to Miss More Classes</strong>
+          <span class="badge bg-danger"><?= count($absenceRisks) ?></span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Student</th><th>Module</th><th>History</th><th>Risk</th></tr></thead>
+            <tbody>
+              <?php foreach ($absenceRisks as $risk): ?>
+                <tr>
+                  <td><strong><?= e($risk['full_name']) ?></strong><div class="text-muted" style="font-size:.72rem;"><?= e($risk['reg_number'] ?: 'No reg. number') ?></div></td>
+                  <td><?= e($risk['module_title']) ?><div class="text-muted" style="font-size:.72rem;"><?= e($risk['department_name'] ?? '-') ?></div></td>
+                  <td><span class="text-danger fw-semibold"><?= (int) $risk['absent'] ?> absent</span> / <?= (int) $risk['total'] ?><div class="text-muted" style="font-size:.72rem;"><?= (int) $risk['recent_absent'] ?> in the latest 3</div></td>
+                  <td><span class="badge <?= $risk['level'] === 'High' ? 'bg-danger' : 'bg-warning text-dark' ?>"><?= e($risk['level']) ?> · <?= (int) $risk['score'] ?>%</span></td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!$absenceRisks): ?><tr><td colspan="4" class="text-muted text-center py-3">No repeated-absence risk pattern found for the selected modules.</td></tr><?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="border rounded h-100 p-2">
+        <div class="d-flex justify-content-between align-items-center px-1 mb-2">
+          <strong><i class="bi bi-clock-history text-warning me-1"></i> Frequently Late Students</strong>
+          <span class="badge bg-warning text-dark"><?= count($lateRisks) ?></span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Student</th><th>Module</th><th>History</th><th>Pattern</th></tr></thead>
+            <tbody>
+              <?php foreach ($lateRisks as $risk): ?>
+                <tr>
+                  <td><strong><?= e($risk['full_name']) ?></strong><div class="text-muted" style="font-size:.72rem;"><?= e($risk['reg_number'] ?: 'No reg. number') ?></div></td>
+                  <td><?= e($risk['module_title']) ?><div class="text-muted" style="font-size:.72rem;"><?= e($risk['department_name'] ?? '-') ?></div></td>
+                  <td><span class="fw-semibold" style="color:#856404;"><?= (int) $risk['late'] ?> late</span> / <?= (int) $risk['attended'] ?> attended<div class="text-muted" style="font-size:.72rem;"><?= (int) $risk['recent_late'] ?> in the latest 3</div></td>
+                  <td><span class="badge <?= $risk['level'] === 'Persistent' ? 'bg-danger' : 'bg-warning text-dark' ?>"><?= e($risk['level']) ?> · <?= (int) $risk['score'] ?>%</span></td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!$lateRisks): ?><tr><td colspan="4" class="text-muted text-center py-3">No frequent-lateness pattern found for the selected modules.</td></tr><?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="semas-card p-3">
