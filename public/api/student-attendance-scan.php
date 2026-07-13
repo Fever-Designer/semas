@@ -33,7 +33,7 @@ function attendance_security_schema(PDO $db): void
             last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             reset_at DATETIME NULL,
             reset_by INT NULL,
-            UNIQUE KEY uniq_attendance_device_user (user_id),
+            KEY idx_attendance_device_user (user_id),
             UNIQUE KEY uniq_attendance_device_hash (device_hash),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
             FOREIGN KEY (reset_by) REFERENCES users(user_id) ON DELETE SET NULL
@@ -58,6 +58,26 @@ function attendance_security_schema(PDO $db): void
             FOREIGN KEY (session_id) REFERENCES class_sessions(session_id) ON DELETE SET NULL
         ) ENGINE=InnoDB"
     );
+
+    // A student may own several phones, but each phone/device hash can belong
+    // to only one student. Upgrade installations that used one-device-per-user.
+    $indexes = $db->query('SHOW INDEX FROM attendance_devices')->fetchAll();
+    $hasUniqueUserIndex = false;
+    $hasRegularUserIndex = false;
+    foreach ($indexes as $index) {
+        if ($index['Key_name'] === 'uniq_attendance_device_user') {
+            $hasUniqueUserIndex = true;
+        }
+        if ($index['Key_name'] === 'idx_attendance_device_user') {
+            $hasRegularUserIndex = true;
+        }
+    }
+    if ($hasUniqueUserIndex) {
+        if (!$hasRegularUserIndex) {
+            $db->exec('ALTER TABLE attendance_devices ADD KEY idx_attendance_device_user (user_id)');
+        }
+        $db->exec('ALTER TABLE attendance_devices DROP INDEX uniq_attendance_device_user');
+    }
 }
 
 function attendance_security_log(PDO $db, ?int $userId, ?int $moduleId, ?int $sessionId, ?string $deviceHash, string $ip, string $eventType, string $message): void
@@ -86,34 +106,36 @@ attendance_security_schema($db);
 
 if ($deviceId === null || strlen($deviceId) < 12) {
     attendance_security_log($db, (int) $me['user_id'], null, null, null, $ip, 'MISSING_DEVICE_ID', 'Attendance scan without a valid device id.');
-    echo json_encode(['ok' => false, 'message' => 'This phone is not registered for attendance. Log in again on your registered phone or request a device reset.']);
+    echo json_encode(['ok' => false, 'message' => 'This phone could not be identified. Reload the page and scan the classroom QR again.']);
     exit;
 }
 $deviceHash = attendance_device_hash($deviceId);
 
-$otherDevice = $db->prepare('SELECT user_id FROM attendance_devices WHERE device_hash = :hash AND user_id <> :uid LIMIT 1');
-$otherDevice->execute(['hash' => $deviceHash, 'uid' => $me['user_id']]);
-if ($otherDevice->fetchColumn()) {
+$deviceOwner = $db->prepare('SELECT user_id FROM attendance_devices WHERE device_hash = :hash LIMIT 1');
+$deviceOwner->execute(['hash' => $deviceHash]);
+$ownerUserId = $deviceOwner->fetchColumn();
+if ($ownerUserId !== false && (int) $ownerUserId !== (int) $me['user_id']) {
     attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'DEVICE_USED_BY_MULTIPLE_ACCOUNTS', 'Device already registered to another student.');
-    echo json_encode(['ok' => false, 'message' => 'This device is already registered to another student.']);
+    echo json_encode(['ok' => false, 'message' => 'This phone is already assigned to another student and cannot be shared for attendance.']);
     exit;
 }
 
-$myDevice = $db->prepare('SELECT device_hash FROM attendance_devices WHERE user_id = :uid LIMIT 1');
-$myDevice->execute(['uid' => $me['user_id']]);
-$registeredHash = $myDevice->fetchColumn();
-if ($registeredHash && !hash_equals((string) $registeredHash, $deviceHash)) {
-    attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'UNREGISTERED_DEVICE_FOR_STUDENT', 'Student attempted attendance from a different phone.');
-    echo json_encode(['ok' => false, 'message' => 'Attendance is accepted only from your registered phone. Request a device reset from your HoD or Administrator.']);
-    exit;
-}
-if (!$registeredHash) {
-    $db->prepare('INSERT INTO attendance_devices (user_id, device_hash) VALUES (:uid, :hash)')
+if ($ownerUserId === false) {
+    $db->prepare('INSERT IGNORE INTO attendance_devices (user_id, device_hash) VALUES (:uid, :hash)')
        ->execute(['uid' => $me['user_id'], 'hash' => $deviceHash]);
-} else {
-    $db->prepare('UPDATE attendance_devices SET last_seen_at = NOW() WHERE user_id = :uid')
-       ->execute(['uid' => $me['user_id']]);
+
+    // Re-check ownership in case two accounts attempted to claim a new phone
+    // at the same instant; the unique device-hash key decides the winner.
+    $deviceOwner->execute(['hash' => $deviceHash]);
+    $ownerUserId = $deviceOwner->fetchColumn();
+    if ($ownerUserId === false || (int) $ownerUserId !== (int) $me['user_id']) {
+        attendance_security_log($db, (int) $me['user_id'], null, null, $deviceHash, $ip, 'DEVICE_CLAIM_CONFLICT', 'Phone was claimed by another student.');
+        echo json_encode(['ok' => false, 'message' => 'This phone is already assigned to another student and cannot be shared for attendance.']);
+        exit;
+    }
 }
+$db->prepare('UPDATE attendance_devices SET last_seen_at = NOW() WHERE device_hash = :hash AND user_id = :uid')
+   ->execute(['hash' => $deviceHash, 'uid' => $me['user_id']]);
 
 // ── Detect QR format: dynamic "SEMAS:{module_id}:{session_id}:{token}" ────
 $qrData       = trim($_POST['qr_data'] ?? '');
