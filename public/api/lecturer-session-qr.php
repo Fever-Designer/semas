@@ -128,6 +128,10 @@ if (in_array($action, ['get_state', 'start_phase', 'close_phase'], true)) {
     }
 
     if ($action === 'start_phase') {
+        if ($session && $session['status'] === 'Closed') {
+            echo json_encode(['ok' => false, 'message' => 'Today\'s attendance is completed and cannot be reopened.']);
+            exit;
+        }
         if ($session && in_array($session['attendance_phase'], ['SignIn', 'SignOut'], true)) {
             echo json_encode(['ok' => false, 'message' => 'Close the active ' . ($session['attendance_phase'] === 'SignIn' ? 'Sign In' : 'Sign Out') . ' phase first.']);
             exit;
@@ -136,23 +140,27 @@ if (in_array($action, ['get_state', 'start_phase', 'close_phase'], true)) {
             echo json_encode(['ok' => false, 'message' => 'Start and close Sign In before starting Sign Out.']);
             exit;
         }
-        if ($phase === 'SignIn' && $session && $session['status'] === 'Closed') {
-            echo json_encode(['ok' => false, 'message' => 'Today\'s attendance session is already completed.']);
+        if ($phase === 'SignIn' && $session) {
+            echo json_encode(['ok' => false, 'message' => 'Sign In was already started today and cannot be reopened. Continue with Sign Out.']);
             exit;
         }
 
         if (!$session) {
             $window = liveqr_demo_window($module, $today);
-            // Reuse today's scheduled session when one already occupies the
-            // module/date/window unique key, then place it under lecturer control.
+            // Reuse an existing open session for today so the module can have
+            // only one attendance lifecycle per day.
             $existingStmt = $db->prepare(
                 'SELECT * FROM class_sessions
-                 WHERE module_id = :mid AND session_date = :today AND window_name = :window
+                 WHERE module_id = :mid AND session_date = :today
                  ORDER BY session_id DESC LIMIT 1'
             );
-            $existingStmt->execute(['mid' => $moduleId, 'today' => $today, 'window' => $window['name']]);
+            $existingStmt->execute(['mid' => $moduleId, 'today' => $today]);
             $existingToday = $existingStmt->fetch();
             if ($existingToday) {
+                if ($existingToday['status'] === 'Closed') {
+                    echo json_encode(['ok' => false, 'message' => 'Today\'s attendance is already completed and cannot be reopened.']);
+                    exit;
+                }
                 $sessionId = (int) $existingToday['session_id'];
                 $db->prepare(
                     "UPDATE class_sessions
@@ -222,6 +230,95 @@ if (in_array($action, ['get_state', 'start_phase', 'close_phase'], true)) {
 }
 
 // ── open_session ──────────────────────────────────────────────────────────
+if ($action === 'manual_mark') {
+    $sessionId = (int) ($_POST['session_id'] ?? 0);
+    $studentId = (int) ($_POST['user_id'] ?? 0);
+    $sessionStmt = $db->prepare(
+        "SELECT cs.*, m.module_title
+         FROM class_sessions cs
+         JOIN modules m ON m.module_id = cs.module_id
+         LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
+         WHERE cs.session_id = :sid
+           AND (lt.user_id = :uid OR :role IN ('HOD','Coordinator'))"
+    );
+    $sessionStmt->execute(['sid' => $sessionId, 'uid' => $me['user_id'], 'role' => Auth::role()]);
+    $session = $sessionStmt->fetch();
+    if (!$session || !$studentId) {
+        echo json_encode(['ok' => false, 'message' => 'Session or student not found.']);
+        exit;
+    }
+    if ((int) $session['demo_controlled'] !== 1 || $session['status'] !== 'Open'
+        || !in_array($session['attendance_phase'], ['SignIn', 'SignOut'], true)) {
+        echo json_encode(['ok' => false, 'message' => 'Manual attendance is available only during the active phase.']);
+        exit;
+    }
+    $enrolled = $db->prepare('SELECT 1 FROM module_enrollments WHERE module_id = :mid AND user_id = :uid');
+    $enrolled->execute(['mid' => $session['module_id'], 'uid' => $studentId]);
+    if (!$enrolled->fetchColumn()) {
+        echo json_encode(['ok' => false, 'message' => 'This student is not registered for the module.']);
+        exit;
+    }
+
+    if ($session['attendance_phase'] === 'SignIn') {
+        $existing = $db->prepare(
+            "SELECT attendance_id, verification_method FROM class_attendance_logs
+             WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In'"
+        );
+        $existing->execute(['sid' => $sessionId, 'uid' => $studentId]);
+        $row = $existing->fetch();
+        if ($row && in_array($row['verification_method'], ['QR', 'Manual'], true)) {
+            echo json_encode(['ok' => false, 'message' => 'This student is already signed in.']);
+            exit;
+        }
+        if ($row) {
+            $db->prepare(
+                "UPDATE class_attendance_logs
+                 SET status = 'Present', verification_method = 'Manual', confirmed_by = :by, checkin_time = NOW()
+                 WHERE attendance_id = :id"
+            )->execute(['by' => Auth::id(), 'id' => $row['attendance_id']]);
+        } else {
+            $db->prepare(
+                "INSERT INTO class_attendance_logs
+                    (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
+                 VALUES (:sid, :uid, 'Sign In', 'Present', 'Manual', :by, NOW())"
+            )->execute(['sid' => $sessionId, 'uid' => $studentId, 'by' => Auth::id()]);
+        }
+        $attendanceType = 'Sign In';
+        $message = 'Student manually signed in.';
+    } else {
+        $signedIn = $db->prepare(
+            "SELECT 1 FROM class_attendance_logs
+             WHERE session_id = :sid AND user_id = :uid AND attendance_type = 'Sign In'
+               AND verification_method IN ('QR','Manual')"
+        );
+        $signedIn->execute(['sid' => $sessionId, 'uid' => $studentId]);
+        if (!$signedIn->fetchColumn()) {
+            echo json_encode(['ok' => false, 'message' => 'The student did not sign in and cannot be signed out.']);
+            exit;
+        }
+        try {
+            $db->prepare(
+                "INSERT INTO class_attendance_logs
+                    (session_id, user_id, attendance_type, status, verification_method, confirmed_by, checkin_time)
+                 VALUES (:sid, :uid, 'Sign Out', 'Present', 'Manual', :by, NOW())"
+            )->execute(['sid' => $sessionId, 'uid' => $studentId, 'by' => Auth::id()]);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                echo json_encode(['ok' => false, 'message' => 'This student is already signed out.']);
+                exit;
+            }
+            throw $e;
+        }
+        $attendanceType = 'Sign Out';
+        $message = 'Student manually signed out.';
+    }
+
+    AuditLog::record(Auth::id(), 'CLASS_ATTENDANCE_MANUAL_' . strtoupper(str_replace(' ', '_', $attendanceType)), 'class_sessions', $sessionId, 'student_user_id=' . $studentId);
+    NotificationCenter::notify($studentId, 'Attendance recorded', $message . ' Module: ' . $session['module_title'] . '.', 'Attendance');
+    echo json_encode(['ok' => true, 'message' => $message]);
+    exit;
+}
+
 if ($action === 'open_session') {
     $moduleId = (int) ($_POST['module_id'] ?? 0);
     if (!$moduleId) { echo json_encode(['ok' => false, 'message' => 'module_id required.']); exit; }
@@ -401,7 +498,7 @@ if ($action === 'status') {
     $modId = (int) ($sessionState['module_id'] ?? 0);
 
     $roster = $db->prepare(
-        "SELECT u.full_name, u.reg_number,
+        "SELECT u.user_id, u.full_name, u.reg_number,
                 si.status AS signin_status, si.verification_method,
                 si.checkin_time AS signin_time,
                 so.checkin_time AS signout_time
@@ -420,15 +517,17 @@ if ($action === 'status') {
     foreach ($students as $s) {
         $vm  = $s['verification_method'] ?? 'Auto';
         $st  = $s['signin_status'] ?? 'Absent';
+        $hasRecordedSignIn = in_array($vm, ['QR', 'Manual'], true);
         if ($vm === 'Auto')           { $disp = 'A'; $absent++; }
         elseif ($st === 'Present')    { $disp = 'P'; $present++; }
         elseif ($st === 'Late')       { $disp = 'L'; $late++; }
         else                          { $disp = 'A'; $absent++; }
         $list[] = [
+            'user_id'  => (int) $s['user_id'],
             'name'     => $s['full_name'],
             'reg'      => $s['reg_number'],
             'status'   => $disp,
-            'in_time'  => $s['signin_time']  ? date('H:i', strtotime($s['signin_time']))  : null,
+            'in_time'  => $hasRecordedSignIn && $s['signin_time'] ? date('H:i', strtotime($s['signin_time'])) : null,
             'out_time' => $s['signout_time'] ? date('H:i', strtotime($s['signout_time'])) : null,
         ];
     }

@@ -148,6 +148,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <span class="badge bg-secondary" id="cntTotal">/ 0</span>
         </div>
       </div>
+      <div id="manualAttendanceMsg" class="small mb-2"></div>
       <div id="rosterTable" style="max-height:420px;overflow-y:auto;">
         <div class="text-muted small text-center py-4">Starting session…</div>
       </div>
@@ -231,6 +232,32 @@ function closePhase(phase) {
     phaseRequest('close_phase', phase);
 }
 
+function manualMark(userId) {
+    const msg = document.getElementById('manualAttendanceMsg');
+    msg.className = 'small mb-2 text-muted';
+    msg.textContent = 'Recording manual attendance...';
+    fetch(BASE + '/api/lecturer-session-qr.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            action: 'manual_mark',
+            session_id: sessionId,
+            user_id: userId,
+            csrf_token: CSRF,
+        }).toString(),
+    })
+    .then(r => r.json())
+    .then(data => {
+        msg.className = 'small mb-2 ' + (data.ok ? 'text-success' : 'text-danger');
+        msg.textContent = data.message;
+        if (data.ok) loadRoster();
+    })
+    .catch(() => {
+        msg.className = 'small mb-2 text-danger';
+        msg.textContent = 'Could not record manual attendance.';
+    });
+}
+
 function loadRoster() {
     if (!sessionId) return;
     fetch(BASE + '/api/lecturer-session-qr.php', {
@@ -249,7 +276,7 @@ function loadRoster() {
         const colors = {P:'#d4edda',L:'#fff3cd',A:'#f8d7da'};
         const fcolors = {P:'#155724',L:'#856404',A:'#721c24'};
         let html = '<table class="table table-sm table-bordered mb-0" style="font-size:.78rem;">';
-        html += '<thead class="table-light"><tr><th>#</th><th>Reg No</th><th>Name</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>';
+        html += '<thead class="table-light"><tr><th>#</th><th>Reg No</th><th>Name</th><th>In</th><th>Out</th><th>Status</th><th>Manual</th></tr></thead><tbody>';
         data.roster.forEach(function(s, i) {
             const bg = colors[s.status] || '#fff';
             const fc = fcolors[s.status] || '#000';
@@ -260,6 +287,21 @@ function loadRoster() {
             html += '<td>' + (s.in_time || '/') + '</td>';
             html += '<td>' + (s.out_time || '/') + '</td>';
             html += '<td class="text-center fw-bold" style="background:' + bg + ';color:' + fc + ';">' + s.status + '</td>';
+            let manualAction = '<span class="text-muted">/</span>';
+            if (data.phase === 'SignIn') {
+                manualAction = s.in_time
+                    ? '<span class="text-success small">Recorded</span>'
+                    : '<button type="button" class="btn btn-success btn-sm py-0" onclick="manualMark(' + s.user_id + ')">Mark In</button>';
+            } else if (data.phase === 'SignOut') {
+                if (s.out_time) {
+                    manualAction = '<span class="text-success small">Recorded</span>';
+                } else if (s.in_time) {
+                    manualAction = '<button type="button" class="btn btn-primary btn-sm py-0" onclick="manualMark(' + s.user_id + ')">Mark Out</button>';
+                } else {
+                    manualAction = '<span class="text-danger small">No Sign In</span>';
+                }
+            }
+            html += '<td class="text-center">' + manualAction + '</td>';
             html += '</tr>';
         });
         html += '</tbody></table>';
