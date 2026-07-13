@@ -83,12 +83,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Locked if a Pending/Approved submission covers this session's date.
         $sessDateRow = $db->prepare(
-            "SELECT cs.session_date, m.cat_date, m.exam_date FROM class_sessions cs
+            "SELECT cs.session_date, m.cat_date, m.exam_date, m.start_date, m.end_date FROM class_sessions cs
              JOIN modules m ON m.module_id = cs.module_id WHERE cs.session_id = :sid"
         );
         $sessDateRow->execute(['sid' => $sessionId]);
         $sdRow = $sessDateRow->fetch();
         if ($sdRow) {
+            if ($rangeError = ClassAttendance::moduleDateRangeError($sdRow, (string) $sdRow['session_date'])) {
+                flash('error', $rangeError);
+                redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+            }
             $coveringType = attendance_window_for_date($sdRow['session_date'], $sdRow['cat_date'], $sdRow['exam_date']);
             if ($coveringType) {
                 $lockCheck = $db->prepare(
@@ -169,6 +173,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $modRow = $modStmt->fetch();
         if (!$modRow || (int) $modRow['lecturer_user_id'] !== (int) $me['user_id']) {
             flash('error', 'Module not found or not assigned to you.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        if ($rangeError = ClassAttendance::moduleDateRangeError($modRow)) {
+            flash('error', $rangeError);
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
 
@@ -320,10 +328,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Date and window are required.');
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
-        $modStatus = $db->prepare("SELECT status FROM modules WHERE module_id = :mid");
+        $modStatus = $db->prepare("SELECT status, start_date, end_date FROM modules WHERE module_id = :mid");
         $modStatus->execute(['mid' => $moduleId]);
-        if ($modStatus->fetchColumn() !== 'Ongoing') {
+        $sessionModule = $modStatus->fetch();
+        if (!$sessionModule || $sessionModule['status'] !== 'Ongoing') {
             flash('error', 'This module is Completed / class attendance can no longer be recorded.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        if ($sessDate > $today) {
+            flash('error', 'Attendance sessions cannot be created for a future date.');
+            redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
+        }
+        if ($rangeError = ClassAttendance::moduleDateRangeError($sessionModule, $sessDate)) {
+            flash('error', $rangeError);
             redirect('/lecturer/class-attendance.php?module_id=' . $moduleId);
         }
         $defaultTimes = [
@@ -383,8 +400,9 @@ $nowDt        = ClassAttendance::now();
 $window       = ClassAttendance::currentWindow();
 $holidayToday = ClassAttendance::holidayToday();
 $visibleModules = array_values(array_filter($allModules, function ($module) use ($db, $window, $today) {
-    return lecturer_module_matches_window($module, $window)
-        || lecturer_module_has_open_attendance($db, $module, $today);
+    return ClassAttendance::moduleDateAllowsAttendance($module, $today)
+        && (lecturer_module_matches_window($module, $window)
+            || lecturer_module_has_open_attendance($db, $module, $today));
 }));
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
@@ -400,6 +418,7 @@ $attMap     = [];
 $holidayMap = [];
 
 if ($module) {
+    AttendanceSheet::ensurePastSessions($db, $moduleId, $module);
     $excludeDates = array_values(array_filter([$module['cat_date'], $module['exam_date']]));
 
     $sessStmt = $db->prepare(
@@ -410,6 +429,8 @@ if ($module) {
     $allSess = $sessStmt->fetchAll();
     $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today, $module) {
         return $s['session_date'] <= $today
+            && (empty($module['start_date']) || $s['session_date'] >= $module['start_date'])
+            && (empty($module['end_date']) || $s['session_date'] <= $module['end_date'])
             && !in_array($s['session_date'], $excludeDates, true)
             && lecturer_module_matches_window($module, ['name' => (string) $s['window_name']]);
     }));
@@ -539,7 +560,13 @@ if ($module) {
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 
-<h4 class="display-font mb-3">Class Attendance Register</h4>
+<div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+  <h4 class="display-font mb-0">Class Attendance</h4>
+  <a href="<?= APP_URL ?>/lecturer/live-session.php<?= $moduleId ? '?module_id=' . $moduleId : '' ?>"
+     class="btn btn-sm btn-semas-gold">
+    <i class="bi bi-qr-code me-1"></i> Start Attendance
+  </a>
+</div>
 
 <!-- Local hour / day / date + active session status -->
 <div class="alert <?= $window ? 'alert-success' : 'alert-secondary' ?> small mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -874,7 +901,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="mb-2">
             <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
             <input type="date" name="session_date" class="form-control form-control-sm" required
-                   max="<?= $today ?>"
+                   max="<?= e(!empty($module['end_date']) && $module['end_date'] < $today ? $module['end_date'] : $today) ?>"
                    min="<?= e($module['start_date'] ?? $today) ?>">
           </div>
           <div>

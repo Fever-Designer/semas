@@ -9,8 +9,15 @@ $db = Database::connection();
 $me = Auth::user();
 // SEMAS Default Assignment Instructions (System-Wide) / fixed block id def_ins_001, applies to every assignment.
 $defaultAssignmentInstructionsId = 'def_ins_001';
-$defaultAssignmentInstructionsVersion = 'SEMAS-ASSIGN-2026-V1';
-$defaultAssignmentInstructions = "📘 Assignment Submission Instructions\n\n• Complete your work individually without using automated writing tools or copied content.\n• Ensure all submissions are made before the stated deadline. Late submissions may not be accepted.\n• Only PDF or ZIP file formats will be accepted for submission.\n• Rename your file properly using your full name and registration number before uploading.\n• Any form of plagiarism or dishonest academic practice will lead to penalties according to university rules.";
+$defaultAssignmentInstructionsVersion = 'SEMAS-ASSIGN-2026-V2';
+$defaultAssignmentInstructions = "Assignment Submission Instructions\n\n"
+    . "1. Submit your own original work. Do not copy work submitted by another student; this is cheating.\n"
+    . "2. AI-generated or AI-assisted content must not exceed 20% of the submitted work.\n"
+    . "3. Name the file using your full name and registration number (for example: Firstname_Lastname_RegNo.pdf). SEMAS will save the uploaded file under this required naming format.\n"
+    . "4. Submit only a PDF or ZIP file with a maximum size of 10 MB.\n"
+    . "5. Submit before the stated deadline. Late submissions are not accepted.\n"
+    . "6. Review the lecturer's assignment instructions and attachment before submitting.\n"
+    . "7. Plagiarism, copied submissions, false declarations, and other academic misconduct may lead to disciplinary action.";
 
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 
@@ -27,12 +34,25 @@ if (!$moduleId) {
     );
     $allStmt->execute(['uid' => $me['user_id'], 'uid2' => $me['user_id']]);
     $allAssignments = $allStmt->fetchAll();
+    $hasPendingAssignments = false;
+    foreach ($allAssignments as $assignmentRow) {
+        if (empty($assignmentRow['my_file'])) {
+            $hasPendingAssignments = true;
+            break;
+        }
+    }
 
     $pageTitle = 'My Assignments';
     $activeNav = 'assignments';
     require __DIR__ . '/../partials/layout_top.php';
     ?>
     <h4 class="display-font mb-1">My Assignments</h4>
+    <?php if ($hasPendingAssignments): ?>
+      <div class="alert alert-warning small mt-3" data-instructions-id="<?= e($defaultAssignmentInstructionsId) ?>">
+        <div class="fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Read before submitting any assignment</div>
+        <div><?= nl2br(e($defaultAssignmentInstructions)) ?></div>
+      </div>
+    <?php endif; ?>
     <?php foreach ($allAssignments as $a): $closed = strtotime($a['deadline']) < time(); ?>
       <div class="semas-card p-3 mb-3">
         <div class="d-flex justify-content-between align-items-start">
@@ -72,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'Assignment not found.');
     } elseif (strtotime($assignment['deadline']) < time()) {
         flash('error', 'The deadline for this assignment has passed. Submissions are no longer accepted.');
+    } elseif (($_POST['policy_acknowledged'] ?? '') !== '1') {
+        flash('error', 'You must read and accept the assignment submission declaration before submitting.');
     } elseif (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
         flash('error', 'Please choose a file to submit.');
     } else {
@@ -172,9 +194,17 @@ require __DIR__ . '/../partials/layout_top.php';
 
     <!-- 1. System Instructions (DEFAULT) -->
     <div class="alert alert-light border small mb-2" data-instructions-id="<?= e($defaultAssignmentInstructionsId) ?>">
+      <div class="fw-semibold mb-2"><i class="bi bi-shield-check me-1"></i>Mandatory Submission Rules</div>
       <p class="text-muted mb-1"><?= nl2br(e($defaultAssignmentInstructions)) ?></p>
       <p class="text-muted mb-0" style="font-size:.75rem;">Policy Version: <?= e($defaultAssignmentInstructionsVersion) ?></p>
     </div>
+
+    <?php if ($hasCustomNotes): ?>
+      <div class="alert alert-info border small mb-2">
+        <div class="fw-semibold mb-1"><i class="bi bi-person-video3 me-1"></i>Lecturer's Instructions</div>
+        <div><?= nl2br(e($customNotes)) ?></div>
+      </div>
+    <?php endif; ?>
 
     <p class="small mb-2">Module: <?= e($module['module_title']) ?> &middot; Deadline: <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['deadline'] ?? '')))) ?></p>
 
@@ -191,6 +221,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <?php if (!$closed): ?>
       <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end js-submit-form">
         <?= csrf_field() ?><input type="hidden" name="assignment_id" value="<?= (int) $a['assignment_id'] ?>">
+        <input type="hidden" name="policy_acknowledged" value="0" class="js-policy-acknowledged">
         <input type="file" name="file" accept=".pdf,.zip" class="form-control form-control-sm js-file-input" required>
         <button type="button" class="btn btn-sm btn-semas-gold text-nowrap js-preview-btn"><?= $a['my_file'] ? 'Resubmit' : 'Submit' ?></button>
       </form>
@@ -205,11 +236,24 @@ require __DIR__ . '/../partials/layout_top.php';
       <div class="modal-header"><h6 class="modal-title display-font">Confirm Submission</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div id="submitPreviewSummary" class="mb-3"></div>
+        <div class="alert alert-warning small">
+          <div class="fw-semibold mb-2">Submission declaration</div>
+          <ul class="mb-0 ps-3">
+            <li>This is my own work and is not copied from another student's submission.</li>
+            <li>AI-generated or AI-assisted content does not exceed 20%.</li>
+            <li>The file will be stored using my full name and registration number.</li>
+            <li>I have reviewed the lecturer's instructions and am submitting before the deadline.</li>
+          </ul>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="submissionDeclaration">
+          <label class="form-check-label small fw-semibold" for="submissionDeclaration">I confirm that the statements above are true.</label>
+        </div>
         <div id="submitPreviewArea" style="height:50vh; background:#f5f5f5;"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-sm btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-sm btn-semas-gold" id="submitPreviewConfirmBtn">Confirm &amp; Submit</button>
+        <button type="button" class="btn btn-sm btn-semas-gold" id="submitPreviewConfirmBtn" disabled>Confirm &amp; Submit</button>
       </div>
     </div>
   </div>
@@ -220,6 +264,8 @@ require __DIR__ . '/../partials/layout_top.php';
   var previewModalEl = document.getElementById('submitPreviewModal');
   var previewModal = previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
   var previewArea = document.getElementById('submitPreviewArea');
+  var declaration = document.getElementById('submissionDeclaration');
+  var confirmButton = document.getElementById('submitPreviewConfirmBtn');
 
   document.querySelectorAll('.js-preview-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -251,17 +297,29 @@ require __DIR__ . '/../partials/layout_top.php';
         previewArea.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-file-earmark-zip display-4"></i><p class="mt-2 mb-0">' + fileName + '</p><p class="small">Preview is only available for PDF files. The ZIP will still be uploaded as-is.</p></div>';
       }
       pendingForm = form;
+      declaration.checked = false;
+      confirmButton.disabled = true;
+      pendingForm.querySelector('.js-policy-acknowledged').value = '0';
       previewModal.show();
     });
   });
 
-  document.getElementById('submitPreviewConfirmBtn').addEventListener('click', function () {
-    if (pendingForm) { pendingForm.submit(); }
+  declaration.addEventListener('change', function () {
+    confirmButton.disabled = !declaration.checked;
+  });
+
+  confirmButton.addEventListener('click', function () {
+    if (pendingForm && declaration.checked) {
+      pendingForm.querySelector('.js-policy-acknowledged').value = '1';
+      pendingForm.submit();
+    }
   });
 
   previewModalEl.addEventListener('hidden.bs.modal', function () {
     previewArea.innerHTML = '';
     document.getElementById('submitPreviewSummary').innerHTML = '';
+    declaration.checked = false;
+    confirmButton.disabled = true;
     pendingForm = null;
   });
 })();

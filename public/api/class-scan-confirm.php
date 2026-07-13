@@ -18,7 +18,8 @@ $studentUserId = (int) $_POST['user_id'];
 $method        = ($_POST['method'] ?? 'manual') === 'qr' ? 'QR' : 'Manual';
 
 $sessStmt = $db->prepare(
-    "SELECT cs.*, l.user_id AS lecturer_user_id, m.module_title, m.module_id
+    "SELECT cs.*, l.user_id AS lecturer_user_id, m.module_title, m.module_id,
+            m.start_date, m.end_date
      FROM class_sessions cs
      JOIN modules m ON m.module_id = cs.module_id
      JOIN lecturers l ON l.lecturer_id = m.lecturer_id
@@ -29,6 +30,10 @@ $session = $sessStmt->fetch();
 
 if (!$session || (int) $session['lecturer_user_id'] !== (int) $me['user_id']) {
     echo json_encode(['ok' => false, 'message' => 'Class session not found, or it is not yours.']);
+    exit;
+}
+if ($rangeError = ClassAttendance::moduleDateRangeError($session, (string) $session['session_date'])) {
+    echo json_encode(['ok' => false, 'message' => $rangeError]);
     exit;
 }
 if ($session['status'] !== 'Open') {

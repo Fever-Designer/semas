@@ -61,6 +61,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Invalid mark request.');
             redirect('/hod/class-attendance.php?module_id=' . $moduleId);
         }
+        $rangeStmt = $db->prepare(
+            'SELECT cs.session_date, m.start_date, m.end_date
+             FROM class_sessions cs JOIN modules m ON m.module_id = cs.module_id
+             WHERE cs.session_id = :sid AND cs.module_id = :mid'
+        );
+        $rangeStmt->execute(['sid' => $sessionId, 'mid' => $moduleId]);
+        $rangeRow = $rangeStmt->fetch();
+        if (!$rangeRow || ($rangeError = ClassAttendance::moduleDateRangeError($rangeRow, (string) $rangeRow['session_date']))) {
+            flash('error', $rangeError ?? 'Attendance session not found.');
+            redirect('/hod/class-attendance.php?module_id=' . $moduleId);
+        }
         $db->prepare("DELETE FROM class_attendance_logs WHERE session_id = :sid AND user_id = :uid")
            ->execute(['sid' => $sessionId, 'uid' => $userId]);
         if ($mark === 'Absent') {
@@ -88,6 +99,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $windowName = trim($_POST['window_name']  ?? '');
         if (!$sessDate || !$windowName || !$moduleId) {
             flash('error', 'Date and window are required.');
+            redirect('/hod/class-attendance.php?module_id=' . $moduleId);
+        }
+        $sessionModuleStmt = $db->prepare('SELECT status, start_date, end_date FROM modules WHERE module_id = :mid');
+        $sessionModuleStmt->execute(['mid' => $moduleId]);
+        $sessionModule = $sessionModuleStmt->fetch();
+        if (!$sessionModule || $sessionModule['status'] !== 'Ongoing') {
+            flash('error', 'This module is Completed / class attendance can no longer be recorded.');
+            redirect('/hod/class-attendance.php?module_id=' . $moduleId);
+        }
+        if ($sessDate > $today) {
+            flash('error', 'Attendance sessions cannot be created for a future date.');
+            redirect('/hod/class-attendance.php?module_id=' . $moduleId);
+        }
+        if ($rangeError = ClassAttendance::moduleDateRangeError($sessionModule, $sessDate)) {
+            flash('error', $rangeError);
             redirect('/hod/class-attendance.php?module_id=' . $moduleId);
         }
         $defaultTimes = [
@@ -174,6 +200,7 @@ $attMap     = [];   // [session_id][user_id] = ['in_time','in_status','out_time'
 $holidayMap = [];
 
 if ($module) {
+    AttendanceSheet::ensurePastSessions($db, $moduleId, $module);
     $excludeDates = array_values(array_filter([$module['cat_date'], $module['exam_date']]));
 
     $sessStmt = $db->prepare(
@@ -184,6 +211,8 @@ if ($module) {
     $allSess = $sessStmt->fetchAll();
     $sessions = array_values(array_filter($allSess, function ($s) use ($excludeDates, $today, $module) {
         return $s['session_date'] <= $today
+            && (empty($module['start_date']) || $s['session_date'] >= $module['start_date'])
+            && (empty($module['end_date']) || $s['session_date'] <= $module['end_date'])
             && !in_array($s['session_date'], $excludeDates, true)
             && hod_module_matches_attendance_window($module, (string) $s['window_name']);
     }));
@@ -253,6 +282,7 @@ if ($viewMode === 'overall') {
     $moduleSummary = [];
     foreach ($overallModules as $am) {
         $amId         = (int) $am['module_id'];
+        AttendanceSheet::ensurePastSessions($db, $amId, $am);
         $excludeDates = array_values(array_filter([$am['cat_date'], $am['exam_date']]));
 
         $studentCountStmt = $db->prepare('SELECT COUNT(*) FROM module_enrollments WHERE module_id = :mid');
@@ -281,6 +311,8 @@ if ($viewMode === 'overall') {
         $sessStmt2->execute(['mid' => $amId]);
         $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today, $am) {
             return $s['session_date'] <= $today
+                && (empty($am['start_date']) || $s['session_date'] >= $am['start_date'])
+                && (empty($am['end_date']) || $s['session_date'] <= $am['end_date'])
                 && !in_array($s['session_date'], $excludeDates, true)
                 && hod_module_matches_attendance_window($am, (string) $s['window_name']);
         }));
@@ -782,7 +814,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="mb-2">
             <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
             <input type="date" name="session_date" class="form-control form-control-sm" required
-                   max="<?= $today ?>"
+                   max="<?= e(!empty($module['end_date']) && $module['end_date'] < $today ? $module['end_date'] : $today) ?>"
                    min="<?= e($module['start_date'] ?? $today) ?>">
           </div>
           <div>

@@ -13,6 +13,8 @@ $moduleIdParam = (int) ($_GET['module_id'] ?? 0);
 $tokenParam    = $_GET['t'] ?? ($_GET['qr_token'] ?? '');
 $qrDataParam   = $_GET['d'] ?? ($_GET['qr_data'] ?? '');
 
+ClassAttendance::ensureManualControlColumns($db);
+
 $window  = ClassAttendance::currentWindow();
 $holiday = ClassAttendance::holidayToday();
 
@@ -106,10 +108,39 @@ function stu_signout_session(PDO $db, array $module, int $userId, string $today)
         'today' => $today,
     ]);
     $session = $stmt->fetch();
-    if (!$session || !ClassAttendance::isStudentSignOutOpen((string) $session['end_time'])) {
+    if (!$session) {
+        return null;
+    }
+    $isLecturerSignOut = (int) ($session['demo_controlled'] ?? 0) === 1
+        && ($session['attendance_phase'] ?? '') === 'SignOut';
+    if (!$isLecturerSignOut && !ClassAttendance::isStudentSignOutOpen((string) $session['end_time'])) {
         return null;
     }
     return $session;
+}
+
+// A manually controlled demo session is visible only while the lecturer has
+// explicitly opened its Sign In or Sign Out phase.
+$demoSessions = [];
+if (!$showPublicHolidayNotice) {
+    $demoStmt = $db->prepare(
+        "SELECT cs.*
+         FROM class_sessions cs
+         JOIN module_enrollments e ON e.module_id = cs.module_id
+         WHERE e.user_id = :uid
+           AND cs.session_date = :today
+           AND cs.status = 'Open'
+           AND cs.demo_controlled = 1
+           AND cs.attendance_phase IN ('SignIn','SignOut')
+         ORDER BY cs.session_id DESC"
+    );
+    $demoStmt->execute(['uid' => $me['user_id'], 'today' => $today]);
+    foreach ($demoStmt->fetchAll() as $demoSession) {
+        $mid = (int) $demoSession['module_id'];
+        if (!isset($demoSessions[$mid])) {
+            $demoSessions[$mid] = $demoSession;
+        }
+    }
 }
 
 $signoutSessions = [];
@@ -124,9 +155,10 @@ if (!$showPublicHolidayNotice) {
 
 // Only show modules whose session is in its live window right now / even a
 // registered Ongoing module stays hidden outside its actual class time.
-$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today, $signoutSessions) {
+$visibleModules = array_values(array_filter($allModules, function ($am) use ($window, $today, $signoutSessions, $demoSessions) {
     $moduleId = (int) $am['module_id'];
-    return ((stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$moduleId]))
+    return ((stu_window_matches($am, $window) && stu_within_dates($am, $today))
+            || isset($signoutSessions[$moduleId]) || isset($demoSessions[$moduleId]))
         && $am['status'] === 'Ongoing';
 }));
 
@@ -143,7 +175,8 @@ if ($moduleIdParam) {
     foreach ($allModules as $am) {
         if ((int) $am['module_id'] === $moduleIdParam) {
             $scannedModuleTitle    = $am['module_title'];
-            $scannedModuleScanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$moduleIdParam]))
+            $scannedModuleScanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today))
+                    || isset($signoutSessions[$moduleIdParam]) || isset($demoSessions[$moduleIdParam]))
                 && $am['status'] === 'Ongoing';
             break;
         }
@@ -173,6 +206,10 @@ require __DIR__ . '/../partials/layout_top.php';
     <?php if ($showPublicHolidayNotice): ?>
       <i class="bi bi-info-circle me-1"></i>
       Today is a <strong><?= e($holiday['holiday_type']) ?></strong>: <?= e($holiday['title']) ?>. No attendance scanning today.
+    <?php elseif ($demoSessions): ?>
+      <?php $activeDemo = reset($demoSessions); ?>
+      <i class="bi bi-broadcast me-1"></i> Lecturer-controlled attendance is active:
+      <strong><?= ($activeDemo['attendance_phase'] ?? '') === 'SignOut' ? 'Sign Out' : 'Sign In' ?></strong>
     <?php elseif ($window): ?>
       <i class="bi bi-broadcast me-1"></i> Active session: <strong><?= e(ClassAttendance::describeWindow($window)) ?></strong>
     <?php elseif ($signoutSessions): ?>
@@ -226,7 +263,9 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php
         $amId = (int) $am['module_id'];
         $isActive = $amId === $selectedId;
-        $scanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today)) || isset($signoutSessions[$amId])) && $am['status'] === 'Ongoing';
+        $demoPhase = $demoSessions[$amId]['attendance_phase'] ?? null;
+        $scanable = ((stu_scan_window_open($window) && stu_window_matches($am, $window) && stu_within_dates($am, $today))
+                || isset($signoutSessions[$amId]) || $demoPhase !== null) && $am['status'] === 'Ongoing';
       ?>
       <a href="?module_id=<?= $amId ?>"
          class="btn btn-sm text-nowrap <?= $isActive ? 'btn-semas' : 'btn-outline-secondary' ?>"
@@ -234,8 +273,10 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= e($am['module_title']) ?>
         <?php if ($am['status'] === 'Completed'): ?>
           <span class="badge bg-secondary ms-1" style="font-size:.6rem;">Done</span>
-        <?php elseif ($scanable && isset($signoutSessions[$amId])): ?>
+        <?php elseif ($demoPhase === 'SignOut' || ($scanable && isset($signoutSessions[$amId]))): ?>
           <span class="badge bg-primary ms-1" style="font-size:.6rem;">Sign Out</span>
+        <?php elseif ($demoPhase === 'SignIn'): ?>
+          <span class="badge bg-success ms-1" style="font-size:.6rem;">Sign In</span>
         <?php elseif ($scanable): ?>
           <span class="badge bg-success ms-1" style="font-size:.6rem;">Live</span>
         <?php endif; ?>
@@ -313,7 +354,10 @@ $lecLabel = $lTitle ? strtoupper(rtrim((string) $lTitle, '.')) . '. ' . $lName :
 $slot     = $module['weekend_slot'] ?? '';
 $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slot}" : $module['session_type'];
 $hasOpenSignout = isset($signoutSessions[$moduleId]);
-$isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $window) && stu_within_dates($module, $today)) || $hasOpenSignout) && $module['status'] === 'Ongoing';
+$demoPhase = $demoSessions[$moduleId]['attendance_phase'] ?? null;
+$isDemoSignout = $demoPhase === 'SignOut';
+$isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $window) && stu_within_dates($module, $today))
+        || $hasOpenSignout || $demoPhase !== null) && $module['status'] === 'Ongoing';
 ?>
 
 <!-- Module info + summary card -->
@@ -369,7 +413,8 @@ $isScanable = ((stu_scan_window_open($window) && stu_window_matches($module, $wi
       <button class="btn btn-semas-gold btn-sm scan-btn"
               data-module-id="<?= $moduleId ?>"
               data-module-name="<?= e($module['module_title']) ?>">
-        <i class="bi <?= $hasOpenSignout ? 'bi-box-arrow-right' : 'bi-qr-code-scan' ?> me-1"></i> <?= $hasOpenSignout ? 'Sign Out' : 'Scan / Check In' ?>
+        <i class="bi <?= ($hasOpenSignout || $isDemoSignout) ? 'bi-box-arrow-right' : 'bi-qr-code-scan' ?> me-1"></i>
+        <?= ($hasOpenSignout || $isDemoSignout) ? 'Scan / Sign Out' : 'Scan / Sign In' ?>
       </button>
     </div>
   <?php endif; ?>

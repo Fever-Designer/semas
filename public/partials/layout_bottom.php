@@ -17,6 +17,7 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
   const panel = document.getElementById('notifPanel');
   const list = document.getElementById('notifList');
   const countEl = document.getElementById('notifCount');
+  const notificationsUrl = APP_URL.replace(/\/$/, '') + '/api/notifications';
   if (!bell) return;
 
   const categoryIcon = { Event: 'bi-calendar-event-fill', Announcement: 'bi-megaphone-fill',
@@ -87,10 +88,16 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
   }
 
   function loadNotifications() {
-    fetch(APP_URL + '/api/notifications.php?action=list')
-      .then(function (r) { return r.json(); })
+    fetch(notificationsUrl + '?action=list', {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin',
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Notification request failed with status ' + r.status);
+        return r.json();
+      })
       .then(function (data) {
-        if (!data.ok) return;
+        if (!data.ok) throw new Error(data.message || 'Unable to load notifications.');
         renderCount(data.unread_count);
         renderList(data.items);
 
@@ -106,15 +113,23 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
         if (data.items.length) {
           lastSeenId = Math.max.apply(null, data.items.map(function (n) { return n.notification_id; }));
         }
+      })
+      .catch(function (error) {
+        console.error(error);
+        list.innerHTML = '<div class="p-3 text-danger small text-center">Unable to load notifications.</div>';
       });
   }
 
   function postAction(action, id) {
-    return fetch(APP_URL + '/api/notifications.php', {
+    return fetch(notificationsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'same-origin',
       body: 'action=' + action + '&id=' + (id || '') + '&csrf_token=' + encodeURIComponent(CSRF),
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) {
+      if (!r.ok) throw new Error('Notification action failed with status ' + r.status);
+      return r.json();
+    });
   }
 
   bell.addEventListener('click', function (e) {
@@ -128,7 +143,7 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
         list.querySelectorAll('.notif-item.unread').forEach(function (item) {
           item.classList.remove('unread');
         });
-      });
+      }).catch(function (error) { console.error(error); });
     }
   });
   document.addEventListener('click', function (e) {

@@ -12,13 +12,15 @@ $me = Auth::user();
 /**
  * Default Instructions
  */
-$defaultAssignmentInstructions = "📘 Assignment Submission Instructions
+$defaultAssignmentInstructions = "Assignment Submission Instructions
 
-• Complete your work individually without using automated writing tools or copied content.
-• Ensure all submissions are made before the stated deadline.
-• Only PDF or ZIP file formats are accepted.
-• Rename your file properly using your full name and registration number.
-• Plagiarism will lead to penalties.";
+1. Submit your own original work. Do not copy work submitted by another student; this is cheating.
+2. AI-generated or AI-assisted content must not exceed 20% of the submitted work.
+3. Name the file using your full name and registration number (for example: Firstname_Lastname_RegNo.pdf). SEMAS saves submissions under this required naming format.
+4. Submit only a PDF or ZIP file with a maximum size of 10 MB.
+5. Submit before the stated deadline. Late submissions are not accepted.
+6. Review the assignment instructions and attachment before submitting.
+7. Plagiarism, copied submissions, false declarations, and other academic misconduct may lead to disciplinary action.";
 
 /**
  * Get Lecturer safely

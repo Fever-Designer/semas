@@ -20,6 +20,8 @@ $me       = Auth::user();
 $ip       = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $deviceId = trim($_POST['device_id'] ?? '') ?: null;
 
+ClassAttendance::ensureManualControlColumns($db);
+
 function attendance_security_schema(PDO $db): void
 {
     $db->exec(
@@ -267,6 +269,16 @@ if ($module['session_type'] === 'Day') {
 }
 
 // ── Dynamic QR path: session already validated above, fetch directly ─────
+$demoFind = $db->prepare(
+    "SELECT * FROM class_sessions
+     WHERE module_id = :mid AND session_date = :today
+       AND status = 'Open' AND demo_controlled = 1
+       AND attendance_phase IN ('SignIn','SignOut')
+     ORDER BY session_id DESC LIMIT 1"
+);
+$demoFind->execute(['mid' => $moduleId, 'today' => $attendanceDate]);
+$activeDemoSession = $demoFind->fetch() ?: null;
+
 $allowSignOut = false;
 if ($forcedSessId !== null) {
     $forcedFetch = $db->prepare('SELECT * FROM class_sessions WHERE session_id = :sid AND module_id = :mid');
@@ -280,8 +292,21 @@ if ($forcedSessId !== null) {
         echo json_encode(['ok' => false, 'message' => 'Attendance is closed for this session.']);
         exit;
     }
+    if ((int) ($session['demo_controlled'] ?? 0) === 1
+        && !in_array((string) ($session['attendance_phase'] ?? ''), ['SignIn', 'SignOut'], true)) {
+        echo json_encode(['ok' => false, 'message' => 'The lecturer has closed this attendance phase.']);
+        exit;
+    }
     $sessionAlreadyExisted = true;
-    $allowSignOut          = ClassAttendance::isStudentSignOutOpen((string) $session['end_time']);
+    $allowSignOut = (int) ($session['demo_controlled'] ?? 0) === 1
+        ? ($session['attendance_phase'] === 'SignOut')
+        : ClassAttendance::isStudentSignOutOpen((string) $session['end_time']);
+} elseif ($activeDemoSession) {
+    // Use the one permanent QR created for the module. Its secret stays the
+    // same; the lecturer-controlled phase decides whether scanning is allowed.
+    $session = $activeDemoSession;
+    $sessionAlreadyExisted = true;
+    $allowSignOut = $session['attendance_phase'] === 'SignOut';
 } else {
     // ── Legacy / window-based path ────────────────────────────────────────
     $todayFind = $db->prepare(
@@ -357,6 +382,13 @@ if ($forcedSessId !== null) {
         exit;
     }
 }
+
+$isDemoSession = (int) ($session['demo_controlled'] ?? 0) === 1;
+$manualPhase = (string) ($session['attendance_phase'] ?? 'Inactive');
+if ($isDemoSession && !in_array($manualPhase, ['SignIn', 'SignOut'], true)) {
+    echo json_encode(['ok' => false, 'message' => 'The lecturer has closed this attendance phase.']);
+    exit;
+}
 // Pre-populate all enrolled students when session is first created
 if (!$sessionAlreadyExisted) {
     $db->prepare(
@@ -381,18 +413,26 @@ $hasRealSignIn = (bool) $realSignInRow->fetch();
 $statusVal = ClassAttendance::statusFor($session['start_time']);
 
 if (!$hasRealSignIn) {
+    if ($isDemoSession && $manualPhase === 'SignOut') {
+        echo json_encode(['ok' => false, 'message' => 'You must sign in during the lecturer\'s Sign In phase before you can sign out.']);
+        exit;
+    }
     // Attempting Sign In / must always be a QR scan, manual check-in is not allowed.
     if ($isManual) {
         echo json_encode(['ok' => false, 'message' => 'Sign In requires scanning the QR code. Manual check-in is only available for Sign Out, near the end of the session.']);
         exit;
     }
-    if (!ClassAttendance::canSelfSignIn((string) $session['start_time'])) {
+    if (!$isDemoSession && !ClassAttendance::canSelfSignIn((string) $session['start_time'])) {
         echo json_encode(['ok' => false, 'message' => 'The sign-in window has closed (more than 20 minutes since class started). You have been marked Absent for this session.']);
         exit;
     }
     $type   = 'Sign In';
-    $status = $statusVal;
+    $status = $isDemoSession ? 'Present' : $statusVal;
 } else {
+    if ($isDemoSession && $manualPhase === 'SignIn') {
+        echo json_encode(['ok' => false, 'message' => 'Your Sign In is already recorded. Wait for the lecturer to start Sign Out.']);
+        exit;
+    }
     // Student already signed in / this must be a Sign Out
     if (!$allowSignOut) {
         echo json_encode(['ok' => false, 'message' => 'Sign-out is only available from class end until 10 minutes afterward. Your sign-in has been recorded.']);

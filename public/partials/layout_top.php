@@ -23,6 +23,39 @@ $brandName = Settings::get('university_name', 'University of Kigali');
 $brandLogo = Settings::get('logo_path');
 $themeGold = Settings::get('theme_gold', '#D4A24C');
 $themeInk = Settings::get('theme_ink', '#1E2A52');
+$fontStacks = [
+    'times' => "'Times New Roman', Times, serif",
+    'inter' => "Inter, Arial, sans-serif",
+    'sora' => "Sora, Arial, sans-serif",
+    'arial' => "Arial, Helvetica, sans-serif",
+    'georgia' => "Georgia, 'Times New Roman', serif",
+    'verdana' => "Verdana, Geneva, sans-serif",
+    'tahoma' => "Tahoma, Verdana, sans-serif",
+];
+$bodyFontKey = Settings::get('font_family', 'times');
+$headingFontKey = Settings::get('heading_font', 'times');
+$bodyFontStack = $fontStacks[$bodyFontKey] ?? $fontStacks['times'];
+$headingFontStack = $fontStacks[$headingFontKey] ?? $fontStacks['times'];
+
+$validThemeColor = static function (?string $value, string $fallback): string {
+    return is_string($value) && preg_match('/^#[0-9A-Fa-f]{6}$/', $value) ? strtoupper($value) : $fallback;
+};
+$themeGold = $validThemeColor($themeGold, '#D4A24C');
+$themeInk = $validThemeColor($themeInk, '#1E2A52');
+$primaryButton = $validThemeColor(Settings::get('primary_button_color'), $themeInk);
+$primaryButtonHover = $validThemeColor(Settings::get('primary_button_hover_color'), '#2E3D6B');
+$accentButton = $validThemeColor(Settings::get('accent_button_color'), $themeGold);
+$accentButtonHover = $validThemeColor(Settings::get('accent_button_hover_color'), '#F0C988');
+$contrastText = static function (string $hex): string {
+    $red = hexdec(substr($hex, 1, 2));
+    $green = hexdec(substr($hex, 3, 2));
+    $blue = hexdec(substr($hex, 5, 2));
+    return (($red * 299 + $green * 587 + $blue * 114) / 1000) >= 150 ? '#111827' : '#FFFFFF';
+};
+$primaryButtonText = $contrastText($primaryButton);
+$accentButtonText = $contrastText($accentButton);
+$primaryButtonHoverText = $contrastText($primaryButtonHover);
+$accentButtonHoverText = $contrastText($accentButtonHover);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -38,7 +71,20 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
 <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.css">
 <style>
-:root { --semas-gold: <?= e($themeGold) ?>; --semas-ink: <?= e($themeInk) ?>; }
+:root {
+  --semas-gold: <?= $themeGold ?>;
+  --semas-ink: <?= $themeInk ?>;
+  --semas-body-font: <?= $bodyFontStack ?>;
+  --semas-heading-font: <?= $headingFontStack ?>;
+  --semas-primary-button: <?= $primaryButton ?>;
+  --semas-primary-button-hover: <?= $primaryButtonHover ?>;
+  --semas-primary-button-text: <?= $primaryButtonText ?>;
+  --semas-primary-button-hover-text: <?= $primaryButtonHoverText ?>;
+  --semas-accent-button: <?= $accentButton ?>;
+  --semas-accent-button-hover: <?= $accentButtonHover ?>;
+  --semas-accent-button-text: <?= $accentButtonText ?>;
+  --semas-accent-button-hover-text: <?= $accentButtonHoverText ?>;
+}
 #nprogress .bar { background: var(--semas-gold); height: 3px; }
 #nprogress .peg { box-shadow: 0 0 10px var(--semas-gold), 0 0 5px var(--semas-gold); }
 .semas-main { animation: semasIn 0.15s ease-out; }
@@ -49,7 +95,12 @@ $themeInk = Settings::get('theme_ink', '#1E2A52');
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
-<script>window.SEMAS_BASE_URL = "<?= APP_URL ?>";</script>
+<script>
+// Keep browser API requests on the page's current origin. APP_URL may use a
+// different scheme locally (HTTP versus HTTPS), which would drop the session
+// cookie from fetch requests and make authenticated APIs return 401.
+window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_URL_PATH) ?: APP_URL), '/'), JSON_UNESCAPED_SLASHES) ?>;
+</script>
 <div class="semas-shell">
   <aside class="semas-sidebar" id="semasSidebar">
     <div class="brand">

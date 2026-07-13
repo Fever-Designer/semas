@@ -6,6 +6,103 @@ declare(strict_types=1);
  *  "Class Attendance" pages (print + Excel export). */
 final class AttendanceSheet
 {
+    /**
+     * Create closed attendance sessions for scheduled class days that have
+     * already passed without a QR/manual session. Enrolled students are
+     * pre-marked Absent (Auto), matching the normal session-creation flow.
+     */
+    public static function ensurePastSessions(PDO $db, int $moduleId, array $module): int
+    {
+        $today = ClassAttendance::now()->format('Y-m-d');
+        $dates = array_values(array_filter(self::expectedClassDates($module), static function (string $date) use ($today): bool {
+            return $date < $today;
+        }));
+        if (!$dates) {
+            return 0;
+        }
+
+        $sessionType = (string) ($module['session_type'] ?? '');
+        $weekendSlot = (string) ($module['weekend_slot'] ?? '');
+        if ($sessionType === 'Day') {
+            $windowName = 'Day';
+            $startTime = '08:00:00';
+            $endTime = '11:30:00';
+        } elseif ($sessionType === 'Evening') {
+            $windowName = 'Evening';
+            $startTime = '18:00:00';
+            $endTime = '20:00:00';
+        } elseif ($sessionType === 'Weekend' && $weekendSlot === 'Afternoon') {
+            $windowName = 'WeekendAfternoon';
+            $startTime = '14:30:00';
+            $endTime = '20:30:00';
+        } elseif ($sessionType === 'Weekend') {
+            $windowName = 'WeekendMorning';
+            $startTime = '08:30:00';
+            $endTime = '14:00:00';
+        } else {
+            return 0;
+        }
+
+        $creatorId = (int) ($module['created_by'] ?? 0);
+        if ($creatorId <= 0) {
+            $creatorStmt = $db->prepare(
+                'SELECT COALESCE(lt.user_id, m.created_by)
+                 FROM modules m LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
+                 WHERE m.module_id = :mid'
+            );
+            $creatorStmt->execute(['mid' => $moduleId]);
+            $creatorId = (int) $creatorStmt->fetchColumn();
+        }
+        if ($creatorId <= 0) {
+            return 0;
+        }
+
+        $findSession = $db->prepare(
+            'SELECT session_id FROM class_sessions
+             WHERE module_id = :mid AND session_date = :date AND window_name = :window
+             LIMIT 1'
+        );
+        $insertSession = $db->prepare(
+            "INSERT INTO class_sessions
+                (module_id, session_date, window_name, start_time, end_time, qr_secret, status, created_by)
+             VALUES (:mid, :date, :window, :start_time, :end_time, :secret, 'Closed', :created_by)"
+        );
+        $insertAbsences = $db->prepare(
+            "INSERT IGNORE INTO class_attendance_logs
+                (session_id, user_id, attendance_type, status, verification_method)
+             SELECT :sid, e.user_id, 'Sign In', 'Absent', 'Auto'
+             FROM module_enrollments e WHERE e.module_id = :mid"
+        );
+
+        $created = 0;
+        foreach ($dates as $date) {
+            $findSession->execute(['mid' => $moduleId, 'date' => $date, 'window' => $windowName]);
+            if ($findSession->fetchColumn()) {
+                continue;
+            }
+            try {
+                $insertSession->execute([
+                    'mid' => $moduleId,
+                    'date' => $date,
+                    'window' => $windowName,
+                    'start_time' => $date . ' ' . $startTime,
+                    'end_time' => $date . ' ' . $endTime,
+                    'secret' => QrService::generateSecret(),
+                    'created_by' => $creatorId,
+                ]);
+                $sessionId = (int) $db->lastInsertId();
+                $insertAbsences->execute(['sid' => $sessionId, 'mid' => $moduleId]);
+                $created++;
+            } catch (PDOException $e) {
+                if ($e->getCode() !== '23000') {
+                    throw $e;
+                }
+            }
+        }
+
+        return $created;
+    }
+
     public static function students(PDO $db, int $moduleId): array
     {
         $stmt = $db->prepare(
@@ -41,6 +138,7 @@ final class AttendanceSheet
 
     public static function currentMetrics(PDO $db, int $moduleId, array $module): array
     {
+        self::ensurePastSessions($db, $moduleId, $module);
         $today = ClassAttendance::now()->format('Y-m-d');
         $startDate = !empty($module['start_date']) ? (string) $module['start_date'] : '1000-01-01';
         $excludeDates = array_values(array_filter([$module['cat_date'] ?? null, $module['exam_date'] ?? null]));

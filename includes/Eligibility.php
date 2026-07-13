@@ -186,6 +186,14 @@ final class Eligibility
         $end = new DateTime($assessmentDate);
         $end->modify('-1 day');
 
+        $moduleEnd = $module['end_date'] ?? null;
+        if ($moduleEnd) {
+            $moduleEndDate = new DateTime($moduleEnd);
+            if ($end > $moduleEndDate) {
+                $end = $moduleEndDate;
+            }
+        }
+
         $today = new DateTime(date('Y-m-d'));
         if ($end > $today) {
             $end = $today;

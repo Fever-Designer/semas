@@ -3,14 +3,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../includes/bootstrap.php';
 Auth::requireTeachingAccess();
 
-$pageTitle = 'Live Session';
-$activeNav = 'live-session';
+$pageTitle = 'Class Attendance / Start Session';
+$activeNav = 'class-attendance';
 $db        = Database::connection();
 $me        = Auth::user();
 
 // Fetch this lecturer's ongoing modules
 $modStmt = $db->prepare(
-    "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot, r.room_name
+    "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot,
+            m.start_date, m.end_date, m.module_qr_secret, r.room_name
      FROM modules m
      LEFT JOIN rooms r ON r.room_id = m.room_id
      LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
@@ -27,13 +28,31 @@ foreach ($myModules as $m) {
     if ((int) $m['module_id'] === $moduleId) { $module = $m; break; }
 }
 
+$moduleQrImage = null;
+if ($module && !empty($module['module_qr_secret'])) {
+    $secret = (string) $module['module_qr_secret'];
+    $shortToken = $secret;
+    if (ctype_xdigit($secret)) {
+        $binarySecret = hex2bin($secret);
+        if ($binarySecret !== false) {
+            $shortToken = rtrim(strtr(base64_encode($binarySecret), '+/', '-_'), '=');
+        }
+    }
+    $scanPayload = 'SM:' . $moduleId . ':' . $shortToken;
+    $scanUrl = public_url('/student/attendance.php?module_id=' . $moduleId . '&t=' . rawurlencode($scanPayload));
+    $moduleQrImage = SimpleQr::pngDataUri($scanUrl, 5, 3);
+}
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="display-font mb-0">Live Session</h4>
+  <div>
+    <h4 class="display-font mb-0">Class Attendance</h4>
+    <div class="text-muted small">Start and control the Sign In and Sign Out session.</div>
+  </div>
   <a href="<?= APP_URL ?>/lecturer/class-attendance.php" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-arrow-left me-1"></i> Attendance Register
+    <i class="bi bi-arrow-left me-1"></i> View Register
   </a>
 </div>
 
@@ -76,26 +95,43 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php if ($module['room_name']): ?> &middot; <?= e($module['room_name']) ?><?php endif; ?>
       </p>
 
-      <!-- QR code display area -->
-      <div id="qrWrap" style="display:inline-block;border:4px solid #1E2A52;border-radius:8px;padding:12px;background:#fff;">
-        <div id="qrCanvas"></div>
+      <div class="d-flex flex-wrap justify-content-center gap-2 mb-3" id="phaseControls">
+        <button type="button" class="btn btn-success btn-sm" id="startSignInBtn" onclick="startPhase('SignIn')">
+          <i class="bi bi-box-arrow-in-right me-1"></i>Start Sign In
+        </button>
+        <button type="button" class="btn btn-outline-danger btn-sm d-none" id="closeSignInBtn" onclick="closePhase('SignIn')">
+          <i class="bi bi-stop-circle me-1"></i>Close Sign In
+        </button>
+        <button type="button" class="btn btn-primary btn-sm d-none" id="startSignOutBtn" onclick="startPhase('SignOut')">
+          <i class="bi bi-box-arrow-right me-1"></i>Start Sign Out
+        </button>
+        <button type="button" class="btn btn-outline-danger btn-sm d-none" id="closeSignOutBtn" onclick="closePhase('SignOut')">
+          <i class="bi bi-stop-circle me-1"></i>Close Sign Out
+        </button>
       </div>
 
-      <!-- Status / countdown -->
+      <?php if ($moduleQrImage): ?>
+        <div style="display:inline-block;border:4px solid #1E2A52;border-radius:8px;padding:12px;background:#fff;">
+          <img src="<?= e($moduleQrImage) ?>" alt="Permanent module attendance QR" width="220" height="220"
+               style="display:block;max-width:100%;height:auto;">
+        </div>
+        <div class="small text-muted mt-2">Permanent module QR created by the HoD.</div>
+      <?php else: ?>
+        <div class="alert alert-warning small">
+          This module has no classroom QR. Ask the HoD to generate it from Manage Modules.
+        </div>
+      <?php endif; ?>
+
+      <!-- Lecturer-controlled attendance status -->
       <div class="mt-3">
-        <div id="qrStatus" class="badge bg-secondary" style="font-size:.85rem;">Loading…</div>
-        <div class="mt-1 text-muted small" id="qrExpiry">Generating session QR…</div>
-      </div>
-
-      <!-- Progress bar for countdown -->
-      <div class="progress mt-2" style="height:6px;border-radius:3px;">
-        <div id="qrProgress" class="progress-bar bg-success" style="width:100%;transition:width .5s linear;"></div>
+        <div id="qrStatus" class="badge bg-secondary" style="font-size:.85rem;">Not Started</div>
+        <div class="mt-1 text-muted small" id="qrExpiry">Waiting for lecturer.</div>
       </div>
 
       <p class="text-muted mt-3 mb-0" style="font-size:.75rem;">
         <i class="bi bi-info-circle me-1"></i>
-        QR rotates every 60 seconds. Students must scan before it expires.
-        <br>1/2 metre scan range enforced.
+        This same QR is printed and mounted in the classroom. It does not rotate or expire.
+        Students can use it only while you open Sign In or Sign Out.
       </p>
     </div>
   </div>
@@ -119,51 +155,19 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-        integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSt9v3gPZ/6P5j0kSALgDaUSXOzZGkFN8l0QA=="
-        crossorigin="anonymous"></script>
 <script>
 const CSRF     = '<?= csrf_token() ?>';
 const BASE     = window.SEMAS_BASE_URL;
 const MOD_ID   = <?= $moduleId ?>;
 let sessionId  = null;
-let qrObj      = null;
-let refreshTimer = null;
-let countdownInterval = null;
-let expiresIn  = 60;
 
-function buildQr(qrData) {
-    const wrap = document.getElementById('qrCanvas');
-    wrap.innerHTML = '';
-    qrObj = new QRCode(wrap, {
-        text: qrData,
-        width: 200, height: 200,
-        colorDark: '#1E2A52', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M,
-    });
-}
-
-function setCountdown(seconds) {
-    expiresIn = seconds;
-    clearInterval(countdownInterval);
-    countdownInterval = setInterval(function () {
-        expiresIn = Math.max(0, expiresIn - 1);
-        const pct = (expiresIn / 60) * 100;
-        const bar = document.getElementById('qrProgress');
-        bar.style.width = pct + '%';
-        bar.className = 'progress-bar ' + (pct > 40 ? 'bg-success' : pct > 15 ? 'bg-warning' : 'bg-danger');
-        document.getElementById('qrExpiry').textContent = 'Expires in ' + expiresIn + 's';
-        if (expiresIn <= 2) { refreshToken(); }
-    }, 1000);
-}
-
-function openSession() {
-    document.getElementById('qrStatus').textContent = 'Opening session…';
-    document.getElementById('qrStatus').className = 'badge bg-secondary';
+function phaseRequest(action, phase) {
+    const params = new URLSearchParams({action: action, module_id: MOD_ID, csrf_token: CSRF});
+    if (phase) params.set('phase', phase);
     fetch(BASE + '/api/lecturer-session-qr.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'action=open_session&module_id=' + MOD_ID + '&csrf_token=' + encodeURIComponent(CSRF),
+        body: params.toString(),
     })
     .then(r => r.json())
     .then(data => {
@@ -172,12 +176,7 @@ function openSession() {
             document.getElementById('qrStatus').className = 'badge bg-danger';
             return;
         }
-        sessionId = data.session_id;
-        buildQr(data.qr_data);
-        document.getElementById('qrStatus').textContent = 'Session Active';
-        document.getElementById('qrStatus').className = 'badge bg-success';
-        setCountdown(data.expires_in || 60);
-        loadRoster();
+        renderPhaseState(data);
     })
     .catch(() => {
         document.getElementById('qrStatus').textContent = 'Error / check connection';
@@ -185,23 +184,51 @@ function openSession() {
     });
 }
 
-function refreshToken() {
-    if (!sessionId) return;
-    clearInterval(countdownInterval);
-    fetch(BASE + '/api/lecturer-session-qr.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'action=refresh&session_id=' + sessionId + '&csrf_token=' + encodeURIComponent(CSRF),
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.ok) return;
-        if (qrObj) {
-            try { qrObj.makeCode(data.qr_data); }
-            catch (e) { buildQr(data.qr_data); }
-        } else { buildQr(data.qr_data); }
-        setCountdown(data.expires_in || 60);
-    });
+function setButtonVisible(id, visible) {
+    document.getElementById(id).classList.toggle('d-none', !visible);
+}
+
+function renderPhaseState(data) {
+    sessionId = data.session_id || null;
+    const phase = data.phase || 'Inactive';
+    const completed = data.status === 'Closed';
+    const active = phase === 'SignIn' || phase === 'SignOut';
+
+    setButtonVisible('startSignInBtn', !sessionId);
+    setButtonVisible('closeSignInBtn', phase === 'SignIn');
+    setButtonVisible('startSignOutBtn', !!sessionId && phase === 'Inactive' && !completed);
+    setButtonVisible('closeSignOutBtn', phase === 'SignOut');
+
+    if (active) {
+        document.getElementById('qrStatus').textContent = phase === 'SignIn' ? 'Sign In Active' : 'Sign Out Active';
+        document.getElementById('qrStatus').className = 'badge ' + (phase === 'SignIn' ? 'bg-success' : 'bg-primary');
+        document.getElementById('qrExpiry').textContent = phase === 'SignIn'
+            ? 'Students may now scan the mounted module QR to sign in.'
+            : 'Students who signed in may now scan the same QR to sign out.';
+    } else if (completed) {
+        document.getElementById('qrStatus').textContent = 'Attendance Closed';
+        document.getElementById('qrStatus').className = 'badge bg-secondary';
+        document.getElementById('qrExpiry').textContent = 'Sign In and Sign Out are complete.';
+    } else if (sessionId) {
+        document.getElementById('qrStatus').textContent = 'Sign In Closed';
+        document.getElementById('qrStatus').className = 'badge bg-warning text-dark';
+        document.getElementById('qrExpiry').textContent = 'Ready to start Sign Out.';
+    } else {
+        document.getElementById('qrStatus').textContent = 'Not Started';
+        document.getElementById('qrStatus').className = 'badge bg-secondary';
+        document.getElementById('qrExpiry').textContent = 'Waiting for lecturer.';
+    }
+    if (sessionId) loadRoster();
+}
+
+function loadPhaseState() { phaseRequest('get_state', null); }
+function startPhase(phase) {
+    document.getElementById('qrStatus').textContent = 'Starting ' + (phase === 'SignIn' ? 'Sign In' : 'Sign Out') + '…';
+    phaseRequest('start_phase', phase);
+}
+function closePhase(phase) {
+    if (!confirm('Close the active ' + (phase === 'SignIn' ? 'Sign In' : 'Sign Out') + ' phase? Students will no longer be able to scan this QR.')) return;
+    phaseRequest('close_phase', phase);
 }
 
 function loadRoster() {
@@ -240,8 +267,8 @@ function loadRoster() {
     });
 }
 
-// Open session on page load
-openSession();
+// Load existing state without starting attendance automatically.
+loadPhaseState();
 // Refresh roster every 10 seconds
 setInterval(loadRoster, 10000);
 </script>

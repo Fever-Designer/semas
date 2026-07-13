@@ -66,6 +66,60 @@ final class ClassAttendance
         return new DateTime('now', new DateTimeZone(self::TZ));
     }
 
+    /**
+     * Returns a user-facing error when a date falls outside a module's
+     * configured attendance period, or null when recording is allowed.
+     * Start and end dates are inclusive.
+     */
+    public static function moduleDateRangeError(array $module, ?string $date = null): ?string
+    {
+        $date = $date ?: self::now()->format('Y-m-d');
+        $startDate = trim((string) ($module['start_date'] ?? ''));
+        $endDate = trim((string) ($module['end_date'] ?? ''));
+
+        if ($startDate !== '' && $date < $startDate) {
+            return 'Attendance recording starts on ' . date('d M Y', strtotime($startDate)) . '.';
+        }
+        if ($endDate !== '' && $date > $endDate) {
+            return 'Attendance recording ended on ' . date('d M Y', strtotime($endDate)) . '.';
+        }
+        return null;
+    }
+
+    public static function moduleDateAllowsAttendance(array $module, ?string $date = null): bool
+    {
+        return self::moduleDateRangeError($module, $date) === null;
+    }
+
+    /** Ensure the optional lecturer-controlled demo workflow columns exist. */
+    public static function ensureManualControlColumns(PDO $db): void
+    {
+        static $ready = false;
+        if ($ready) {
+            return;
+        }
+        $existing = array_flip($db->query('SHOW COLUMNS FROM class_sessions')->fetchAll(PDO::FETCH_COLUMN));
+        $columns = [
+            'attendance_phase' => "attendance_phase ENUM('Inactive','SignIn','SignOut') NOT NULL DEFAULT 'Inactive' AFTER status",
+            'demo_controlled' => "demo_controlled TINYINT(1) NOT NULL DEFAULT 0 AFTER attendance_phase",
+            'phase_started_at' => 'phase_started_at DATETIME NULL AFTER demo_controlled',
+            'phase_closed_at' => 'phase_closed_at DATETIME NULL AFTER phase_started_at',
+        ];
+        foreach ($columns as $name => $definition) {
+            if (isset($existing[$name])) {
+                continue;
+            }
+            try {
+                $db->exec('ALTER TABLE class_sessions ADD COLUMN ' . $definition);
+            } catch (PDOException $e) {
+                if (($e->errorInfo[1] ?? 0) !== 1060) {
+                    throw $e;
+                }
+            }
+        }
+        $ready = true;
+    }
+
     /** Whether $now (Cairo time) falls on a weekend day there. */
     private static function isWeekend(DateTime $now): bool
     {
