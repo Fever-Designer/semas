@@ -69,7 +69,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <h4 class="display-font mb-1">Module Announcements</h4>
 
 <?php if (!$modules): ?>
-  <div class="semas-card p-4 text-center text-muted small">You have no modules assigned yet. Ask the HOD to assign one to you.</div>
+  <div class="semas-card p-4 text-center text-muted small">You have no modules assigned yet. Ask the Head Of Department to assign one to you.</div>
 <?php else: ?>
   <div class="semas-card p-3 mb-4">
     <form method="post">
@@ -100,7 +100,6 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="col-12"><label class="form-label small">Message</label><textarea name="message" class="form-control" rows="3" required></textarea></div>
         <div class="col-md-6">
-          <div class="small text-muted">Email and SMS are sent automatically to every recipient with a phone number.</div>
         </div>
       </div>
       <button class="btn btn-semas mt-3" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span> Sending…';this.form.submit()"><i class="bi bi-send me-1"></i> Send to Registered Students</button>

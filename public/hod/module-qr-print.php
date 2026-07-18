@@ -31,7 +31,7 @@ $shortToken = ctype_xdigit($secret)
 $scanPayload = 'SM:' . $moduleId . ':' . $shortToken;
 $scanUrl = public_url('/student/attendance.php?module_id=' . $moduleId . '&t=' . rawurlencode($scanPayload));
 $qrImage = SimpleQr::pngDataUri($scanUrl, 10, 2);
-$brandName = Settings::get('university_name', 'University of Kigali');
+$brandName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
 $securityRef = strtoupper(substr(hash_hmac('sha256', (string) $moduleId, $secret), 0, 16));
 ?>
 <!DOCTYPE html>

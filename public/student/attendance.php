@@ -188,7 +188,6 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
   <div>
     <h4 class="display-font mb-0">My Attendance</h4>
-    <div class="text-muted small">Modules appear only while your lecturer has Sign In or Sign Out open.</div>
   </div>
 </div>
 

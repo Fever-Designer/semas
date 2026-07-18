@@ -18,6 +18,7 @@ require_once __DIR__ . '/../includes/NotificationGenerator.php';
 require_once __DIR__ . '/../includes/ReportQuery.php';
 require_once __DIR__ . '/../includes/ReportScope.php';
 require_once __DIR__ . '/../includes/NotificationCenter.php';
+require_once __DIR__ . '/../includes/RoleNotificationService.php';
 require_once __DIR__ . '/../includes/AudienceResolver.php';
 require_once __DIR__ . '/../includes/Delivery.php';
 require_once __DIR__ . '/../includes/Suggestion.php';
@@ -75,6 +76,11 @@ function csrf_verify(): void
 function e($value)
 {
     return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
+
+function role_display_name(?string $role): string
+{
+    return $role === 'HOD' ? 'Head Of Department' : (string) ($role ?? '');
 }
 
 function redirect(string $path): void

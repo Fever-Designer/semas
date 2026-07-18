@@ -77,7 +77,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <tr>
             <td class="text-nowrap small"><?= e($l['created_at']) ?></td>
             <td class="small"><?= e($l['full_name'] ?? 'System') ?></td>
-            <td class="small"><?= e($l['role_name'] ?? '/') ?></td>
+            <td class="small"><?= e(role_display_name($l['role_name'] ?? '/')) ?></td>
             <td><span class="badge badge-<?= audit_badge($l['action']) ?>"><?= e($l['action']) ?></span></td>
             <td class="small"><?= e($l['entity_type'] ?? '') ?> <?= $l['entity_id'] ? '#' . (int) $l['entity_id'] : '' ?></td>
             <td class="small text-muted"><?= e($l['details'] ?? '') ?></td>

@@ -259,6 +259,15 @@ a:hover { color: var(--semas-gold); }
     border-left: 3px solid var(--semas-gold);
     padding-left: calc(1rem - 3px);
 }
+.notif-item[role="button"],
+.notif-item[role="link"] { cursor: pointer; }
+.notif-item[role="button"]:hover,
+.notif-item[role="button"]:focus,
+.notif-item[role="link"]:hover,
+.notif-item[role="link"]:focus {
+    background: #f4f6fb;
+    outline: none;
+}
 .notif-item:last-child { border-bottom: none; }
 
 /* ---------- Auth pages ---------- */

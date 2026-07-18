@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $lockCheck->execute(['mid' => $moduleId, 'type' => $coveringType]);
                 if ($lockCheck->fetch()) {
-                    flash('error', "This session's attendance has been submitted for $coveringType and is locked. Ask the HOD/Coordinator to reject the submission if a correction is needed.");
+                    flash('error', "This session's attendance has been submitted for $coveringType and is locked. Ask the Head Of Department/Coordinator to reject the submission if a correction is needed.");
                     redirect('/lecturer/live-session.php?module_id=' . $moduleId);
                 }
             }
@@ -736,7 +736,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <strong><?= e($examType) ?></strong>
         <span class="text-muted small">/ scheduled <?= e(date('d M Y', strtotime($row['scheduled_date']))) ?></span>
         <?php if ($row['sub_status'] === 'Pending'): ?>
-          <span class="badge badge-urgent ms-1">Submitted / Pending HOD Review</span>
+          <span class="badge badge-urgent ms-1">Submitted / Pending Head Of Department Review</span>
           <span class="text-muted small d-block">By <?= e($row['submitted_by_name'] ?? '/') ?> on <?= e(date('d M Y, h:i A', strtotime($row['submitted_at']))) ?></span>
         <?php elseif ($row['sub_status'] === 'Approved'): ?>
           <span class="badge badge-completed ms-1"><i class="bi bi-lock-fill me-1"></i>Approved &amp; Locked</span>
@@ -782,7 +782,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <table class="table table-bordered table-sm mb-0 align-middle" style="white-space:nowrap;font-size:.77rem;">
       <thead>
         <tr class="table-dark" style="font-size:.71rem;">
-          <th class="text-center" style="min-width:30px;">#</th>
+          <th class="text-center" style="min-width:30px;">NO</th>
           <th style="min-width:95px;">Reg Number</th>
           <th style="min-width:170px;position:sticky;left:0;z-index:3;background:#212529;">Student Name</th>
           <th style="min-width:105px;">Phone Number</th>
@@ -907,7 +907,6 @@ require __DIR__ . '/../partials/layout_top.php';
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body py-2">
-          <p class="text-muted small mb-3">Create a session for a class that was held but had no QR scans.</p>
           <div class="mb-2">
             <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
             <input type="date" name="session_date" class="form-control form-control-sm" required

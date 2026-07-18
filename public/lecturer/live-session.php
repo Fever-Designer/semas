@@ -30,6 +30,7 @@ foreach ($myModules as $m) {
 }
 
 $manualRoster = [];
+$overallAttendance = [];
 if ($module) {
     $rosterStmt = $db->prepare(
         "SELECT u.user_id, u.full_name, u.reg_number, u.photo_path,
@@ -52,6 +53,29 @@ if ($module) {
                 : 'https://ui-avatars.com/api/?name=' . urlencode((string) $student['full_name']) . '&background=1E2A52&color=fff',
         ];
     }
+
+    $overallStmt = $db->prepare(
+        "SELECT u.full_name, u.reg_number,
+                COUNT(DISTINCT cs.session_id) AS sessions_held,
+                SUM(CASE WHEN cal.status = 'Present' THEN 1 ELSE 0 END) AS present_count,
+                SUM(CASE WHEN cal.status = 'Late' THEN 1 ELSE 0 END) AS late_count,
+                SUM(CASE WHEN cal.status = 'Absent' OR cal.attendance_id IS NULL THEN 1 ELSE 0 END) AS absent_count
+         FROM module_enrollments e
+         JOIN users u ON u.user_id = e.user_id
+         LEFT JOIN class_sessions cs
+                ON cs.module_id = e.module_id
+               AND cs.session_date <= CURDATE()
+               AND cs.status = 'Closed'
+         LEFT JOIN class_attendance_logs cal
+                ON cal.session_id = cs.session_id
+               AND cal.user_id = e.user_id
+               AND cal.attendance_type = 'Sign In'
+         WHERE e.module_id = :mid AND u.status = 'Active'
+         GROUP BY u.user_id, u.full_name, u.reg_number
+         ORDER BY u.full_name"
+    );
+    $overallStmt->execute(['mid' => $moduleId]);
+    $overallAttendance = $overallStmt->fetchAll();
 }
 
 $moduleQrImage = null;
@@ -144,10 +168,10 @@ require __DIR__ . '/../partials/layout_top.php';
           <img src="<?= e($moduleQrImage) ?>" alt="Permanent module attendance QR" width="220" height="220"
                style="display:block;max-width:100%;height:auto;">
         </div>
-        <div class="small text-muted mt-2">Permanent module QR created by the HoD.</div>
+        <div class="small text-muted mt-2">Permanent module QR created by the Head Of Department.</div>
       <?php else: ?>
         <div class="alert alert-warning small">
-          This module has no classroom QR. Ask the HoD to generate it from Manage Modules.
+          This module has no classroom QR. Ask the Head Of Department to generate it from Manage Modules.
         </div>
       <?php endif; ?>
 
@@ -157,11 +181,6 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="mt-1 text-muted small" id="qrExpiry">Waiting for lecturer.</div>
       </div>
 
-      <p class="text-muted mt-3 mb-0" style="font-size:.75rem;">
-        <i class="bi bi-info-circle me-1"></i>
-        This same QR is printed and mounted in the classroom. It does not rotate or expire.
-        Students can use it only while you open Sign In or Sign Out.
-      </p>
     </div>
   </div>
 
@@ -182,6 +201,44 @@ require __DIR__ . '/../partials/layout_top.php';
         <div class="text-muted small text-center py-4">Starting session…</div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="semas-card p-3 mt-3">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+    <h6 class="display-font mb-0">Overall Attendance</h6>
+    <a href="<?= APP_URL ?>/lecturer/class-attendance.php?module_id=<?= $moduleId ?>"
+       class="btn btn-sm btn-outline-dark">
+      <i class="bi bi-list-ul me-1"></i>See List
+    </a>
+  </div>
+  <div class="table-responsive" style="max-height:360px;overflow-y:auto;">
+    <table class="table table-sm table-bordered align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>NO</th><th>Reg No</th><th>Student</th><th>Sessions</th><th>Present</th><th>Late</th><th>Absent</th><th>Attendance</th></tr>
+      </thead>
+      <tbody>
+        <?php foreach ($overallAttendance as $index => $attendance):
+          $sessionsHeld = (int) $attendance['sessions_held'];
+          $attended = (int) $attendance['present_count'] + (int) $attendance['late_count'];
+          $attendanceRate = $sessionsHeld > 0 ? (int) round($attended * 100 / $sessionsHeld) : 0;
+        ?>
+          <tr>
+            <td class="text-center"><?= $index + 1 ?></td>
+            <td><?= e($attendance['reg_number'] ?? '/') ?></td>
+            <td class="fw-semibold"><?= e($attendance['full_name']) ?></td>
+            <td><?= $sessionsHeld ?></td>
+            <td><?= (int) $attendance['present_count'] ?></td>
+            <td><?= (int) $attendance['late_count'] ?></td>
+            <td><?= (int) $attendance['absent_count'] ?></td>
+            <td class="fw-semibold"><?= $attendanceRate ?>%</td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$overallAttendance): ?>
+          <tr><td colspan="8" class="text-center text-muted py-3">No enrolled students found.</td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -428,7 +485,7 @@ function loadRoster() {
         const colors = {P:'#d4edda',L:'#fff3cd',A:'#f8d7da'};
         const fcolors = {P:'#155724',L:'#856404',A:'#721c24'};
         let html = '<table class="table table-sm table-bordered mb-0" style="font-size:.78rem;">';
-        html += '<thead class="table-light"><tr><th>#</th><th>Reg No</th><th>Name</th><th>In</th><th>Out</th><th>Status</th><th>Manual</th></tr></thead><tbody>';
+        html += '<thead class="table-light"><tr><th>NO</th><th>Reg No</th><th>Name</th><th>In</th><th>Out</th><th>Status</th><th>Manual</th></tr></thead><tbody>';
         data.roster.forEach(function(s, i) {
             const bg = colors[s.status] || '#fff';
             const fc = fcolors[s.status] || '#000';

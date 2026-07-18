@@ -377,6 +377,15 @@ SQL
         ], (int) $user['user_id']);
     }
 
+    public static function sendEmailChangedNotice(array $user, string $newEmail): bool
+    {
+        return self::send($newEmail, 'Your SEMAS email address was changed', 'email_changed', [
+            'full_name' => $user['full_name'],
+            'new_email' => $newEmail,
+            'changed_at' => date('Y-m-d H:i'),
+        ], (int) $user['user_id']);
+    }
+
     public static function sendAccountActivated(array $user): bool
     {
         return self::send($user['email'], 'Your SEMAS account is now active', 'account_activated', [

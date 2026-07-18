@@ -24,13 +24,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $audience = $_POST['audience'] ?? 'students';
         $deptId   = (int) ($_POST['department_id'] ?? 0) ?: null;
-        $deptName = null;
-        if ($deptId) {
-            $dn = $db->prepare('SELECT department_name FROM departments WHERE department_id = :id');
-            $dn->execute(['id' => $deptId]);
-            $deptName = $dn->fetchColumn() ?: null;
+        if (!$deptId) {
+            flash('error', 'Select a department before sending the announcement.');
+            redirect('/hod/announcements.php');
         }
-        $scopeLabel = $deptName ? 'Department of ' . $deptName : 'All Departments (university-wide)';
+        $deptName = null;
+        $dn = $db->prepare('SELECT department_name FROM departments WHERE department_id = :id');
+        $dn->execute(['id' => $deptId]);
+        $deptName = $dn->fetchColumn() ?: null;
+        if (!$deptName) {
+            flash('error', 'The selected department was not found.');
+            redirect('/hod/announcements.php');
+        }
+        $scopeLabel = 'Department of ' . $deptName;
 
         if ($audience === 'lecturers') {
             $sql = "SELECT u.* FROM users u JOIN lecturers l ON l.user_id = u.user_id WHERE u.status = 'Active'";
@@ -231,8 +237,8 @@ require __DIR__ . '/../partials/layout_top.php';
           </select>
         </div>
         <div class="col-md-3">
-          <select name="department_id" class="form-select">
-            <option value="">All Departments (university-wide)</option>
+          <select name="department_id" class="form-select" required>
+            <option value="">Select Department</option>
             <?php foreach ($departments as $d): ?>
               <option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option>
             <?php endforeach; ?>
@@ -257,7 +263,6 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <div class="col-12"><label class="form-label small">Message</label><textarea name="message" class="form-control" rows="3" required></textarea></div>
         <div class="col-md-6">
-          <div class="small text-muted">Email and SMS are sent automatically to every recipient with a phone number.</div>
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">

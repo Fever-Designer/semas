@@ -15,7 +15,7 @@ Semester::enforceAcademicWrite($db);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array(Auth::role(), ['HOD', 'Coordinator'], true)) {
         http_response_code(403);
-        echo json_encode(['ok' => false, 'message' => 'Only the HOD or Coordinator can add rooms.']);
+        echo json_encode(['ok' => false, 'message' => 'Only the Head Of Department or Coordinator can add rooms.']);
         exit;
     }
 

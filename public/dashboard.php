@@ -52,7 +52,15 @@ if ($role === 'Principal') {
         'total_events'    => (int) $db->query('SELECT COUNT(*) FROM events')->fetchColumn(),
     ];
     $recentAnnouncements = $db->query("SELECT * FROM announcements ORDER BY posted_at DESC LIMIT 5")->fetchAll();
-    $studentStatusBreakdown = $db->query("SELECT status, COUNT(*) AS c FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Student' GROUP BY status")->fetchAll();
+    $highAttendanceEvents = $db->query(
+        "SELECT e.event_id, e.title, e.event_date, e.venue,
+                COUNT(DISTINCT al.user_id) AS attendee_count
+         FROM events e
+         JOIN attendance_logs al ON al.event_id = e.event_id
+         GROUP BY e.event_id, e.title, e.event_date, e.venue
+         ORDER BY attendee_count DESC, e.event_date DESC
+         LIMIT 5"
+    )->fetchAll();
     $eventCheckins7d = (int) $db->query("SELECT COUNT(*) FROM attendance_logs WHERE checkin_time >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)")->fetchColumn();
 
 } elseif ($role === 'HOD') {
@@ -164,15 +172,25 @@ if ($role === 'Principal') {
     $unreadStmt->execute(['uid' => $user['user_id']]);
     $unreadCount = (int) $unreadStmt->fetchColumn();
 
-    $myModulesStmt = $db->prepare(
+    $activeStudentModulesStmt = $db->prepare(
         "SELECT m.*, (SELECT COUNT(*) FROM assignments a WHERE a.module_id = m.module_id AND a.deadline > NOW()
             AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id = a.assignment_id AND s.user_id = :uid2)) AS pending_assignments
          FROM modules m JOIN module_enrollments e ON e.module_id = m.module_id
          WHERE e.user_id = :uid AND m.status = 'Ongoing'"
     );
-    $myModulesStmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
-    $myModules = $myModulesStmt->fetchAll();
-    $pendingAssignmentsTotal = array_sum(array_column($myModules, 'pending_assignments'));
+    $activeStudentModulesStmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
+    $activeStudentModules = $activeStudentModulesStmt->fetchAll();
+    $pendingAssignmentsTotal = array_sum(array_column($activeStudentModules, 'pending_assignments'));
+
+    $completedStudentModulesStmt = $db->prepare(
+        "SELECT m.*
+         FROM modules m
+         JOIN module_enrollments e ON e.module_id = m.module_id
+         WHERE e.user_id = :uid AND m.status = 'Completed'
+         ORDER BY m.end_date DESC, m.module_title"
+    );
+    $completedStudentModulesStmt->execute(['uid' => $user['user_id']]);
+    $completedStudentModules = $completedStudentModulesStmt->fetchAll();
 }
 
 require __DIR__ . '/partials/layout_top.php';
@@ -183,7 +201,7 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="row g-3 mb-3">
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-mortarboard-fill stat-icon"></i><div class="stat-label">Total Students</div><div class="stat-value"><?= $stats['total_students'] ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-workspace stat-icon"></i><div class="stat-label">Total Lecturers</div><div class="stat-value"><?= $stats['total_lecturers'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-mortarboard stat-icon"></i><div class="stat-label">Total HODs</div><div class="stat-value"><?= $stats['total_hods'] ?></div></div></div>
+    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-mortarboard stat-icon"></i><div class="stat-label">Total Heads Of Department</div><div class="stat-value"><?= $stats['total_hods'] ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-badge-fill stat-icon"></i><div class="stat-label">Total Deans</div><div class="stat-value"><?= $stats['total_deans'] ?></div></div></div>
   </div>
   <div class="row g-3 mb-3">
@@ -223,7 +241,7 @@ require __DIR__ . '/partials/layout_top.php';
       <div class="semas-card p-3">
         <h6 class="display-font mb-2">Users by Role</h6>
         <?php foreach ($usersByRole as $r): ?>
-          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['role_name']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
+          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e(role_display_name($r['role_name'])) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
         <?php endforeach; ?>
       </div>
     </div>
@@ -240,7 +258,7 @@ require __DIR__ . '/partials/layout_top.php';
           <table class="table table-sm align-middle">
             <thead><tr><th>Name</th><th>Role</th><th>Last Login</th></tr></thead>
             <tbody><?php foreach ($recentLogins as $l): ?>
-              <tr><td><?= e($l['full_name']) ?></td><td><span class="badge bg-light text-dark border"><?= e($l['role_name']) ?></span></td><td><?= e(date('d M Y H:i', strtotime($l['last_login_at']))) ?></td></tr>
+              <tr><td><?= e($l['full_name']) ?></td><td><span class="badge bg-light text-dark border"><?= e(role_display_name($l['role_name'])) ?></span></td><td><?= e(date('d M Y H:i', strtotime($l['last_login_at']))) ?></td></tr>
             <?php endforeach; ?></tbody>
           </table>
         <?php endif; ?>
@@ -262,7 +280,7 @@ require __DIR__ . '/partials/layout_top.php';
       <table class="table table-sm align-middle">
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th></tr></thead>
         <tbody><?php foreach ($recentStaff as $s): ?>
-          <tr><td><?= e($s['full_name']) ?></td><td><?= e($s['email']) ?></td><td><span class="badge bg-light text-dark border"><?= e($s['role_name']) ?></span></td><td><?= e(date('d M Y', strtotime($s['created_at']))) ?></td></tr>
+          <tr><td><?= e($s['full_name']) ?></td><td><?= e($s['email']) ?></td><td><span class="badge bg-light text-dark border"><?= e(role_display_name($s['role_name'])) ?></span></td><td><?= e(date('d M Y', strtotime($s['created_at']))) ?></td></tr>
         <?php endforeach; ?></tbody>
       </table>
     <?php endif; ?>
@@ -285,10 +303,25 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="row g-3">
     <div class="col-lg-6">
       <div class="semas-card p-3">
-        <h6 class="display-font mb-2">Student Account Status</h6>
-        <?php foreach ($studentStatusBreakdown as $r): ?>
-          <div class="d-flex justify-content-between border-bottom py-1 small"><span><?= e($r['status']) ?></span><span class="fw-semibold"><?= (int) $r['c'] ?></span></div>
-        <?php endforeach; ?>
+        <h6 class="display-font mb-2">Highly Attended Events</h6>
+        <?php if (!$highAttendanceEvents): ?>
+          <p class="text-muted small mb-0">No event attendance has been recorded yet.</p>
+        <?php else: ?>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Event</th><th>Date</th><th class="text-end">Attendees</th></tr></thead>
+              <tbody>
+                <?php foreach ($highAttendanceEvents as $event): ?>
+                  <tr>
+                    <td><strong><?= e($event['title']) ?></strong><div class="text-muted small"><?= e($event['venue'] ?: '-') ?></div></td>
+                    <td class="text-nowrap"><?= e(date('d M Y', strtotime($event['event_date']))) ?></td>
+                    <td class="text-end fw-semibold"><?= (int) $event['attendee_count'] ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
       </div>
     </div>
     <div class="col-lg-6"><div class="semas-card p-3 h-100"><div class="stat-label">Event Check-ins / Last 7 Days</div><div class="stat-value"><?= $eventCheckins7d ?></div></div></div>
@@ -469,7 +502,7 @@ require __DIR__ . '/partials/layout_top.php';
 <?php else: /* Student */ ?>
   <h4 class="display-font mb-1">Dashboard</h4>
   <div class="row g-3 mb-4">
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i><div class="stat-label">My Modules</div><div class="stat-value"><?= count($myModules) ?></div></div></div>
+    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i><div class="stat-label">Completed Modules</div><div class="stat-value"><?= count($completedStudentModules) ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-file-earmark-text-fill stat-icon"></i><div class="stat-label">Pending Assignments</div><div class="stat-value"><?= (int) $pendingAssignmentsTotal ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-calendar-event-fill stat-icon"></i><div class="stat-label">Upcoming Events</div><div class="stat-value"><?= count($upcomingEvents) ?></div></div></div>
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-bell-fill stat-icon"></i><div class="stat-label">Unread Notifications</div><div class="stat-value"><?= $unreadCount ?></div></div></div>
@@ -486,17 +519,17 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="row g-3 mb-3">
     <div class="col-12">
       <div class="semas-card p-3">
-        <h6 class="display-font mb-3">My Modules</h6>
-        <?php if (!$myModules): ?>
-          <p class="text-muted small mb-0">You're not registered for any module yet. <a href="<?= APP_URL ?>/student/modules.php">Register now</a>.</p>
+        <h6 class="display-font mb-3">Completed Modules</h6>
+        <?php if (!$completedStudentModules): ?>
+          <p class="text-muted small mb-0">You have no completed modules yet.</p>
         <?php else: ?>
           <table class="table table-sm align-middle">
-            <thead><tr><th>Module</th><th>Pending Assignments</th><th></th></tr></thead>
-            <tbody><?php foreach ($myModules as $m): ?>
+            <thead><tr><th>Module</th><th>Session</th><th>Status</th></tr></thead>
+            <tbody><?php foreach ($completedStudentModules as $m): ?>
               <tr>
                 <td><?= e($m['module_title']) ?></td>
-                <td><?= (int) $m['pending_assignments'] > 0 ? '<span class="badge badge-urgent">' . (int) $m['pending_assignments'] . '</span>' : '<span class="badge badge-completed">0</span>' ?></td>
-                <td><a href="<?= APP_URL ?>/student/assignments.php?module_id=<?= (int) $m['module_id'] ?>" class="small">View &rarr;</a></td>
+                <td><?= e($m['session_type'] ?? '-') ?></td>
+                <td><span class="badge badge-completed">Completed</span></td>
               </tr>
             <?php endforeach; ?></tbody>
           </table>

@@ -67,10 +67,12 @@ if ($scheduleId) {
     $schedDetail = $db->prepare(
         "SELECT cs.*, m.module_title, m.module_id, m.session_type, d.department_name,
                 u.full_name AS invigilator_name, ul.full_name AS lecturer_name,
+                hod.full_name AS hod_name,
                 sub.submitted_at, sub.notes AS submission_notes
          FROM cat_exam_schedules cs
          JOIN modules m ON m.module_id = cs.module_id
          LEFT JOIN departments d ON d.department_id = m.department_id
+         LEFT JOIN users hod ON hod.user_id = d.hod_user_id
          LEFT JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
          LEFT JOIN users u ON u.user_id = l.user_id
          LEFT JOIN lecturers ll ON ll.lecturer_id = m.lecturer_id
@@ -132,7 +134,7 @@ if ($scheduleId) {
 
     // ── Excel export ─────────────────────────────────────────────────────
     if ($export === 'excel') {
-        $uniName  = Settings::get('university_name', 'University of Kigali');
+        $uniName  = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
         $examDate = $schedDetail ? date('d F Y', strtotime($schedDetail['scheduled_date'])) : '';
 
         $spreadsheet = new Spreadsheet();
@@ -201,18 +203,23 @@ if ($scheduleId) {
         <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
         <title><?= e($schedDetail['exam_type']) ?> Attendance / <?= e($schedDetail['module_title']) ?></title>
         <style>
-          body { font-family: Arial, sans-serif; font-size: 12px; color: #1B1F2A; margin: 20px; }
-          h1 { font-size: 16px; text-align: center; }
-          .sub { text-align: center; color: #555; margin-bottom: 12px; }
+          @page { size: A4 portrait; margin: 14mm; }
+          body { font-family: Arial, sans-serif; font-size: 11px; color: #000; margin: 0; }
+          h1 { font-size: 18px; text-align: center; margin: 0 0 5px; }
+          .report-title { text-align: center; font-size: 13px; font-weight: bold; margin: 0 0 12px; }
           table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-          th, td { border: 1px solid #ccc; padding: 5px 8px; }
-          th { background: #1E2A52; color: #fff; }
-          .present { color: #2F9E68; } .absent { color: #DC2626; } .late { color: #D97706; }
+          th, td { border: 1px solid #000; background: #fff; color: #000; padding: 6px 8px; }
+          th { font-weight: bold; text-align: left; text-transform: uppercase; }
+          .present, .absent, .late { color: #000; }
+          .approvals { margin-top: 38px; border: 0; }
+          .approvals td { width: 50%; border: 0; padding: 24px 35px 0; text-align: center; }
+          .signature { border-top: 1px solid #000; padding-top: 5px; }
+          .signature strong { display: block; }
           @media print { .no-print { display: none; } }
         </style></head><body>
-        <h1><?= e(Settings::get('university_name', 'University of Kigali')) ?></h1>
-        <p style="text-align:center;font-weight:bold;margin-bottom:10px;"><?= e($schedDetail['exam_type']) ?> ATTENDANCE LIST</p>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+        <h1><?= e(mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8')) ?></h1>
+        <p class="report-title"><?= e($schedDetail['exam_type']) ?> ATTENDANCE LIST</p>
+        <table style="margin:0 0 14px;">
           <tr>
             <td style="width:60%;vertical-align:top;">
               <strong>Module:</strong> <?= e($schedDetail['module_title']) ?><br>
@@ -244,6 +251,10 @@ if ($scheduleId) {
           <?php endforeach; ?>
           </tbody>
         </table>
+        <table class="approvals"><tr>
+          <td><div class="signature"><strong><?= e($schedDetail['invigilator_name'] ?: 'Not assigned') ?></strong>Submitted by / Invigilator</div></td>
+          <td><div class="signature"><strong><?= e($schedDetail['hod_name'] ?: 'Not assigned') ?></strong>Approved by / Head Of Department</div></td>
+        </tr></table>
         <div class="no-print" style="margin-top:16px;"><button onclick="window.print()">Print / Save PDF</button></div>
         </body></html>
         <?php
@@ -432,4 +443,3 @@ document.querySelectorAll('.hist-toggle').forEach(function(btn) {
 </script>
 
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>
-

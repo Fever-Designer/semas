@@ -307,7 +307,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <h4 class="display-font mb-1">Users &amp; Roles</h4>
   <?php if ($myRole === 'Principal' || $myRole === 'HOD'): ?>
     <button class="btn btn-semas-gold btn-sm" data-bs-toggle="modal" data-bs-target="#createStaffModal">
-      <i class="bi bi-person-plus-fill me-1"></i> <?= $myRole === 'Principal' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?>
+      <i class="bi bi-person-plus-fill me-1"></i> <?= $myRole === 'Principal' ? 'Add Head Of Department / Dean / Lecturer' : 'Add Dean Account' ?>
     </button>
   <?php endif; ?>
 </div>
@@ -320,7 +320,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="create_staff">
         <div class="modal-header">
-          <h6 class="modal-title display-font"><?= $myRole === 'Principal' ? 'Add HOD / Dean / Lecturer' : 'Add Dean Account' ?></h6>
+          <h6 class="modal-title display-font"><?= $myRole === 'Principal' ? 'Add Head Of Department / Dean / Lecturer' : 'Add Dean Account' ?></h6>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
@@ -328,7 +328,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <label class="form-label small">Account Type</label>
             <select name="new_role" id="newRoleSelect" class="form-select form-select-sm" onchange="toggleStaffFields()" required>
               <?php if ($myRole === 'Principal'): ?>
-                <option value="HOD">Head of Department (HOD)</option>
+                <option value="HOD">Head Of Department</option>
                 <option value="Dean">Dean</option>
                 <option value="Lecturer">Lecturer</option>
               <?php else: ?>
@@ -340,7 +340,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <div class="mb-2"><label class="form-label small">Email Address</label><input type="email" name="email" class="form-control form-control-sm" required></div>
           <div class="mb-2"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control form-control-sm" inputmode="numeric" pattern="\d{10}" maxlength="10"></div>
           <div class="mb-2" id="targetDeptField">
-            <label class="form-label small">Department (for HOD / Lecturer)</label>
+            <label class="form-label small">Department (for Head Of Department / Lecturer)</label>
             <select name="target_department_id" class="form-select form-select-sm">
               <option value="">Select department</option>
               <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option><?php endforeach; ?>
@@ -359,7 +359,6 @@ require __DIR__ . '/../partials/layout_top.php';
               <?php foreach ($faculties as $f): ?><option value="<?= (int) $f['faculty_id'] ?>"><?= e($f['faculty_name']) ?></option><?php endforeach; ?>
             </select>
           </div>
-          <p class="text-muted" style="font-size:0.78rem;">A temporary password will be generated automatically and emailed to this address. The account is created already Active (no email verification step), since it was provisioned by staff rather than self-registered.</p>
         </div>
         <div class="modal-footer"><button class="btn btn-semas-gold btn-sm">Create Account</button></div>
       </form>
@@ -386,7 +385,7 @@ document.addEventListener('DOMContentLoaded', function () {
     <div class="col-md-3">
       <select name="role" class="form-select form-select-sm">
         <option value="">All Roles</option>
-        <?php foreach ($roles as $r): ?><option value="<?= e($r['role_name']) ?>" <?= $roleFilter === $r['role_name'] ? 'selected' : '' ?>><?= e($r['role_name']) ?></option><?php endforeach; ?>
+        <?php foreach ($roles as $r): ?><option value="<?= e($r['role_name']) ?>" <?= $roleFilter === $r['role_name'] ? 'selected' : '' ?>><?= e(role_display_name($r['role_name'])) ?></option><?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-3">
@@ -409,7 +408,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <td><img src="<?= $u['photo_path'] ? APP_URL . '/' . e($u['photo_path']) : 'https://ui-avatars.com/api/?name=' . urlencode($u['full_name']) . '&background=1E2A52&color=fff' ?>" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"></td>
             <td class="fw-semibold"><?= e($u['full_name']) ?></td>
             <td><?= e($u['email']) ?></td>
-            <td><?= e($u['role_name']) ?></td>
+            <td><?= e(role_display_name($u['role_name'])) ?></td>
             <td><?= e($u['department_name'] ?? '/') ?></td>
             <td><span class="badge badge-<?= $u['status'] === 'Active' ? 'completed' : ($u['status'] === 'Pending' ? 'upcoming' : 'cancelled') ?>"><?= e($u['status']) ?></span></td>
             <td class="text-nowrap">
@@ -451,7 +450,7 @@ document.addEventListener('DOMContentLoaded', function () {
                       <div class="mb-2">
                         <label class="form-label small">Role</label>
                         <select name="role_id" class="form-select form-select-sm">
-                          <?php foreach ($roles as $r): ?><option value="<?= (int) $r['role_id'] ?>" <?= $u['role_id'] == $r['role_id'] ? 'selected' : '' ?>><?= e($r['role_name']) ?></option><?php endforeach; ?>
+                          <?php foreach ($roles as $r): ?><option value="<?= (int) $r['role_id'] ?>" <?= $u['role_id'] == $r['role_id'] ? 'selected' : '' ?>><?= e(role_display_name($r['role_name'])) ?></option><?php endforeach; ?>
                         </select>
                       </div>
                     <?php endif; ?>

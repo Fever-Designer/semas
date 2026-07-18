@@ -225,11 +225,11 @@ require __DIR__ . '/../partials/layout_top.php';
   <!-- Submit -->
   <div class="p-3 border-top d-flex align-items-center justify-content-between gap-3 flex-wrap">
     <p class="text-muted small mb-0">
-      After submitting, no further sign-in or sign-out changes can be made. The HOD will review this list.
+      After submitting, no further sign-in or sign-out changes can be made. The Head Of Department will review this list.
     </p>
     <button class="btn btn-semas-gold btn-sm text-nowrap"
             onclick="openSubmitModal(<?= $sid ?>, '<?= e($s['module_title']) ?>')">
-      <i class="bi bi-send me-1"></i> Submit Attendance List to HOD
+      <i class="bi bi-send me-1"></i> Submit Attendance List to Head Of Department
     </button>
   </div>
 
@@ -257,7 +257,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <h6 class="display-font mb-0">
           <?= e($s['module_title']) ?>
           <span class="badge bg-secondary ms-1"><?= e($s['exam_type']) ?></span>
-          <span class="badge badge-completed ms-1"><i class="bi bi-check-circle me-1"></i>Submitted to HOD</span>
+          <span class="badge badge-completed ms-1"><i class="bi bi-check-circle me-1"></i>Submitted to Head Of Department</span>
         </h6>
         <p class="text-muted small mb-0">
           <?= e($s['department_name'] ?? '') ?>

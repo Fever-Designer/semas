@@ -14,6 +14,7 @@ $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
 
 switch ($action) {
     case 'list':
+        RoleNotificationService::generateFor($userId, (string) Auth::role());
         $items = NotificationCenter::recent($userId, 20);
         echo json_encode([
             'ok' => true,

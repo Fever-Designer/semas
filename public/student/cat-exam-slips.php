@@ -36,7 +36,7 @@ $pendingCount = (int) $pendingStmt->fetchColumn();
 function eligibility_badge(?array $row): string
 {
     if (!$row) return '<span class="badge bg-secondary">Not generated yet</span>';
-    if ($row['hod_decision'] === 'Pending') return '<span class="badge badge-urgent">Pending HOD review</span>';
+    if ($row['hod_decision'] === 'Pending') return '<span class="badge badge-urgent">Pending Head Of Department review</span>';
     if (!empty($row['requires_review'])) return '<span class="badge badge-urgent">Requires approval</span>';
     return $row['final_decision'] === 'Allowed'
         ? '<span class="badge badge-completed">Allowed</span>'

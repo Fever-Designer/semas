@@ -562,15 +562,18 @@ $importWarnings = $showPreview ? ($_SESSION['import_warnings'] ?? []) : [];
 
 // Search / filter
 $search    = trim($_GET['q'] ?? '');
+$searchInvalid = $search !== '' && !ctype_digit($search);
 $filterDept= (int) ($_GET['dept'] ?? 0);
 $filterStatus= trim($_GET['status'] ?? '');
 $filterIntake= trim($_GET['intake'] ?? '');
 
 $where = ["r.role_name = 'Student'"];
 $params = [];
-if ($search) {
-    $where[] = "(u.full_name LIKE :q1 OR u.email LIKE :q2 OR u.reg_number LIKE :q3)";
-    $params['q1'] = $params['q2'] = $params['q3'] = "%{$search}%";
+if ($searchInvalid) {
+    $where[] = '1 = 0';
+} elseif ($search !== '') {
+    $where[] = 'u.reg_number LIKE :reg_number';
+    $params['reg_number'] = "%{$search}%";
 }
 if ($filterDept) { $where[] = "u.department_id = :dept"; $params['dept'] = $filterDept; }
 if ($filterStatus) { $where[] = "u.status = :status"; $params['status'] = $filterStatus; }
@@ -680,7 +683,11 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="semas-card p-3 mb-3">
   <form method="GET" class="row g-2 align-items-end">
     <div class="col-md-4">
-      <input type="search" name="q" class="form-control form-control-sm" value="<?= e($search) ?>">
+      <label class="form-label small mb-1">Registration Number</label>
+      <input type="search" name="q" class="form-control form-control-sm"
+             value="<?= e($search) ?>" inputmode="numeric" pattern="[0-9]*"
+             placeholder="Enter registration number"
+             oninput="this.value=this.value.replace(/\D/g,'')">
     </div>
     <div class="col-md-3">
       <select name="dept" class="form-select form-select-sm">
@@ -719,6 +726,9 @@ require __DIR__ . '/../partials/layout_top.php';
       <button type="submit" class="btn btn-semas btn-sm w-100">Filter</button>
     </div>
   </form>
+  <?php if ($searchInvalid): ?>
+    <div class="text-danger small mt-2">Registration number must contain numbers only.</div>
+  <?php endif; ?>
 </div>
 
 

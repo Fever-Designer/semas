@@ -34,6 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            ->execute(['h' => $hash, 'id' => $user['user_id']]);
         $_SESSION['must_change_password'] = false; // keep session in sync with the DB so enforceMustChangePassword() stops redirecting here
         AuditLog::record(Auth::id(), 'PASSWORD_CHANGED_FIRST_LOGIN', 'users', $user['user_id']);
+        Mailer::sendPasswordChangedNotice($user);
+        NotificationCenter::notify((int) $user['user_id'], 'Password changed', 'Your password was changed successfully.', 'System');
         flash('success', 'Password changed successfully. Welcome to SEMAS!');
         redirect('/dashboard.php');
     }

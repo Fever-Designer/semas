@@ -19,24 +19,22 @@ $stmt->execute(['id' => $userId]);
 $me = $stmt->fetch();
 
 $errors = [];
+$readOnlyContactRoles = ['Student', 'Lecturer', 'HOD', 'Coordinator', 'Dean'];
 
 // ---- Update phone / session (own data only / no role/department/status fields here) ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'contact') {
     csrf_verify();
+    if (in_array($me['role_name'], $readOnlyContactRoles, true)) {
+        flash('error', role_display_name($me['role_name']) . ' contact details are read-only.');
+        redirect('/profile.php');
+    }
     $phone = trim($_POST['phone_number'] ?? '');
     if ($phone !== '' && !preg_match('/^\d{10}$/', $phone)) {
         flash('error', 'Phone number must be exactly 10 digits.');
         redirect('/profile.php');
     }
-    if ($me['role_name'] === 'Student') {
-        // Students: phone only / session and email are managed by Registrar
-        $db->prepare('UPDATE users SET phone_number = :phone WHERE user_id = :id')
-           ->execute(['phone' => $phone ?: null, 'id' => $userId]);
-    } else {
-        $session = $_POST['session_type'] ?: null;
-        $db->prepare('UPDATE users SET phone_number = :phone, session_type = :session WHERE user_id = :id')
-           ->execute(['phone' => $phone ?: null, 'session' => $session, 'id' => $userId]);
-    }
+    $db->prepare('UPDATE users SET phone_number = :phone WHERE user_id = :id')
+       ->execute(['phone' => $phone ?: null, 'id' => $userId]);
     AuditLog::record($userId, 'PROFILE_UPDATE_CONTACT');
     flash('success', 'Contact details updated.');
     redirect('/profile.php');
@@ -145,17 +143,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'photo' 
 $activeNav = 'dashboard';
 require __DIR__ . '/partials/layout_top.php';
 ?>
+<style>
+  .profile-grid > [class*="col-"] { min-width:0; }
+  .profile-card { overflow:hidden; }
+  .profile-card,
+  .profile-card * { min-width:0; }
+  .profile-value,
+  .profile-help,
+  .profile-card strong {
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .profile-info {
+    margin:0;
+    border:1px solid var(--semas-border);
+  }
+  .profile-info-row {
+    display:grid;
+    grid-template-columns:minmax(105px, 36%) minmax(0, 1fr);
+    border-bottom:1px solid var(--semas-border);
+  }
+  .profile-info-row:last-child { border-bottom:0; }
+  .profile-info dt,
+  .profile-info dd {
+    margin:0;
+    padding:.65rem .75rem;
+    font-size:.82rem;
+  }
+  .profile-info dt {
+    background:#f8f9fb;
+    border-right:1px solid var(--semas-border);
+    font-weight:600;
+  }
+  .profile-info dd { text-align:right; }
+  @media (max-width:575.98px) {
+    .profile-info-row { grid-template-columns:1fr; }
+    .profile-info dt {
+      border-right:0;
+      border-bottom:1px solid var(--semas-border);
+      padding-bottom:.35rem;
+    }
+    .profile-info dd {
+      text-align:left;
+      padding-top:.45rem;
+    }
+  }
+</style>
 <h4 class="display-font mb-1">My Profile</h4>
 
 <?php foreach ($errors as $err): ?><div class="alert alert-danger small"><?= e($err) ?></div><?php endforeach; ?>
 
-<div class="row g-3">
+<div class="row g-3 profile-grid">
   <div class="col-lg-4">
-    <div class="semas-card p-3 text-center">
+    <div class="semas-card profile-card p-3 text-center">
       <img src="<?= $me['photo_path'] ? APP_URL . '/' . e($me['photo_path']) : 'https://ui-avatars.com/api/?name=' . urlencode($me['full_name']) . '&background=1E2A52&color=fff' ?>"
            alt="Profile photo" class="rounded-circle mb-3" style="width:120px;height:120px;object-fit:cover;border:3px solid var(--semas-gold);">
       <h6 class="display-font mb-0"><?= e($me['full_name']) ?></h6>
-      <div class="text-muted small mb-3"><?= e($me['role_name']) ?></div>
+      <div class="text-muted small mb-3"><?= e(role_display_name($me['role_name'])) ?></div>
       <form method="post" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="photo">
@@ -164,61 +208,59 @@ require __DIR__ . '/partials/layout_top.php';
       </form>
     </div>
 
-    <div class="semas-card p-3 mt-3">
+    <div class="semas-card profile-card p-3 mt-3">
       <h6 class="display-font mb-3">Account Info</h6>
-      <table class="table table-sm">
+      <dl class="profile-info">
         <?php if (!in_array($me['role_name'], ['Principal', 'Dean', 'Registrar'], true)): ?>
-        <tr><td class="text-muted small">Department</td><td class="small text-end"><?= e($me['department_name'] ?? '/') ?></td></tr>
-        <tr><td class="text-muted small">Faculty</td><td class="small text-end"><?= e($me['faculty_name'] ?? '/') ?></td></tr>
+        <div class="profile-info-row"><dt>Department</dt><dd class="profile-value"><?= e($me['department_name'] ?? '/') ?></dd></div>
+        <div class="profile-info-row"><dt>Faculty</dt><dd class="profile-value"><?= e($me['faculty_name'] ?? '/') ?></dd></div>
         <?php endif; ?>
         <?php if ($me['role_name'] === 'Student'): ?>
-        <tr><td class="text-muted small">Reg. Number</td><td class="small text-end"><?= e($me['reg_number'] ?? '/') ?></td></tr>
+        <div class="profile-info-row"><dt>Reg. Number</dt><dd class="profile-value"><?= e($me['reg_number'] ?? '/') ?></dd></div>
         <?php endif; ?>
-        <tr><td class="text-muted small">Status</td><td class="text-end"><span class="badge badge-<?= $me['status'] === 'Active' ? 'completed' : 'cancelled' ?>"><?= e($me['status']) ?></span></td></tr>
-        <tr><td class="text-muted small">Last Login</td><td class="small text-end"><?= e($me['last_login_at'] ?? 'Never') ?></td></tr>
-      </table>
+        <div class="profile-info-row"><dt>Status</dt><dd><span class="badge badge-<?= $me['status'] === 'Active' ? 'completed' : 'cancelled' ?>"><?= e($me['status']) ?></span></dd></div>
+        <div class="profile-info-row"><dt>Last Login</dt><dd class="profile-value"><?= e($me['last_login_at'] ?? 'Never') ?></dd></div>
+      </dl>
     </div>
   </div>
 
   <div class="col-lg-8">
-    <div class="semas-card p-3 mb-3">
+    <div class="semas-card profile-card p-3 mb-3">
       <h6 class="display-font mb-3">Contact Details</h6>
+      <?php if (in_array($me['role_name'], $readOnlyContactRoles, true)): ?>
+      <dl class="profile-info">
+        <div class="profile-info-row"><dt>Phone Number</dt><dd class="profile-value"><?= e($me['phone_number'] ?? 'Not set') ?></dd></div>
+        <?php if ($me['role_name'] === 'Student'): ?>
+        <div class="profile-info-row"><dt>Session</dt><dd class="profile-value"><?= e($me['session_type'] ?? 'Not set') ?></dd></div>
+        <div class="profile-info-row"><dt>Email Address</dt><dd class="profile-value"><?= e($me['email']) ?></dd></div>
+        <?php endif; ?>
+      </dl>
+      <?php else: ?>
       <form method="post">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="contact">
         <div class="row g-3">
           <div class="col-md-6"><label class="form-label small">Phone Number</label><input name="phone_number" class="form-control" value="<?= e($me['phone_number'] ?? '') ?>" inputmode="numeric" pattern="\d{10}" maxlength="10"></div>
-          <?php if ($me['role_name'] === 'Student'): ?>
-          <div class="col-md-6">
-            <label class="form-label small">Session</label>
-            <div class="form-control bg-light" style="cursor:not-allowed;"><?= e($me['session_type'] ?? 'Not set') ?></div>
-          </div>
-          <?php endif; ?>
         </div>
         <button class="btn btn-semas mt-3">Save Contact Details</button>
       </form>
+      <?php endif; ?>
     </div>
 
     <?php if ($me['role_name'] !== 'Student'): ?>
-    <div class="semas-card p-3 mb-3">
+    <div class="semas-card profile-card p-3 mb-3">
       <h6 class="display-font mb-3">Change Email Address</h6>
-      <p class="text-muted small">Current: <strong><?= e($me['email']) ?></strong>. Changing it sends a confirmation link to the new address / your login email stays the same until you click it.</p>
-      <form method="post" class="d-flex gap-2">
+      <p class="text-muted small profile-help">Current: <strong><?= e($me['email']) ?></strong></p>
+      <form method="post" class="row g-2 align-items-end">
         <?= csrf_field() ?>
         <input type="hidden" name="form" value="email">
-        <input type="email" name="new_email" class="form-control" required>
-        <button class="btn btn-semas-gold text-nowrap">Send Confirmation</button>
+        <div class="col-md"><label class="form-label small">New Email Address</label><input type="email" name="new_email" class="form-control w-100" required></div>
+        <div class="col-md-auto"><button class="btn btn-semas-gold w-100">Send Confirmation</button></div>
       </form>
-    </div>
-    <?php else: ?>
-    <div class="semas-card p-3 mb-3">
-      <h6 class="display-font mb-3">Email Address</h6>
-      <p class="mb-1 small">Current: <strong><?= e($me['email']) ?></strong></p>
-      <div class="alert alert-light border small py-2 mb-0"><i class="bi bi-lock-fill me-1"></i>Your email is managed by the Registrar Office. Contact them to request a change.</div>
     </div>
     <?php endif; ?>
 
-    <div class="semas-card p-3">
+    <div class="semas-card profile-card p-3">
       <h6 class="display-font mb-3">Change Password</h6>
       <form method="post">
         <?= csrf_field() ?>

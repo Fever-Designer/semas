@@ -9,10 +9,14 @@ $moduleId = (int) ($_GET['module_id'] ?? 0);
 $examType = ($_GET['type'] ?? '') === 'Exam' ? 'Exam' : 'CAT';
 
 $stmt = $db->prepare(
-    "SELECT m.*, d.department_name, u.full_name AS lecturer_name
+    "SELECT m.*, d.department_name, u.full_name AS lecturer_name,
+            sc.semester_name, sc.academic_year,
+            hod.full_name AS department_hod_name
      FROM modules m
      JOIN module_enrollments e ON e.module_id = m.module_id AND e.user_id = :uid
      LEFT JOIN departments d ON d.department_id = m.department_id
+     LEFT JOIN semester_calendars sc ON sc.id = m.semester_id
+     LEFT JOIN users hod ON hod.user_id = d.hod_user_id
      LEFT JOIN lecturers l ON l.lecturer_id = m.lecturer_id
      LEFT JOIN users u ON u.user_id = l.user_id
      WHERE m.module_id = :id"
@@ -39,8 +43,25 @@ $eligibilityStmt = $db->prepare(
 );
 $eligibilityStmt->execute(['mid' => $moduleId, 'uid' => $me['user_id'], 'type' => $examType]);
 $eligibilityRow = $eligibilityStmt->fetch() ?: [];
-$approverName = $eligibilityRow['approver_name'] ?? 'SEMAS Review';
-$approverRole = $eligibilityRow['approver_role'] ?? 'HOD / Coordinator';
+$approverName = (string) ($eligibilityRow['approver_name'] ?? '');
+$approverRole = (string) ($eligibilityRow['approver_role'] ?? '');
+
+if ($approverName === '') {
+    if (($module['session_type'] ?? '') === 'Weekend') {
+        $coordinatorStmt = $db->query(
+            "SELECT u.full_name
+             FROM users u
+             JOIN roles r ON r.role_id = u.role_id
+             WHERE r.role_name = 'Coordinator' AND u.status = 'Active'
+             ORDER BY u.full_name LIMIT 1"
+        );
+        $approverName = (string) ($coordinatorStmt->fetchColumn() ?: 'Not assigned');
+        $approverRole = 'Coordinator';
+    } else {
+        $approverName = (string) ($module['department_hod_name'] ?: 'Not assigned');
+        $approverRole = 'Head Of Department';
+    }
+}
 $approvedAt = $eligibilityRow['decided_at'] ? date('d F Y, h:i A', strtotime($eligibilityRow['decided_at'])) : null;
 $brandLogo = Settings::get('logo_path');
 
@@ -88,7 +109,7 @@ $verifyUrl = APP_URL . '/verify-slip.php?t=' . $verifyToken;
 
 // Plain text is supported by ordinary QR scanners offline (unlike data: URLs,
 // which many phone cameras block). It also carries the signed online URL.
-$uniName = Settings::get('university_name', 'University of Kigali');
+$uniName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
 try {
     $qrImage = SimpleQr::pngDataUri(SlipVerification::offlineText(
         $examType . ' Entry Slip',
@@ -97,6 +118,7 @@ try {
             ['Reg No', $me['reg_number'] ?? '/'],
             ['Module', $module['module_title']],
             ['Department', $module['department_name'] ?? '/'],
+            ['Semester', $module['semester_name'] ?? '/'],
             ['Assessment', $examType],
             ['Date', $examDate ? date('d M Y', strtotime($examDate)) : '/'],
             ['Room', $room],
@@ -129,7 +151,6 @@ try {
 
   .slip-title { text-align: center; padding: 20px 28px 14px; border-bottom: 2px solid #D4A24C; }
   .slip-title h2 { font-size: 18px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 2px; }
-  .slip-title .sub { color: #6B7280; font-size: 12px; }
 
   .body { padding: 22px 28px 28px; }
   table.info { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -186,7 +207,6 @@ try {
   </div>
   <div class="slip-title">
     <h2><?= e($examType) ?> Entry Slip</h2>
-    <div class="sub"><?= e($module['module_title']) ?> · <?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '/') ?></div>
   </div>
 
   <div class="body">
@@ -194,6 +214,7 @@ try {
       <tr><td class="label">Student Name</td><td class="value"><?= e($me['full_name']) ?></td></tr>
       <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '/') ?></td></tr>
       <tr><td class="label">Department</td><td class="value"><?= e($module['department_name'] ?? '/') ?></td></tr>
+      <tr><td class="label">Semester</td><td class="value"><?= e($module['semester_name'] ?? '/') ?></td></tr>
       <tr><td class="label">Module</td><td class="value"><?= e($module['module_title']) ?></td></tr>
       <tr><td class="label">Assessment Type</td><td class="value"><?= e($examType) ?></td></tr>
       <tr><td class="label"><?= e($examType) ?> Date</td><td class="value"><?= e($examDate ? date('l, d F Y', strtotime($examDate)) : '/') ?></td></tr>
@@ -207,12 +228,12 @@ try {
       <div class="sig-card">
         <div class="title">Approved by</div>
         <div class="name"><?= e($approverName) ?></div>
-        <div class="role"><?= e($approverRole) ?></div>
+        <div class="role"><?= e(role_display_name($approverRole)) ?></div>
         <div class="note">Approval time: <?= e($approvedAt ?? date('d F Y, h:i A')) ?></div>
       </div>
       <div class="qr-section">
         <div class="qr-box" id="verifyQr"><img src="<?= e($qrImage) ?>" alt="Scan to verify"></div>
-        <div class="qr-label">Scan for details (works offline) / use the included link for live verification</div>
+        <div class="qr-label">Scan to verify this document</div>
       </div>
     </div>
   </div>

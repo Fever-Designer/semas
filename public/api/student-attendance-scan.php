@@ -233,7 +233,7 @@ if ($qrData === '' && $qrToken !== '') {
     $tokenCheck = $db->prepare('SELECT module_id FROM modules WHERE module_id = :id AND module_qr_secret = :t');
     $tokenCheck->execute(['id' => $moduleId, 't' => $qrToken]);
     if (!$tokenCheck->fetch()) {
-        echo json_encode(['ok' => false, 'message' => 'Invalid or expired QR code. Ask your HOD to reprint the classroom QR.']);
+        echo json_encode(['ok' => false, 'message' => 'Invalid or expired QR code. Ask your Head Of Department to reprint the classroom QR.']);
         exit;
     }
 }
@@ -584,14 +584,14 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
         NotificationCenter::notify(
             $student['user_id'],
             'Attendance Warning / ' . $module['module_title'],
-            'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your HOD if you have a valid reason.',
+            'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your Head Of Department if you have a valid reason.',
             'Attendance'
         );
     } elseif ($absences >= 3) {
         NotificationCenter::notify(
             $student['user_id'],
             'Attendance Alert / ' . $module['module_title'],
-            'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for the CAT/Exam. Contact your HOD immediately.',
+            'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for the CAT/Exam. Contact your Head Of Department immediately.',
             'Attendance'
         );
         // Send email + SMS for 3rd+ absence
@@ -614,7 +614,7 @@ function trigger_absence_warning(PDO $db, array $student, array $module, array $
         if (!empty($student['phone_number']) && ($student['sms_opt_in'] ?? 1)) {
             Sms::send(
                 $student['phone_number'],
-                'SEMAS Alert: You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". Contact your HOD immediately.',
+                'SEMAS Alert: You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". Contact your Head Of Department immediately.',
                 $student['user_id']
             );
         }

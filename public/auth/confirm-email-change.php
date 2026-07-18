@@ -30,6 +30,12 @@ if ($uid && $token !== '') {
                    ->execute(['id' => $row['request_id']]);
                 AuditLog::record($uid, 'EMAIL_CHANGED', 'users', $uid, "new_email={$row['new_email']}");
                 NotificationCenter::notify($uid, 'Email address updated', 'Your login email was changed to ' . $row['new_email'] . '.', 'System');
+                $changedUserStmt = $db->prepare('SELECT user_id, full_name FROM users WHERE user_id = :uid');
+                $changedUserStmt->execute(['uid' => $uid]);
+                $changedUser = $changedUserStmt->fetch();
+                if ($changedUser) {
+                    Mailer::sendEmailChangedNotice($changedUser, (string) $row['new_email']);
+                }
                 $status = 'confirmed';
                 $newEmail = $row['new_email'];
             }

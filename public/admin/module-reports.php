@@ -20,7 +20,7 @@ $printTarget = $_GET['print'] ?? '';
 if (!in_array($printTarget, ['', 'class-summary', 'assessment-summary', 'assessment-register'], true)) {
     $printTarget = '';
 }
-$universityName = Settings::get('university_name', 'University of Kigali');
+$universityName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
 $period = $_GET['period'] ?? 'monthly';
 $anchorInput = $_GET['date'] ?? date('Y-m-d');
 $anchor = DateTime::createFromFormat('!Y-m-d', $anchorInput) ?: new DateTime('today');
@@ -53,6 +53,25 @@ $sessionFilter = $_GET['session'] ?? '';
 if (!in_array($sessionFilter, ['', 'Day', 'Evening', 'Weekend'], true)) {
     $sessionFilter = '';
 }
+
+$staffNameForRole = static function (string $role, ?int $departmentId = null) use ($db): string {
+    $sql = 'SELECT u.full_name
+            FROM users u
+            JOIN roles r ON r.role_id = u.role_id
+            WHERE r.role_name = :role AND u.status = :status';
+    $params = ['role' => $role, 'status' => 'Active'];
+    if ($departmentId !== null) {
+        $sql .= ' AND u.department_id = :department_id';
+        $params['department_id'] = $departmentId;
+    }
+    $sql .= ' ORDER BY u.full_name LIMIT 1';
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return (string) ($stmt->fetchColumn() ?: 'Not assigned');
+};
+$reportHodName = $staffNameForRole('HOD', $deptFilter !== '' ? (int) $deptFilter : null);
+$reportRegistrarName = $staffNameForRole('Registrar');
+$reportPrincipalName = $staffNameForRole('Principal');
 
 $where = [$activeSemester ? 'm.semester_id = :active_semester_id' : '1=0'];
 $params = [];
@@ -432,16 +451,17 @@ if ($reportMode === 'assessment' && $exportType === 'assessment-summary-pdf') {
   h1 { margin:0; text-align:center; font-size:20px; color:#172554; }
   h2 { margin:5px 0 2px; text-align:center; font-size:13px; }
   .meta { text-align:center; color:#475569; margin-bottom:14px; }
-  .summary { width:100%; margin-bottom:12px; border-collapse:separate; border-spacing:6px 0; }
-  .summary td { border:1px solid #cbd5e1; background:#f8fafc; padding:7px; text-align:center; }
-  .summary strong { display:block; font-size:15px; color:#172554; }
+  .summary { width:100%; margin-bottom:12px; border-collapse:collapse; table-layout:fixed; }
+  .summary th, .summary td { border:1px solid #000; background:#fff; color:#000; padding:7px; text-align:center; }
+  .summary th { font-size:8px; text-transform:uppercase; }
+  .summary td { font-size:13px; font-weight:bold; }
   table.report { width:100%; border-collapse:collapse; table-layout:fixed; }
-  .report th { background:#172554; color:#fff; padding:6px 4px; font-size:8px; text-transform:uppercase; }
-  .report td { border:1px solid #cbd5e1; padding:6px 4px; vertical-align:top; overflow-wrap:anywhere; }
-  .report tr:nth-child(even) td { background:#f8fafc; }
+  .report th, .report td { border:1px solid #000; }
+  .report th { background:#fff; color:#000; padding:6px 4px; font-size:8px; text-transform:uppercase; }
+  .report td { background:#fff; padding:6px 4px; vertical-align:top; overflow-wrap:anywhere; }
   .center { text-align:center; } .good { color:#166534; font-weight:bold; } .bad { color:#991b1b; font-weight:bold; }
   .small { color:#64748b; font-size:8px; margin-top:2px; }
-  .totals td { background:#e2e8f0 !important; font-weight:bold; }
+  .totals td { background:#fff !important; font-weight:bold; }
   .footer { margin-top:22px; width:100%; }
   .footer td { width:33.33%; padding-top:22px; text-align:center; }
   .line { border-top:1px solid #334155; padding-top:4px; margin:0 18px; }
@@ -449,13 +469,10 @@ if ($reportMode === 'assessment' && $exportType === 'assessment-summary-pdf') {
   <h1><?= e($universityName) ?></h1>
   <h2>University-Wide <?= e($assessmentType) ?> Attendance Report</h2>
   <div class="meta"><?= e(Semester::label($activeSemester)) ?> &nbsp;|&nbsp; <?= e($periodLabel) ?> &nbsp;|&nbsp; <?= e($sessionLabel) ?> &nbsp;|&nbsp; Generated <?= e($generatedAt) ?></div>
-  <table class="summary"><tr>
-    <td>Scheduled sittings<strong><?= $assessmentTotals['scheduled'] ?></strong></td>
-    <td>Registered candidates<strong><?= $assessmentTotals['registered'] ?></strong></td>
-    <td>Candidates who sat<strong><?= $assessmentTotals['sat'] ?></strong></td>
-    <td>Absent candidates<strong><?= $assessmentTotals['absent'] ?></strong></td>
-    <td>Missed sign-out<strong><?= $assessmentTotals['missed_signout'] ?></strong></td>
-  </tr></table>
+  <table class="summary">
+    <thead><tr><th>Scheduled sittings</th><th>Registered candidates</th><th>Candidates who sat</th><th>Absent candidates</th><th>Missed sign-out</th></tr></thead>
+    <tbody><tr><td><?= $assessmentTotals['scheduled'] ?></td><td><?= $assessmentTotals['registered'] ?></td><td><?= $assessmentTotals['sat'] ?></td><td><?= $assessmentTotals['absent'] ?></td><td><?= $assessmentTotals['missed_signout'] ?></td></tr></tbody>
+  </table>
   <table class="report">
     <colgroup>
       <col style="width:10%"><col style="width:18%"><col style="width:9%"><col style="width:14%">
@@ -485,7 +502,11 @@ if ($reportMode === 'assessment' && $exportType === 'assessment-summary-pdf') {
     <?php if ($assessmentRows): ?><tr class="totals"><td colspan="6">UNIVERSITY TOTAL</td><td class="center"><?= $assessmentTotals['registered'] ?></td><td class="center"><?= $assessmentTotals['sat'] ?></td><td class="center"><?= $assessmentTotals['absent'] ?></td><td class="center"><?= $assessmentTotals['missed_signout'] ?></td><td class="center"><?= $assessmentTotals['registered'] ? round($assessmentTotals['sat'] * 100 / $assessmentTotals['registered']) : 0 ?>%</td></tr><?php endif; ?>
     </tbody>
   </table>
-  <table class="footer"><tr><td><div class="line">Prepared by</div></td><td><div class="line">Academic Registrar</div></td><td><div class="line">Principal / Approval</div></td></tr></table>
+  <table class="footer"><tr>
+    <td><div class="line"><strong><?= e($reportHodName) ?></strong><br>Prepared by / Head Of Department</div></td>
+    <td><div class="line"><strong><?= e($reportRegistrarName) ?></strong><br>Academic Registrar</div></td>
+    <td><div class="line"><strong><?= e($reportPrincipalName) ?></strong><br>Principal / Approval</div></td>
+  </tr></table>
 </body></html>
     <?php
     $html = (string) ob_get_clean();
@@ -504,6 +525,68 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <style>
   .report-print-heading { display:none; }
+  .plain-summary {
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+  }
+  .plain-summary th,
+  .plain-summary td {
+    border:1px solid #000 !important;
+    background:#fff !important;
+    color:#000 !important;
+    padding:.55rem;
+    text-align:center;
+  }
+  .plain-summary th {
+    font-weight:600;
+    vertical-align:middle;
+  }
+  .plain-summary td {
+    font-size:1rem;
+    font-weight:700;
+  }
+  table.table {
+    border-collapse:collapse;
+  }
+  table.table > :not(caption) > * > * {
+    border:1px solid #000 !important;
+    background:#fff !important;
+    color:#000 !important;
+    box-shadow:none !important;
+  }
+  table.table .badge {
+    border:0 !important;
+    background:#fff !important;
+    color:#000 !important;
+  }
+  .report-print-area table {
+    border-collapse:collapse;
+  }
+  .report-print-area table > :not(caption) > * > * {
+    color:#000 !important;
+    background:#fff !important;
+    border:1px solid #000 !important;
+    box-shadow:none !important;
+  }
+  .report-print-area table .badge {
+    color:#000 !important;
+    background:#fff !important;
+    border:0 !important;
+  }
+  .report-approvals {
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:2rem;
+    margin-top:2.5rem;
+    text-align:center;
+    color:#000;
+  }
+  .report-approval {
+    border-top:1px solid #000;
+    padding-top:.35rem;
+  }
+  .report-approval strong { display:block; }
   @media print {
     @page { size: landscape; margin: 12mm; }
     body * { visibility:hidden !important; }
@@ -536,26 +619,17 @@ require __DIR__ . '/../partials/layout_top.php';
   <a class="btn btn-sm <?= $reportMode === 'assessment' ? 'btn-semas' : 'btn-outline-dark' ?>" href="?report=assessment&amp;assessment_type=CAT"><i class="bi bi-journal-check me-1"></i> CAT / Exam Report</a>
 </div>
 
-<div class="row g-3 mb-4">
+<div class="mb-4">
   <?php if ($reportMode === 'assessment'): ?>
-    <div class="col-12">
-      <div class="text-muted small">
-        Latest scheduled <?= e($assessmentType) ?>:
-        <strong><?= e($latestAssessmentRow['module_title'] ?? 'No matching schedule') ?></strong>
-        <?php if ($latestAssessmentRow): ?>&middot; <?= date('d M Y', strtotime($latestAssessmentRow['scheduled_date'])) ?><?php endif; ?>
-      </div>
-    </div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label"><?= e($assessmentType) ?> Sitting</div><div class="stat-value"><?= $latestAssessmentStats['scheduled'] ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Registered Candidates</div><div class="stat-value"><?= $latestAssessmentStats['registered'] ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Sat Assessment</div><div class="stat-value text-success"><?= $latestAssessmentStats['sat'] ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Absent Candidates</div><div class="stat-value text-danger"><?= $latestAssessmentStats['absent'] ?></div></div></div>
+    <table class="plain-summary">
+      <thead><tr><th>Scheduled sittings</th><th>Registered candidates</th><th>Candidates who sat</th><th>Absent candidates</th><th>Missed sign-out</th></tr></thead>
+      <tbody><tr><td><?= $assessmentTotals['scheduled'] ?></td><td><?= $assessmentTotals['registered'] ?></td><td><?= $assessmentTotals['sat'] ?></td><td><?= $assessmentTotals['absent'] ?></td><td><?= $assessmentTotals['missed_signout'] ?></td></tr></tbody>
+    </table>
   <?php else: ?>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= count($modules) ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Closed Sessions</div><div class="stat-value"><?= $summarySessions ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Special Cases / 3+ Missed</div><div class="stat-value text-danger"><?= $summarySpecial ?></div></div></div>
-    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
-    <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
-    </div></div>
+    <table class="plain-summary">
+      <thead><tr><th>Modules / <?= e($sessionLabel) ?></th><th>Closed sessions</th><th>Special cases / 3+ missed</th><th>Overall attendance rate</th></tr></thead>
+      <tbody><tr><td><?= count($modules) ?></td><td><?= $summarySessions ?></td><td><?= $summarySpecial ?></td><td><?= $overallRate ?>%</td></tr></tbody>
+    </table>
   <?php endif; ?>
 </div>
 
@@ -646,6 +720,11 @@ require __DIR__ . '/../partials/layout_top.php';
       <?php endif; ?>
     </table>
   </div>
+  <div class="report-approvals">
+    <div class="report-approval"><strong><?= e($reportHodName) ?></strong>Prepared by / Head Of Department</div>
+    <div class="report-approval"><strong><?= e($reportRegistrarName) ?></strong>Academic Registrar</div>
+    <div class="report-approval"><strong><?= e($reportPrincipalName) ?></strong>Principal / Approval</div>
+  </div>
 </div>
 
 <?php if ($selectedAssessment): ?>
@@ -664,7 +743,7 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>#</th><th>Registration Number</th><th>Student</th><th>Eligibility</th><th>Sign In</th><th>Sign Out</th><th>Assessment Status</th><th>Missed Reason</th></tr></thead>
+      <thead><tr><th>NO</th><th>Registration Number</th><th>Student</th><th>Eligibility</th><th>Sign In</th><th>Sign Out</th><th>Assessment Status</th><th>Missed Reason</th></tr></thead>
       <tbody>
         <?php foreach ($assessmentRoster as $index => $student):
           $studentStatus = !$student['signin_time']
@@ -684,6 +763,11 @@ require __DIR__ . '/../partials/layout_top.php';
         <?php endforeach; ?>
       </tbody>
     </table>
+  </div>
+  <div class="report-approvals">
+    <div class="report-approval"><strong><?= e($reportHodName) ?></strong>Prepared by / Head Of Department</div>
+    <div class="report-approval"><strong><?= e($reportRegistrarName) ?></strong>Academic Registrar</div>
+    <div class="report-approval"><strong><?= e($reportPrincipalName) ?></strong>Principal / Approval</div>
   </div>
 </div>
 <?php endif; ?>
@@ -851,6 +935,11 @@ require __DIR__ . '/../partials/layout_top.php';
         </tfoot>
       <?php endif; ?>
     </table>
+  </div>
+  <div class="report-approvals">
+    <div class="report-approval"><strong><?= e($reportHodName) ?></strong>Prepared by / Head Of Department</div>
+    <div class="report-approval"><strong><?= e($reportRegistrarName) ?></strong>Academic Registrar</div>
+    <div class="report-approval"><strong><?= e($reportPrincipalName) ?></strong>Principal / Approval</div>
   </div>
 </div>
 

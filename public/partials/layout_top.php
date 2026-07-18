@@ -226,7 +226,7 @@ window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_U
             <span class="d-none d-md-inline small fw-semibold"><?= e($user['full_name'] ?? '') ?></span>
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
-            <li><span class="dropdown-item-text small text-muted"><?= e($roleLabel ?? '') ?></span></li>
+            <li><span class="dropdown-item-text small text-muted"><?= e(role_display_name($roleLabel)) ?></span></li>
             <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item text-danger" href="<?= APP_URL ?>/auth/logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
           </ul>

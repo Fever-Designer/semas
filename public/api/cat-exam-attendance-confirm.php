@@ -380,8 +380,8 @@ if ($action === 'submit') {
 
     AuditLog::record(Auth::id(), 'CAT_EXAM_SUBMIT', 'cat_exam_schedules', $scheduleId);
     $message = $schedule['exam_type'] === 'Exam'
-        ? 'Final Exam attendance submitted to HOD. The module is now Completed and class attendance is closed.'
-        : 'Attendance list submitted to HOD successfully.';
+        ? 'Final Exam attendance submitted to the Head Of Department. The module is now Completed and class attendance is closed.'
+        : 'Attendance list submitted to the Head Of Department successfully.';
     echo json_encode(['ok' => true, 'message' => $message]);
     exit;
 }

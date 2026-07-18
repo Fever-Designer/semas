@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $completedSameTitle->execute(['uid' => $me['user_id'], 'title' => $module['module_title']]);
             if ($completedSameTitle->fetchColumn()) {
-                flash('error', 'You already completed "' . $module['module_title'] . '". Contact your HoD if this must be registered as a retake or special case.');
+                flash('error', 'You already completed "' . $module['module_title'] . '". Contact your Head Of Department if this must be registered as a retake or special case.');
                 redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
             }
             if (!Module::canAddOngoingEnrollment((int) $me['user_id'], $moduleId)) {
@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sessionConflict = Module::studentOngoingSessionConflict($db, (int) $me['user_id'], $moduleId);
             if ($sessionConflict) {
                 $conflict = true;
-                flash('error', 'You are already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session. Contact your HoD if you need an exception.');
+                flash('error', 'You are already registered for "' . $sessionConflict['module_title'] . '" in the same ' . Module::sessionLabel($sessionConflict) . ' session. Contact your Head Of Department if you need an exception.');
             }
             if (!$conflict) {
                 try {
@@ -241,7 +241,7 @@ require __DIR__ . '/../partials/layout_top.php';
               <div class="text-danger small mt-1">Wait until <?= e($activeRegistrationBlock['module_title']) ?> is completed.</div>
             <?php elseif (!$registrationOpen): ?>
               <button class="btn btn-sm btn-secondary" disabled>Registration closed</button>
-              <div class="text-muted small mt-1">Contact your HOD for late registration.</div>
+              <div class="text-muted small mt-1">Contact your Head Of Department for late registration.</div>
             <?php else: ?>
               <button class="btn btn-sm btn-semas-gold"
                 onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= e(json_encode($m['module_title'])) ?>, <?= e(json_encode($m['lecturer_name'] ?? 'TBA')) ?>, <?= e(json_encode(Module::sessionLabel($m))) ?>)">
@@ -257,15 +257,11 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="semas-card p-4 text-center text-muted small">
       No modules are currently open for registration in your department
       <?= $studentIntake ? '(' . e($studentIntake) . ' intake)' : '' ?>.
-      Check back later or contact your HoD.
+      Check back later or contact your Head Of Department.
     </div>
   <?php endif; ?>
 
 <?php elseif ($tab === 'mine'): ?>
-  <div class="alert alert-info small mb-3">
-    <i class="bi bi-info-circle me-1"></i>
-    To de-register from a module, contact your <strong>Head of Department (HoD)</strong>. Only the HoD can remove a registration.
-  </div>
   <div class="row g-3">
     <?php foreach ($myOngoing as $m): ?>
       <div class="col-md-4">
@@ -318,7 +314,7 @@ require __DIR__ . '/../partials/layout_top.php';
         </div>
         <p class="small text-muted mb-0">
           <i class="bi bi-exclamation-circle me-1"></i>
-          Once registered, only your HoD can cancel this registration. Make sure this is the right module.
+          Once registered, only your Head Of Department can cancel this registration. Make sure this is the right module.
         </p>
       </div>
       <div class="modal-footer">

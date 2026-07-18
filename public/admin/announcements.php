@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } elseif ($who === 'staff') {
         $audienceKey = 'All Staff';
-        $scopeLabel  = 'All Staff / Principals, Deans, HODs, Registrars, Coordinators & Lecturers';
+        $scopeLabel  = 'All Staff / Principals, Deans, Heads Of Department, Registrars, Coordinators & Lecturers';
         // Include all non-student roles
         $stmt = $db->query(
             "SELECT u.* FROM users u JOIN roles r ON r.role_id=u.role_id
@@ -164,7 +164,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <option value="everyone">Everyone (all users)</option>
           <option value="students">Students</option>
           <option value="lecturers">Lecturers</option>
-          <option value="staff">All Staff (Admins / Deans / HODs / Registrars / Coordinators)</option>
+          <option value="staff">All Staff (Admins / Deans / Heads Of Department / Registrars / Coordinators)</option>
           <option value="registrar">Registrar Office only</option>
           <option value="coordinator">Coordinator(s) only</option>
         </select>

@@ -11,7 +11,7 @@ $activeNav = 'roles';
 // from a database table. Presenting this as if it were live-editable would be
 // misleading, so it's deliberately read-only and documents the actual rules.
 $matrix = [
-    ['feature' => 'Create/manage HOD, Dean, Lecturer accounts', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+    ['feature' => 'Create/manage Head Of Department, Dean, Lecturer accounts', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
     ['feature' => 'Create Dean accounts', 'Principal' => true, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
     ['feature' => 'Manage departments', 'Principal' => true, 'HOD' => 'View only', 'Dean' => false, 'Lecturer' => false, 'Student' => false],
     ['feature' => 'Create/assign modules', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
@@ -41,7 +41,7 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="semas-card p-3">
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>Feature</th><th class="text-center">Principal</th><th class="text-center">HOD</th><th class="text-center">Dean</th><th class="text-center">Lecturer</th><th class="text-center">Student</th></tr></thead>
+      <thead><tr><th>Feature</th><th class="text-center">Principal</th><th class="text-center">Head Of Department</th><th class="text-center">Dean</th><th class="text-center">Lecturer</th><th class="text-center">Student</th></tr></thead>
       <tbody>
         <?php foreach ($matrix as $row): ?>
           <tr>

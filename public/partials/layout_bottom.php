@@ -36,12 +36,17 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     list.innerHTML = items.map(function (n) {
       const icon = categoryIcon[n.category] || 'bi-bell-fill';
       const unreadClass = Number(n.is_read) === 0 ? ' unread' : '';
-      return '<div class="notif-item' + unreadClass + '" data-id="' + n.notification_id + '">' +
+      const linkedClass = n.action_url ? ' notif-linked' : '';
+      return '<div class="notif-item' + unreadClass + linkedClass + '" data-id="' + n.notification_id + '"' +
+        (n.action_url ? ' data-url="' + escapeHtml(n.action_url) + '"' : '') +
+        ' role="' + (n.action_url ? 'link' : 'button') + '" tabindex="0">' +
         '<div class="d-flex justify-content-between align-items-start">' +
         '<div class="fw-semibold"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(n.title) + '</div>' +
+        (n.action_url ? '<i class="bi bi-chevron-right ms-2 text-muted"></i>' : '') +
         '</div>' +
         '<div class="text-muted" style="font-size:0.78rem;">' + escapeHtml(n.body || '') + '</div>' +
-        '<div class="text-muted" style="font-size:0.68rem;">' + n.created_at + '</div>' +
+        '<div class="text-muted" style="font-size:0.68rem;">' + n.created_at +
+        (n.action_url ? ' &middot; View details' : '') + '</div>' +
         '</div>';
     }).join('');
   }
@@ -138,13 +143,38 @@ document.getElementById('sidebarToggle')?.addEventListener('click', function () 
     panel.classList.toggle('show');
     if (wasHidden) {
       loadNotifications();
-      postAction('mark_all_read').then(function (d) {
-        renderCount(d.unread_count);
-        list.querySelectorAll('.notif-item.unread').forEach(function (item) {
-          item.classList.remove('unread');
-        });
-      }).catch(function (error) { console.error(error); });
     }
+  });
+
+  function openNotification(item) {
+    if (!item || item.dataset.opening === '1') return;
+    item.dataset.opening = '1';
+
+    postAction('mark_read', item.dataset.id)
+      .then(function (data) {
+        item.classList.remove('unread');
+        renderCount(data.unread_count);
+        if (item.dataset.url) {
+          window.location.href = APP_URL.replace(/\/$/, '') + item.dataset.url;
+        } else {
+          delete item.dataset.opening;
+        }
+      })
+      .catch(function (error) {
+        delete item.dataset.opening;
+        console.error(error);
+      });
+  }
+
+  list.addEventListener('click', function (e) {
+    openNotification(e.target.closest('.notif-item[data-id]'));
+  });
+  list.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('.notif-item[data-id]');
+    if (!item) return;
+    e.preventDefault();
+    openNotification(item);
   });
   document.addEventListener('click', function (e) {
     if (!panel.contains(e.target) && e.target !== bell) panel.classList.remove('show');

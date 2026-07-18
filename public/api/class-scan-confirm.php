@@ -140,14 +140,14 @@ if ($status === 'Absent' && $student) {
             NotificationCenter::notify(
                 $studentUserId,
                 'Attendance Warning / ' . $module['module_title'],
-                'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your HOD if you have a valid reason.',
+                'You have missed 2 sessions of "' . $module['module_title'] . '". Missing a third session may affect your CAT/Exam eligibility. Please contact your Head Of Department if you have a valid reason.',
                 'Attendance'
             );
         } elseif ($absences >= 3) {
             NotificationCenter::notify(
                 $studentUserId,
                 'Attendance Alert / ' . $module['module_title'],
-                'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for CAT/Exam. Contact your HOD immediately.',
+                'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for CAT/Exam. Contact your Head Of Department immediately.',
                 'Attendance'
             );
             if (!empty($student['email'])) {

@@ -755,7 +755,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <table class="table table-bordered table-sm mb-0 align-middle" style="white-space:nowrap;font-size:.77rem;">
       <thead>
         <tr class="table-dark" style="font-size:.71rem;">
-          <th class="text-center" style="min-width:30px;">#</th>
+          <th class="text-center" style="min-width:30px;">NO</th>
           <th style="min-width:95px;">Reg No</th>
           <th style="min-width:170px;position:sticky;left:0;z-index:3;background:#212529;">Student Name</th>
           <th style="min-width:105px;">Phone Number</th>
@@ -883,7 +883,6 @@ require __DIR__ . '/../partials/layout_top.php';
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body py-2">
-          <p class="text-muted small mb-3">Create a session for a class that was held but had no QR scans.</p>
           <div class="mb-2">
             <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
             <input type="date" name="session_date" class="form-control form-control-sm" required

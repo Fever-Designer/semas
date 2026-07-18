@@ -11,19 +11,6 @@ Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 
 /**
- * Default Instructions
- */
-$defaultAssignmentInstructions = "Assignment Submission Instructions
-
-1. Submit your own original work. Do not copy work submitted by another student; this is cheating.
-2. AI-generated or AI-assisted content must not exceed 20% of the submitted work.
-3. Name the file using your full name and registration number (for example: Firstname_Lastname_RegNo.pdf). SEMAS saves submissions under this required naming format.
-4. Submit only a PDF or ZIP file with a maximum size of 10 MB.
-5. Submit before the stated deadline. Late submissions are not accepted.
-6. Review the assignment instructions and attachment before submitting.
-7. Plagiarism, copied submissions, false declarations, and other academic misconduct may lead to disciplinary action.";
-
-/**
  * Get Lecturer safely
  */
 $lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');
@@ -298,10 +285,6 @@ require __DIR__ . '/../partials/layout_top.php';
 
 <?php
 $deadlineTime = !empty($a['deadline']) ? strtotime($a['deadline']) : null;
-$assignmentInstructions = trim($a['instructions'] ?? '');
-if ($assignmentInstructions === '') {
-    $assignmentInstructions = $defaultAssignmentInstructions;
-}
 ?>
 
 <div class="semas-card p-3 mb-3">
@@ -312,8 +295,6 @@ if ($assignmentInstructions === '') {
             <?= ($deadlineTime && $deadlineTime < time()) ? 'Closed' : 'Open' ?>
         </span>
     </div>
-
-    <p class="small text-muted"><?= nl2br(e($assignmentInstructions)) ?></p>
 
     <p class="small">
         Deadline: <?= e((string) date('d M Y, H:i', (int) $deadlineTime)) ?>
@@ -351,12 +332,6 @@ if ($assignmentInstructions === '') {
           <div class="mb-3">
             <label class="form-label small">Deadline</label>
             <input name="deadline" type="datetime-local" class="form-control" required value="<?= e(date('Y-m-d\TH:i', strtotime((string) $a['deadline']))) ?>">
-          </div>
-          <div class="mb-3">
-            <label class="form-label small">Instructions</label>
-            <div class="form-control form-control-light small text-muted" style="min-height:120px;">
-              <?= nl2br(e(trim($defaultAssignmentInstructions))) ?>
-            </div>
           </div>
           <div class="mb-3">
             <label class="form-label small">Replace Attachment</label>
@@ -397,12 +372,6 @@ if ($assignmentInstructions === '') {
           <div class="mb-3">
             <label class="form-label small">Deadline</label>
             <input name="deadline" type="datetime-local" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label small">Instructions</label>
-            <div class="form-control form-control-light small text-muted" style="min-height:120px;">
-              <?= nl2br(e(trim($defaultAssignmentInstructions))) ?>
-            </div>
           </div>
           <div class="mb-3">
             <label class="form-label small">Assignment File <span class="text-danger">*</span></label>

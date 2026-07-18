@@ -224,7 +224,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <h6 class="display-font mb-3">Roles &amp; Permissions</h6>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>Feature</th><th class="text-center">Principal</th><th class="text-center">HOD</th><th class="text-center">Dean</th><th class="text-center">Lecturer</th><th class="text-center">Student</th></tr></thead>
+      <thead><tr><th>Feature</th><th class="text-center">Principal</th><th class="text-center">Head Of Department</th><th class="text-center">Dean</th><th class="text-center">Lecturer</th><th class="text-center">Student</th></tr></thead>
       <tbody>
         <?php
         $permCell = function ($v) {
@@ -233,7 +233,7 @@ require __DIR__ . '/../partials/layout_top.php';
             return '<span class="badge bg-light text-dark border">' . e($v) . '</span>';
         };
         $permMatrix = [
-            ['feature' => 'Create/manage HOD, Dean, Lecturer accounts', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
+            ['feature' => 'Create/manage Head Of Department, Dean, Lecturer accounts', 'Principal' => true, 'HOD' => false, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Create Dean accounts', 'Principal' => true, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Manage departments', 'Principal' => true, 'HOD' => 'View only', 'Dean' => false, 'Lecturer' => false, 'Student' => false],
             ['feature' => 'Create/assign modules', 'Principal' => false, 'HOD' => true, 'Dean' => false, 'Lecturer' => false, 'Student' => false],

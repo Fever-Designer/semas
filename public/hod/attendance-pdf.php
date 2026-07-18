@@ -49,7 +49,7 @@ $rows = $db->prepare(
 $rows->execute(['mid' => $moduleId, 'from' => $dateFrom, 'to' => $dateTo, 'weekend' => $module['session_type'] === 'Weekend' ? 1 : 0]);
 $records = $rows->fetchAll();
 
-$brandName = Settings::get('university_name', 'University of Kigali');
+$brandName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html>

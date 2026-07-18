@@ -16,7 +16,6 @@ $message    = $a['message'] ?? '';
 $priority   = $a['priority'] ?? 'Normal';
 $category   = $a['category'] ?? 'General';
 $senderName = $a['sender_name'] ?? '/';
-$senderRole = $a['sender_role'] ?? '/';
 $postedAt   = $a['posted_at'] ?? null;
 
 // Safe timestamp handling
@@ -64,22 +63,17 @@ $posted = $postedAt ? strtotime($postedAt) : time();
   <!-- Footer Info -->
   <div class="row small gy-1">
 
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-4">
       <span class="text-muted">Sent by:</span><br>
       <strong><?= e($senderName) ?></strong>
     </div>
 
-    <div class="col-6 col-md-3">
-      <span class="text-muted">Role:</span><br>
-      <strong><?= e($senderRole) ?></strong>
-    </div>
-
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-4">
       <span class="text-muted">Date:</span><br>
       <?= e(date('d M Y', $posted)) ?>
     </div>
 
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-4">
       <span class="text-muted">Time:</span><br>
       <?= e(date('h:i A', $posted)) ?>
     </div>

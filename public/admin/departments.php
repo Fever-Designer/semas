@@ -78,7 +78,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php endif; ?>
         </div>
         <p class="text-muted small mb-2"><?= e($d['faculty_name'] ?? '/') ?> &middot; Code: <?= e($d['department_code']) ?></p>
-        <p class="small mb-0">HOD: <?= e($d['hod_name'] ?? 'Not assigned') ?></p>
+        <p class="small mb-0">Head Of Department: <?= e($d['hod_name'] ?? 'Not assigned') ?></p>
         <p class="small text-muted mb-0"><?= (int) $d['student_count'] ?> students &middot; <?= (int) $d['lecturer_count'] ?> lecturers &middot; <?= (int) $d['module_count'] ?> modules</p>
       </div>
     </div>

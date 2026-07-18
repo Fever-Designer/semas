@@ -11,12 +11,14 @@ $scheduleId = (int) ($_GET['schedule_id'] ?? 0);
 $stmt = $db->prepare(
     "SELECT cs.*, m.module_title, m.session_type, m.room AS module_room,
             d.department_name,
+            sc.semester_name, sc.academic_year,
             u.full_name AS invigilator_name, u.photo_path AS invigilator_photo,
             ul.full_name AS lecturer_name,
             sub.submitted_at, sub.notes AS submission_notes,
             e.enrollment_id
      FROM cat_exam_schedules cs
      JOIN modules m ON m.module_id = cs.module_id
+     LEFT JOIN semester_calendars sc ON sc.id = COALESCE(cs.semester_id, m.semester_id)
      LEFT JOIN departments d ON d.department_id = m.department_id
      LEFT JOIN lecturers l ON l.lecturer_id = cs.invigilator_id
      LEFT JOIN users u ON u.user_id = l.user_id
@@ -56,7 +58,7 @@ $soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
 $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
 $timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' / ' . date('h:i A', strtotime($schedule['end_time']));
 $issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
-$uniName   = Settings::get('university_name', 'University of Kigali');
+$uniName   = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
 $brandLogo = Settings::get('logo_path');
 
 // Verification QR payload: sign with APP_KEY, expires 365 days (used only for slip authenticity)
@@ -80,6 +82,7 @@ try {
             ['Reg No', $me['reg_number'] ?? '/'],
             ['Module', $schedule['module_title']],
             ['Department', $schedule['department_name'] ?? '/'],
+            ['Semester', $schedule['semester_name'] ?? '/'],
             ['Assessment', $schedule['exam_type']],
             ['Date', $examDate],
             ['Room', $schedule['room'] ?? ($schedule['module_room'] ?? '/')],
@@ -184,7 +187,6 @@ try {
 
   <div class="slip-title">
     <h2><?= e($schedule['exam_type']) ?> Attendance Slip</h2>
-    <div class="sub"><?= e($schedule['module_title']) ?> · <?= e($dayOfWeek) ?>, <?= e($examDate) ?></div>
   </div>
 
   <div class="body">
@@ -192,6 +194,7 @@ try {
       <tr><td class="label">Student Name</td>       <td class="value"><?= e($me['full_name']) ?></td></tr>
       <tr><td class="label">Registration Number</td><td class="value"><?= e($me['reg_number'] ?? '/') ?></td></tr>
       <tr><td class="label">Department</td>         <td class="value"><?= e($schedule['department_name'] ?? '/') ?></td></tr>
+      <tr><td class="label">Semester</td>           <td class="value"><?= e($schedule['semester_name'] ?? '/') ?></td></tr>
       <tr><td class="label">Module</td>             <td class="value"><?= e($schedule['module_title']) ?></td></tr>
       <tr><td class="label">Examiner</td><td class="value"><?= e($schedule['lecturer_name'] ?? '/') ?></td></tr>
       <tr><td class="label">Invigilator</td>        <td class="value"><?= e($schedule['invigilator_name'] ?? '/') ?></td></tr>
@@ -212,7 +215,7 @@ try {
       </div>
       <div class="qr-section">
         <div id="verifyQr"><img src="<?= e($qrImage) ?>" alt="Scan to verify"></div>
-        <div class="qr-label">Scan for details (works offline) / use the included link for live verification</div>
+        <div class="qr-label">Scan to verify this document</div>
       </div>
     </div>
   </div>

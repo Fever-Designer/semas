@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $invCheck = $db->prepare('SELECT lecturer_id FROM lecturers WHERE lecturer_id = :id');
         $invCheck->execute(['id' => $invigId]);
         if ($examType === 'Exam' && !$catFinished) {
-            flash('error', 'CAT must be finished (attendance submitted to HOD) for this module before the Exam can be scheduled.');
+            flash('error', 'CAT must be finished (attendance submitted to the Head Of Department) for this module before the Exam can be scheduled.');
         } elseif (!$invCheck->fetch()) {
             flash('error', 'Invalid invigilator selected.');
         } elseif (!$room || !$schedDate || !$startTime || !$endTime) {
@@ -306,7 +306,6 @@ require __DIR__ . '/../partials/layout_top.php';
     </div>
   </form>
   <?php if ($moduleId && !$catFinishedForModule): ?>
-    <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Exam scheduling is locked until CAT is finished (attendance submitted to HOD) for this module.</p>
   <?php endif; ?>
 </div>
 
@@ -339,10 +338,6 @@ require __DIR__ . '/../partials/layout_top.php';
     <?php endif; ?>
     <div class="collapse <?= !$currentSchedule ? 'show' : '' ?>" id="scheduleForm">
       <?php $moduleDate = $examType === 'CAT' ? ($selectedModule['cat_date'] ?? '') : ($selectedModule['exam_date'] ?? ''); ?>
-      <div class="alert alert-light border small py-2 mt-1 mb-2">
-        <i class="bi bi-calendar-event me-1"></i>
-        Date is taken from the module: <strong><?= e($moduleDate ?: '/') ?></strong>
-      </div>
       <form method="post" class="row g-2">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_schedule">
@@ -394,7 +389,7 @@ require __DIR__ . '/../partials/layout_top.php';
             <?php
               $pct = isset($row['attendance_percent']) ? (float) $row['attendance_percent'] : 0.0;
               $review = !empty($row['requires_review']);
-              $systemLabel = $review ? 'Requires HoD Approval' : $row['system_decision'];
+              $systemLabel = $review ? 'Requires Head Of Department Approval' : $row['system_decision'];
               $systemClass = $row['system_decision'] === 'Allowed' ? 'badge-completed' : ($review ? 'badge-urgent' : 'badge-cancelled');
               $missed = (int) $row['absences_count'];
               $riskLabel = $missed >= 4 ? 'Critical' : ($missed === 3 ? 'Special Case' : ($missed === 2 ? 'Warning' : ''));
@@ -464,7 +459,6 @@ require __DIR__ . '/../partials/layout_top.php';
   ?>
   <?php if (!$histModId): ?>
   <div class="semas-card p-3">
-    <p class="small text-muted mb-2">Completed modules (read-only / no actions available):</p>
     <div class="row g-2">
       <?php foreach ($completedModules as $m): ?>
       <div class="col-md-4">
@@ -501,7 +495,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-eye me-1"></i>History view / read only. No changes can be made to completed modules.</div>
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Student</th><th>Reg No.</th><th>Missed</th><th>System Decision</th><th>HOD Status</th><th>Final</th></tr></thead>
+        <thead><tr><th>Student</th><th>Reg No.</th><th>Missed</th><th>System Decision</th><th>Head Of Department Status</th><th>Final</th></tr></thead>
         <tbody>
           <?php foreach ($histList as $row): ?>
           <tr>
