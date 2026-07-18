@@ -240,3 +240,18 @@ window.SEMAS_BASE_URL = <?= json_encode(rtrim((string) (parse_url(APP_URL, PHP_U
       <?php if ($msg = flash('error')): ?>
         <div class="alert alert-danger small"><?= e($msg) ?></div>
       <?php endif; ?>
+      <?php
+        $layoutSemester = Semester::active(Database::connection());
+        $layoutRole = Auth::role();
+      ?>
+      <?php if ($layoutSemester): ?>
+        <div class="alert alert-light border py-2 px-3 small d-flex align-items-center gap-2">
+          <i class="bi bi-calendar3 text-success"></i>
+          <span>Active semester: <strong><?= e(Semester::label($layoutSemester)) ?></strong>
+          &middot; <?= date('d M Y', strtotime($layoutSemester['start_date'])) ?>–<?= date('d M Y', strtotime($layoutSemester['end_date'])) ?></span>
+        </div>
+      <?php elseif ($layoutRole !== 'Registrar'): ?>
+        <div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i><?= e(Semester::NO_ACTIVE_MESSAGE) ?></div>
+      <?php else: ?>
+        <div class="alert alert-info small"><i class="bi bi-calendar-plus me-1"></i>No active semester. Create a current semester calendar to enable academic operations.</div>
+      <?php endif; ?>

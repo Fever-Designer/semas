@@ -7,6 +7,7 @@ Announcement::purgeExpired();
 $pageTitle = 'Academic Announcements';
 $activeNav = 'announcements';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 $isCoordinator = Auth::role() === 'Coordinator';
 $tab = $_GET['tab'] ?? 'announcements';

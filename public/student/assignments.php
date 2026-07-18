@@ -6,6 +6,7 @@ Auth::requireRole(['Student']);
 $pageTitle = 'My Assignments';
 $activeNav = 'modules';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 // SEMAS Default Assignment Instructions (System-Wide) / fixed block id def_ins_001, applies to every assignment.
 $defaultAssignmentInstructionsId = 'def_ins_001';

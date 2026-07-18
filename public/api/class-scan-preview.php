@@ -5,6 +5,7 @@ Auth::requireTeachingAccess();
 header('Content-Type: application/json');
 
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 $sessionId = (int) ($_GET['session_id'] ?? $_POST['session_id'] ?? 0);
 $mode = $_GET['mode'] ?? $_POST['mode'] ?? '';

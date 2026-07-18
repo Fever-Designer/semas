@@ -10,6 +10,7 @@ Module::autoCompleteExpired();
 $pageTitle  = 'Weekend Modules';
 $activeNav  = 'modules';
 $db         = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me         = Auth::user();
 $today      = date('Y-m-d');
 $intakeList = availableIntakes();
@@ -178,6 +179,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$stu) {
             flash('error', "No active student found with reg number: {$regNum}");
         } else {
+            if (Module::isDisciplinarilyBlocked($db, $modId, (int) $stu['user_id'])) {
+                flash('error', Module::disciplinaryBlockMessage($stu['full_name']));
+                redirect('/coordinator/modules.php');
+            }
+            $activeDisciplinaryModule = Module::activeDisciplinaryModule($db, (int) $stu['user_id']);
+            if ($activeDisciplinaryModule) {
+                flash('error', Module::activeDisciplinaryEnrollmentMessage($stu['full_name'], $activeDisciplinaryModule));
+                redirect('/coordinator/modules.php');
+            }
+            $registrationModuleStmt = $db->prepare('SELECT module_title, start_date FROM modules WHERE module_id = :mid');
+            $registrationModuleStmt->execute(['mid' => $modId]);
+            $registrationModule = $registrationModuleStmt->fetch() ?: [];
+            if (!Module::isStudentRegistrationOpen($registrationModule)) {
+                flash('error', Module::lateRegistrationMessage($registrationModule));
+                redirect('/coordinator/modules.php');
+            }
             if (!Module::canAddOngoingEnrollment((int) $stu['user_id'], $modId)) {
                 flash('error', Module::ongoingEnrollmentLimitMessage($stu['full_name']));
                 redirect('/coordinator/modules.php');

@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrf_verify();
 
 $db       = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me       = Auth::user();
 $ip       = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $deviceId = trim($_POST['device_id'] ?? '') ?: null;

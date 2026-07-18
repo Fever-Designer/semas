@@ -77,8 +77,7 @@ AuditLog::record(Auth::id(), 'ATTENDANCE_SHEET_PRINT', 'modules', $moduleId);
     <td>END DATE: <?= $module['end_date'] ? e(date('d M Y', strtotime($module['end_date']))) : '' ?></td>
   </tr>
   <tr>
-    <td>LECTURER: <?= e($module['lecturer_name'] ?? '') ?></td>
-    <td>PRINT RANGE: <?= $module['start_date'] ? e(date('d M Y', strtotime($module['start_date']))) : '' ?> TO <?= e(date('d M Y', strtotime($effectiveEnd))) ?></td>
+    <td colspan="2">LECTURER: <?= e($module['lecturer_name'] ?? '') ?></td>
   </tr>
 </table>
 

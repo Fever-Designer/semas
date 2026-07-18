@@ -8,7 +8,8 @@ declare(strict_types=1);
  * Exam starts a fresh absence count after CAT and runs up to the day before
  * Exam. CAT date, Exam date, and HoD-entered holidays are excluded.
  *
- * 0-2 missed days => Allowed. Exactly 2 missed days sends a warning email.
+ * 0-2 missed days => Allowed. The attendance-close workflow sends the
+ * two-missed-days warning immediately.
  * 3+ missed days  => Not Allowed.
  *
  * Present requires both Sign In and Sign Out. Sign Out without Sign In is
@@ -86,7 +87,6 @@ final class Eligibility
             );
             $existing->execute(['mid' => $moduleId, 'uid' => $userId, 'type' => $examType]);
             $existingRow = $existing->fetch();
-            $previousMissed = $existingRow ? (int) ($existingRow['absences_count'] ?? -1) : -1;
 
             if ($existingRow && $existingRow['hod_decision'] === 'Overridden') {
                 $db->prepare(
@@ -148,9 +148,6 @@ final class Eligibility
                 ]);
             }
 
-            if ($missed === self::WARNING_MISSED_DAYS && $previousMissed !== self::WARNING_MISSED_DAYS) {
-                self::notifyWarningLetter($db, (int) $userId, $module, $missed, $examType);
-            }
             $generated++;
         }
 
@@ -301,37 +298,4 @@ final class Eligibility
         return ['present' => $present, 'late' => $late, 'left_early' => $leftEarly];
     }
 
-    private static function notifyWarningLetter(PDO $db, int $userId, array $module, int $missedDays, string $examType): void
-    {
-        $userStmt = $db->prepare('SELECT * FROM users WHERE user_id = :id');
-        $userStmt->execute(['id' => $userId]);
-        $student = $userStmt->fetch();
-        if (!$student) {
-            return;
-        }
-
-        $title = $examType . ' attendance warning / ' . $module['module_title'];
-        $body = 'You have missed ' . $missedDays . ' attendance day(s) for "' . $module['module_title'] . '" in the current ' . $examType . ' eligibility period. You are still eligible, but one more missed day will make you Not Allowed for the ' . $examType . '.';
-        NotificationCenter::notify($userId, $title, $body, 'Attendance');
-
-        if (!empty($student['email'])) {
-            Mailer::send(
-                $student['email'],
-                $title,
-                'attendance_warning',
-                [
-                    'full_name' => $student['full_name'],
-                    'module_title' => $module['module_title'],
-                    'exam_type' => $examType,
-                    'missed_days' => $missedDays,
-                    'body' => $body,
-                ],
-                $userId
-            );
-        }
-        if (!empty($student['phone_number'])) {
-            Sms::send($student['phone_number'], 'SEMAS: ' . $body, $userId);
-            WhatsApp::send($student['phone_number'], 'SEMAS: ' . $body, $userId);
-        }
-    }
 }

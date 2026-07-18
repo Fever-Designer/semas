@@ -54,14 +54,12 @@ $sheet->setCellValue('E1', $module['start_date'] ? date('d M Y', strtotime($modu
 
 $sheet->setCellValue('A2', 'SESSION:');
 $sheet->setCellValue('B2', $sessLabel);
-$sheet->setCellValue('D2', 'PRINT RANGE:');
-$sheet->setCellValue('E2', ($module['start_date'] ? date('d M Y', strtotime($module['start_date'])) : '') . ' TO ' . date('d M Y', strtotime($effectiveEnd)));
 
 $sheet->setCellValue('A3', 'LECTURER:');
 $sheet->setCellValue('B3', $module['lecturer_name'] ?? '');
 
 $sheet->getStyle('A1:A3')->getFont()->setBold(true);
-$sheet->getStyle('D1:D2')->getFont()->setBold(true);
+$sheet->getStyle('D1')->getFont()->setBold(true);
 
 $headerRow = 5;
 $colIdx = 1;

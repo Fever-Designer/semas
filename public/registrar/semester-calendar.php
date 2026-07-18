@@ -103,6 +103,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $calendarId = $duplicateCalendarId;
         }
 
+        $overlapStmt = $db->prepare(
+            'SELECT semester_name, academic_year
+             FROM semester_calendars
+             WHERE id <> :id AND start_date <= :new_end AND end_date >= :new_start
+             LIMIT 1'
+        );
+        $overlapStmt->execute(['id' => $calendarId, 'new_end' => $endDate, 'new_start' => $startDate]);
+        $overlap = $overlapStmt->fetch();
+        if ($overlap) {
+            flash('error', 'This calendar overlaps the existing active period "'
+                . $overlap['semester_name'] . ' / ' . $overlap['academic_year']
+                . '". Only one university semester may be active at a time.');
+            redirect('/registrar/semester-calendar.php');
+        }
+
         if ($calendarId > 0) {
             $existingStmt = $db->prepare('SELECT end_date FROM semester_calendars WHERE id = :id');
             $existingStmt->execute(['id' => $calendarId]);

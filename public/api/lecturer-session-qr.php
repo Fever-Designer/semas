@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrf_verify();
 
 $db     = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me     = Auth::user();
 $action = $_POST['action'] ?? '';
 
@@ -224,6 +225,9 @@ if (in_array($action, ['get_state', 'start_phase', 'close_phase'], true)) {
         'sid' => $session['session_id'],
     ]);
     AuditLog::record(Auth::id(), 'ATTENDANCE_PHASE_CLOSE_' . strtoupper($phase), 'class_sessions', (int) $session['session_id']);
+    if ($finalClose) {
+        AttendanceWarning::processClosedModule($db, $moduleId, (int) $session['session_id']);
+    }
     $session = liveqr_demo_session($db, $moduleId, $today);
     echo json_encode(liveqr_demo_response($db, $module, $session));
     exit;

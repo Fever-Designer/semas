@@ -6,6 +6,7 @@ Auth::requireTeachingAccess();
 $pageTitle = 'Module Announcements';
 $activeNav = 'modules';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 
 $lecStmt = $db->prepare('SELECT * FROM lecturers WHERE user_id = :uid');

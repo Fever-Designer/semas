@@ -6,26 +6,59 @@ Auth::requireRole(['Principal']);
 $pageTitle = 'Module & Attendance Reports';
 $activeNav = 'module-reports';
 $db = Database::connection();
+$activeSemester = Semester::active($db);
 
 $search = trim($_GET['q'] ?? '');
 $deptFilter = $_GET['department_id'] ?? '';
-
-$currentWindow = ClassAttendance::currentWindow();
-$defaultSession = '';
-if ($currentWindow) {
-    if (in_array($currentWindow['name'], ['WeekendMorning', 'WeekendAfternoon', 'UmugandaMorning', 'UmugandaAfternoon'], true)) {
-        $defaultSession = 'Weekend';
-    } elseif (in_array($currentWindow['name'], ['Day', 'Evening'], true)) {
-        $defaultSession = $currentWindow['name'];
-    }
+$reportMode = ($_GET['report'] ?? 'class') === 'assessment' ? 'assessment' : 'class';
+$assessmentType = $_GET['assessment_type'] ?? 'CAT';
+if (!in_array($assessmentType, ['CAT', 'Exam'], true)) {
+    $assessmentType = 'CAT';
 }
-$sessionFilter = $_GET['session'] ?? $defaultSession;
+$selectedScheduleId = (int) ($_GET['schedule_id'] ?? 0);
+$printTarget = $_GET['print'] ?? '';
+if (!in_array($printTarget, ['', 'class-summary', 'assessment-summary', 'assessment-register'], true)) {
+    $printTarget = '';
+}
+$universityName = Settings::get('university_name', 'University of Kigali');
+$period = $_GET['period'] ?? 'monthly';
+$anchorInput = $_GET['date'] ?? date('Y-m-d');
+$anchor = DateTime::createFromFormat('!Y-m-d', $anchorInput) ?: new DateTime('today');
+$today = new DateTime('today');
+if ($anchor > $today) {
+    $anchor = clone $today;
+}
+if (!in_array($period, ['daily', 'weekly', 'monthly'], true)) {
+    $period = 'monthly';
+}
+if ($period === 'daily') {
+    $dateFrom = clone $anchor;
+    $dateTo = clone $anchor;
+} elseif ($period === 'weekly') {
+    $dateFrom = (clone $anchor)->modify('monday this week');
+    $dateTo = (clone $dateFrom)->modify('+6 days');
+} else {
+    $dateFrom = (clone $anchor)->modify('first day of this month');
+    $dateTo = (clone $anchor)->modify('last day of this month');
+}
+if ($dateTo > $today) {
+    $dateTo = clone $today;
+}
+$dateFromSql = $dateFrom->format('Y-m-d');
+$dateToSql = $dateTo->format('Y-m-d');
+$periodLabel = ucfirst($period) . ' / ' . $dateFrom->format('d M Y')
+    . ($dateFromSql !== $dateToSql ? ' - ' . $dateTo->format('d M Y') : '');
+
+$sessionFilter = $_GET['session'] ?? '';
 if (!in_array($sessionFilter, ['', 'Day', 'Evening', 'Weekend'], true)) {
-    $sessionFilter = $defaultSession;
+    $sessionFilter = '';
 }
 
-$where = ["m.status = 'Ongoing'"];
+$where = [$activeSemester ? 'm.semester_id = :active_semester_id' : '1=0'];
 $params = [];
+if ($activeSemester) {
+    $params['active_semester_id'] = (int) $activeSemester['id'];
+}
 if ($search !== '') {
     $where[] = 'm.module_title LIKE :q';
     $params['q'] = "%$search%";
@@ -43,45 +76,8 @@ $whereSql = 'WHERE ' . implode(' AND ', $where);
 $stmt = $db->prepare(
     "SELECT m.*, d.department_name, u.full_name AS lecturer_name, r.room_name,
         (SELECT COUNT(*) FROM module_enrollments e WHERE e.module_id = m.module_id) AS student_count,
-        (SELECT COUNT(*) FROM class_sessions cs
-            WHERE cs.module_id = m.module_id
-              AND cs.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs.session_date <> m.exam_date)) AS sessions_held,
-        (SELECT COUNT(*) FROM class_attendance_logs cal JOIN class_sessions cs2 ON cs2.session_id = cal.session_id
-            WHERE cs2.module_id = m.module_id
-              AND cs2.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs2.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs2.session_date <> m.exam_date)
-              AND cal.attendance_type = 'Sign In') AS total_signins,
-        (SELECT COUNT(*) FROM class_attendance_logs cal JOIN class_sessions cs3 ON cs3.session_id = cal.session_id
-            WHERE cs3.module_id = m.module_id
-              AND cs3.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs3.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs3.session_date <> m.exam_date)
-              AND cal.attendance_type = 'Sign In'
-              AND cal.status IN ('Present','Late')) AS attended_signins,
-        (SELECT COUNT(*) FROM class_attendance_logs cal JOIN class_sessions cs4 ON cs4.session_id = cal.session_id
-            WHERE cs4.module_id = m.module_id
-              AND cs4.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs4.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs4.session_date <> m.exam_date)
-              AND cal.attendance_type = 'Sign In'
-              AND cal.status = 'Present') AS present_count,
-        (SELECT COUNT(*) FROM class_attendance_logs cal JOIN class_sessions cs5 ON cs5.session_id = cal.session_id
-            WHERE cs5.module_id = m.module_id
-              AND cs5.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs5.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs5.session_date <> m.exam_date)
-              AND cal.attendance_type = 'Sign In'
-              AND cal.status = 'Late') AS late_count,
-        (SELECT COUNT(*) FROM class_attendance_logs cal JOIN class_sessions cs6 ON cs6.session_id = cal.session_id
-            WHERE cs6.module_id = m.module_id
-              AND cs6.session_date <= CURDATE()
-              AND (m.cat_date IS NULL OR cs6.session_date <> m.cat_date)
-              AND (m.exam_date IS NULL OR cs6.session_date <> m.exam_date)
-              AND cal.attendance_type = 'Sign In'
-              AND cal.status = 'Absent') AS absent_count
+        0 AS sessions_held, 0 AS total_signins, 0 AS attended_signins,
+        0 AS present_count, 0 AS late_count, 0 AS absent_count, 0 AS special_count
      FROM modules m
      LEFT JOIN departments d ON d.department_id = m.department_id
      LEFT JOIN lecturers l ON l.lecturer_id = m.lecturer_id
@@ -94,6 +90,152 @@ $stmt->execute($params);
 $modules = $stmt->fetchAll();
 
 $departments = $db->query('SELECT department_id, department_name FROM departments ORDER BY department_name')->fetchAll();
+
+$assessmentWhere = [
+    'ces.exam_type = :assessment_type',
+    'ces.scheduled_date BETWEEN :assessment_from AND :assessment_to',
+    $activeSemester ? 'ces.semester_id = :assessment_semester_id' : '1=0',
+];
+$assessmentParams = [
+    'assessment_type' => $assessmentType,
+    'assessment_from' => $dateFromSql,
+    'assessment_to' => $dateToSql,
+];
+if ($activeSemester) {
+    $assessmentParams['assessment_semester_id'] = (int) $activeSemester['id'];
+}
+if ($search !== '') {
+    $assessmentWhere[] = 'm.module_title LIKE :assessment_q';
+    $assessmentParams['assessment_q'] = "%$search%";
+}
+if ($deptFilter !== '') {
+    $assessmentWhere[] = 'm.department_id = :assessment_dept';
+    $assessmentParams['assessment_dept'] = (int) $deptFilter;
+}
+if ($sessionFilter !== '') {
+    $assessmentWhere[] = 'm.session_type = :assessment_session';
+    $assessmentParams['assessment_session'] = $sessionFilter;
+}
+$assessmentStmt = $db->prepare(
+    "SELECT ces.schedule_id, ces.exam_type, ces.scheduled_date, ces.start_time, ces.end_time,
+            ces.room, ces.created_at AS schedule_created_at,
+            m.module_title, m.session_type, d.department_name,
+            lecturer_user.full_name AS lecturer_name,
+            invigilator_user.full_name AS invigilator_name,
+            sub.submitted_at,
+            (SELECT COUNT(*) FROM module_enrollments me WHERE me.module_id = m.module_id) AS registered_count,
+            (SELECT COUNT(DISTINCT sin.user_id) FROM cat_exam_attendance_logs sin
+                WHERE sin.schedule_id = ces.schedule_id AND sin.attendance_type = 'Sign In') AS sat_count,
+            (SELECT COUNT(DISTINCT sout.user_id) FROM cat_exam_attendance_logs sout
+                WHERE sout.schedule_id = ces.schedule_id AND sout.attendance_type = 'Sign Out'
+                  AND sout.status = 'Present') AS completed_count,
+            (SELECT COUNT(DISTINCT missed.user_id) FROM cat_exam_attendance_logs missed
+                WHERE missed.schedule_id = ces.schedule_id AND missed.attendance_type = 'Sign Out'
+                  AND missed.status = 'Absent') AS missed_signout_count
+     FROM cat_exam_schedules ces
+     JOIN modules m ON m.module_id = ces.module_id
+     LEFT JOIN departments d ON d.department_id = m.department_id
+     LEFT JOIN lecturers lecturer ON lecturer.lecturer_id = m.lecturer_id
+     LEFT JOIN users lecturer_user ON lecturer_user.user_id = lecturer.user_id
+     LEFT JOIN lecturers invigilator ON invigilator.lecturer_id = ces.invigilator_id
+     LEFT JOIN users invigilator_user ON invigilator_user.user_id = invigilator.user_id
+     LEFT JOIN cat_exam_submissions sub ON sub.schedule_id = ces.schedule_id
+     WHERE " . implode(' AND ', $assessmentWhere) . "
+     ORDER BY ces.scheduled_date, ces.start_time, d.department_name, m.module_title"
+);
+$assessmentStmt->execute($assessmentParams);
+$assessmentRows = $assessmentStmt->fetchAll();
+
+$assessmentTotals = ['scheduled' => count($assessmentRows), 'registered' => 0, 'sat' => 0, 'absent' => 0, 'missed_signout' => 0, 'submitted' => 0];
+foreach ($assessmentRows as &$assessmentRow) {
+    $assessmentRow['absent_count'] = $assessmentRow['submitted_at']
+        ? max(0, (int) $assessmentRow['registered_count'] - (int) $assessmentRow['sat_count'])
+        : 0;
+    $assessmentTotals['registered'] += (int) $assessmentRow['registered_count'];
+    $assessmentTotals['sat'] += (int) $assessmentRow['sat_count'];
+    $assessmentTotals['absent'] += (int) $assessmentRow['absent_count'];
+    $assessmentTotals['missed_signout'] += (int) $assessmentRow['missed_signout_count'];
+    if ($assessmentRow['submitted_at']) $assessmentTotals['submitted']++;
+}
+unset($assessmentRow);
+
+// Headline cards intentionally describe only the newest schedule, regardless
+// of the selected report date range. A newly created sitting immediately
+// replaces the previous sitting's cards; the table remains period-based.
+$latestWhere = ['ces.exam_type = :latest_type', $activeSemester ? 'ces.semester_id = :latest_semester_id' : '1=0'];
+$latestParams = ['latest_type' => $assessmentType];
+if ($activeSemester) {
+    $latestParams['latest_semester_id'] = (int) $activeSemester['id'];
+}
+if ($search !== '') {
+    $latestWhere[] = 'm.module_title LIKE :latest_q';
+    $latestParams['latest_q'] = "%$search%";
+}
+if ($deptFilter !== '') {
+    $latestWhere[] = 'm.department_id = :latest_dept';
+    $latestParams['latest_dept'] = (int) $deptFilter;
+}
+if ($sessionFilter !== '') {
+    $latestWhere[] = 'm.session_type = :latest_session';
+    $latestParams['latest_session'] = $sessionFilter;
+}
+$latestStmt = $db->prepare(
+    "SELECT ces.schedule_id, ces.scheduled_date, m.module_title,
+            (SELECT COUNT(*) FROM module_enrollments me WHERE me.module_id = m.module_id) AS registered_count,
+            (SELECT COUNT(DISTINCT sin.user_id) FROM cat_exam_attendance_logs sin
+                WHERE sin.schedule_id = ces.schedule_id AND sin.attendance_type = 'Sign In') AS sat_count,
+            EXISTS (SELECT 1 FROM cat_exam_submissions sub WHERE sub.schedule_id = ces.schedule_id) AS is_submitted
+     FROM cat_exam_schedules ces
+     JOIN modules m ON m.module_id = ces.module_id
+     WHERE " . implode(' AND ', $latestWhere) . "
+     ORDER BY ces.created_at DESC, ces.schedule_id DESC
+     LIMIT 1"
+);
+$latestStmt->execute($latestParams);
+$latestAssessmentRow = $latestStmt->fetch() ?: null;
+if ($latestAssessmentRow) {
+    $latestAssessmentRow['absent_count'] = (int) $latestAssessmentRow['is_submitted'] === 1
+        ? max(0, (int) $latestAssessmentRow['registered_count'] - (int) $latestAssessmentRow['sat_count'])
+        : 0;
+}
+$latestAssessmentStats = [
+    'scheduled' => $latestAssessmentRow ? 1 : 0,
+    'registered' => (int) ($latestAssessmentRow['registered_count'] ?? 0),
+    'sat' => (int) ($latestAssessmentRow['sat_count'] ?? 0),
+    'absent' => (int) ($latestAssessmentRow['absent_count'] ?? 0),
+];
+
+$selectedAssessment = null;
+$assessmentRoster = [];
+if ($reportMode === 'assessment' && $selectedScheduleId > 0) {
+    foreach ($assessmentRows as $assessmentRow) {
+        if ((int) $assessmentRow['schedule_id'] === $selectedScheduleId) {
+            $selectedAssessment = $assessmentRow;
+            break;
+        }
+    }
+    if ($selectedAssessment) {
+        $rosterStmt = $db->prepare(
+            "SELECT u.full_name, u.reg_number,
+                    sin.recorded_at AS signin_time, sout.recorded_at AS signout_time,
+                    sout.status AS signout_status, sout.missed_reason, sout.missed_notes,
+                    el.final_decision AS eligibility
+             FROM module_enrollments me
+             JOIN users u ON u.user_id = me.user_id
+             JOIN cat_exam_schedules ces ON ces.module_id = me.module_id
+             LEFT JOIN cat_exam_attendance_logs sin ON sin.schedule_id = ces.schedule_id
+                AND sin.user_id = me.user_id AND sin.attendance_type = 'Sign In'
+             LEFT JOIN cat_exam_attendance_logs sout ON sout.schedule_id = ces.schedule_id
+                AND sout.user_id = me.user_id AND sout.attendance_type = 'Sign Out'
+             LEFT JOIN cat_exam_eligibility el ON el.module_id = me.module_id
+                AND el.user_id = me.user_id AND el.exam_type = ces.exam_type
+             WHERE ces.schedule_id = :sid
+             ORDER BY u.full_name"
+        );
+        $rosterStmt->execute(['sid' => $selectedScheduleId]);
+        $assessmentRoster = $rosterStmt->fetchAll();
+    }
+}
 
 $overallTotal = 0;
 $overallAttended = 0;
@@ -125,7 +267,8 @@ if ($modules) {
          JOIN users u ON u.user_id = me.user_id AND u.status = 'Active'
          LEFT JOIN departments d ON d.department_id = m.department_id
          JOIN class_sessions cs ON cs.module_id = m.module_id
-             AND cs.session_date <= CURDATE()
+             AND cs.status = 'Closed'
+             AND cs.session_date BETWEEN " . $db->quote($dateFromSql) . " AND " . $db->quote($dateToSql) . "
              AND (m.cat_date IS NULL OR cs.session_date <> m.cat_date)
              AND (m.exam_date IS NULL OR cs.session_date <> m.exam_date)
          LEFT JOIN class_attendance_logs si ON si.session_id = cs.session_id
@@ -160,18 +303,47 @@ if ($modules) {
     // The module summary uses the same paired-action decisions as the risk
     // model, rather than treating a raw Sign In row as final attendance.
     $moduleDecisionTotals = [];
+    $moduleStudentDecisions = [];
     foreach ($studentHistories as $history) {
         $mid = (int) $history['module_id'];
         $moduleDecisionTotals[$mid] ??= ['Present' => 0, 'Late' => 0, 'Absent' => 0];
+        $moduleStudentDecisions[$mid][] = $history['decisions'];
         foreach ($history['decisions'] as $decision) {
             $moduleDecisionTotals[$mid][$decision]++;
         }
     }
+    $sessionsStmt = $db->query(
+        "SELECT cs.module_id, COUNT(DISTINCT cs.session_date) AS sessions_held
+         FROM class_sessions cs
+         JOIN modules m ON m.module_id = cs.module_id
+         LEFT JOIN holidays h ON h.holiday_date = cs.session_date AND h.holiday_type = 'Public Holiday'
+         WHERE cs.module_id IN ($moduleIdSql)
+           AND cs.status = 'Closed'
+           AND cs.session_date BETWEEN " . $db->quote($dateFromSql) . " AND " . $db->quote($dateToSql) . "
+           AND (m.cat_date IS NULL OR cs.session_date <> m.cat_date)
+           AND (m.exam_date IS NULL OR cs.session_date <> m.exam_date)
+           AND (m.session_type = 'Weekend' OR h.holiday_id IS NULL)
+         GROUP BY cs.module_id"
+    );
+    $sessionsByModule = [];
+    foreach ($sessionsStmt->fetchAll() as $sessionRow) {
+        $sessionsByModule[(int) $sessionRow['module_id']] = (int) $sessionRow['sessions_held'];
+    }
     foreach ($modules as &$moduleRow) {
-        $decisionCounts = $moduleDecisionTotals[(int) $moduleRow['module_id']] ?? ['Present' => 0, 'Late' => 0, 'Absent' => 0];
+        $mid = (int) $moduleRow['module_id'];
+        $decisionCounts = $moduleDecisionTotals[$mid] ?? ['Present' => 0, 'Late' => 0, 'Absent' => 0];
+        $moduleRow['sessions_held'] = $sessionsByModule[$mid] ?? 0;
         $moduleRow['present_count'] = $decisionCounts['Present'];
         $moduleRow['late_count'] = $decisionCounts['Late'];
         $moduleRow['absent_count'] = $decisionCounts['Absent'];
+        $moduleRow['special_count'] = count(array_filter(
+            $moduleStudentDecisions[$mid] ?? [],
+            static function (array $decisions): bool {
+                $absent = count(array_filter($decisions, static fn(string $d): bool => $d === 'Absent'));
+                $late = count(array_filter($decisions, static fn(string $d): bool => $d === 'Late'));
+                return $absent + intdiv($late, 2) >= 3;
+            }
+        ));
         $moduleRow['total_signins'] = array_sum($decisionCounts);
         $effectiveAbsences = $decisionCounts['Absent'] + intdiv($decisionCounts['Late'], 2);
         $moduleRow['attended_signins'] = max(0, $moduleRow['total_signins'] - $effectiveAbsences);
@@ -226,38 +398,179 @@ if ($modules) {
 // Recalculate the cards after applying the paired Sign In/Sign Out rules.
 $overallTotal = 0;
 $overallAttended = 0;
+$summaryStudents = 0;
+$summarySessions = 0;
+$summaryPresent = 0;
+$summaryAbsent = 0;
+$summaryLate = 0;
+$summarySpecial = 0;
 foreach ($modules as $moduleRow) {
     $overallTotal += (int) $moduleRow['total_signins'];
     $overallAttended += (int) $moduleRow['attended_signins'];
+    $summaryStudents += (int) $moduleRow['student_count'];
+    $summarySessions += (int) $moduleRow['sessions_held'];
+    $summaryPresent += (int) $moduleRow['present_count'];
+    $summaryAbsent += (int) $moduleRow['absent_count'];
+    $summaryLate += (int) $moduleRow['late_count'];
+    $summarySpecial += (int) $moduleRow['special_count'];
 }
 $overallRate = $overallTotal > 0 ? round($overallAttended / $overallTotal * 100) : 0;
 
+$exportType = $_GET['export'] ?? '';
+if ($reportMode === 'assessment' && $exportType === 'assessment-summary-pdf') {
+    if (!$activeSemester) {
+        http_response_code(409);
+        exit(Semester::NO_ACTIVE_MESSAGE);
+    }
+    $generatedAt = date('d F Y, h:i A');
+    ob_start();
+    ?>
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  @page { size:A4 landscape; margin:12mm; }
+  body { font-family:DejaVu Sans, sans-serif; color:#172033; font-size:9px; }
+  h1 { margin:0; text-align:center; font-size:20px; color:#172554; }
+  h2 { margin:5px 0 2px; text-align:center; font-size:13px; }
+  .meta { text-align:center; color:#475569; margin-bottom:14px; }
+  .summary { width:100%; margin-bottom:12px; border-collapse:separate; border-spacing:6px 0; }
+  .summary td { border:1px solid #cbd5e1; background:#f8fafc; padding:7px; text-align:center; }
+  .summary strong { display:block; font-size:15px; color:#172554; }
+  table.report { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .report th { background:#172554; color:#fff; padding:6px 4px; font-size:8px; text-transform:uppercase; }
+  .report td { border:1px solid #cbd5e1; padding:6px 4px; vertical-align:top; overflow-wrap:anywhere; }
+  .report tr:nth-child(even) td { background:#f8fafc; }
+  .center { text-align:center; } .good { color:#166534; font-weight:bold; } .bad { color:#991b1b; font-weight:bold; }
+  .small { color:#64748b; font-size:8px; margin-top:2px; }
+  .totals td { background:#e2e8f0 !important; font-weight:bold; }
+  .footer { margin-top:22px; width:100%; }
+  .footer td { width:33.33%; padding-top:22px; text-align:center; }
+  .line { border-top:1px solid #334155; padding-top:4px; margin:0 18px; }
+</style></head><body>
+  <h1><?= e($universityName) ?></h1>
+  <h2>University-Wide <?= e($assessmentType) ?> Attendance Report</h2>
+  <div class="meta"><?= e(Semester::label($activeSemester)) ?> &nbsp;|&nbsp; <?= e($periodLabel) ?> &nbsp;|&nbsp; <?= e($sessionLabel) ?> &nbsp;|&nbsp; Generated <?= e($generatedAt) ?></div>
+  <table class="summary"><tr>
+    <td>Scheduled sittings<strong><?= $assessmentTotals['scheduled'] ?></strong></td>
+    <td>Registered candidates<strong><?= $assessmentTotals['registered'] ?></strong></td>
+    <td>Candidates who sat<strong><?= $assessmentTotals['sat'] ?></strong></td>
+    <td>Absent candidates<strong><?= $assessmentTotals['absent'] ?></strong></td>
+    <td>Missed sign-out<strong><?= $assessmentTotals['missed_signout'] ?></strong></td>
+  </tr></table>
+  <table class="report">
+    <colgroup>
+      <col style="width:10%"><col style="width:18%"><col style="width:9%"><col style="width:14%">
+      <col style="width:14%"><col style="width:8%"><col style="width:6%"><col style="width:5%">
+      <col style="width:5%"><col style="width:6%"><col style="width:5%">
+    </colgroup>
+    <thead><tr><th>Date / Session</th><th>Module / Department</th><th>Room</th><th>Lecturer</th><th>Invigilator</th><th>Status</th><th>Registered</th><th>Sat</th><th>Absent</th><th>Missed Out</th><th>Rate</th></tr></thead>
+    <tbody>
+    <?php foreach ($assessmentRows as $row):
+        $rate = (int) $row['registered_count'] > 0 ? round((int) $row['sat_count'] * 100 / (int) $row['registered_count']) : 0;
+    ?>
+      <tr>
+        <td><strong><?= date('d M Y', strtotime($row['scheduled_date'])) ?></strong><div class="small"><?= e($row['session_type']) ?> &middot; <?= $row['start_time'] ? date('h:i A', strtotime($row['start_time'])) : '-' ?></div></td>
+        <td><strong><?= e($row['module_title']) ?></strong><div class="small"><?= e($row['department_name'] ?? '-') ?></div></td>
+        <td><?= e($row['room'] ?? '-') ?></td>
+        <td><?= e($row['lecturer_name'] ?? '-') ?></td>
+        <td><?= e($row['invigilator_name'] ?? '-') ?></td>
+        <td class="center"><?= $row['submitted_at'] ? 'Submitted' : 'Pending' ?></td>
+        <td class="center"><?= (int) $row['registered_count'] ?></td>
+        <td class="center good"><?= (int) $row['sat_count'] ?></td>
+        <td class="center bad"><?= (int) $row['absent_count'] ?></td>
+        <td class="center"><?= (int) $row['missed_signout_count'] ?></td>
+        <td class="center"><?= $rate ?>%</td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$assessmentRows): ?><tr><td colspan="11" class="center">No matching assessment schedules.</td></tr><?php endif; ?>
+    <?php if ($assessmentRows): ?><tr class="totals"><td colspan="6">UNIVERSITY TOTAL</td><td class="center"><?= $assessmentTotals['registered'] ?></td><td class="center"><?= $assessmentTotals['sat'] ?></td><td class="center"><?= $assessmentTotals['absent'] ?></td><td class="center"><?= $assessmentTotals['missed_signout'] ?></td><td class="center"><?= $assessmentTotals['registered'] ? round($assessmentTotals['sat'] * 100 / $assessmentTotals['registered']) : 0 ?>%</td></tr><?php endif; ?>
+    </tbody>
+  </table>
+  <table class="footer"><tr><td><div class="line">Prepared by</div></td><td><div class="line">Academic Registrar</div></td><td><div class="line">Principal / Approval</div></td></tr></table>
+</body></html>
+    <?php
+    $html = (string) ob_get_clean();
+    $dompdf = new \Dompdf\Dompdf(['isRemoteEnabled' => false]);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'landscape');
+    $dompdf->render();
+    $dompdf->stream(
+        strtolower($assessmentType) . '-university-attendance-' . $dateFromSql . '-to-' . $dateToSql . '.pdf',
+        ['Attachment' => false]
+    );
+    exit;
+}
+
 require __DIR__ . '/../partials/layout_top.php';
 ?>
+<style>
+  .report-print-heading { display:none; }
+  @media print {
+    @page { size: landscape; margin: 12mm; }
+    body * { visibility:hidden !important; }
+    .print-selected, .print-selected * { visibility:visible !important; }
+    .print-selected {
+      position:absolute !important;
+      inset:0 auto auto 0 !important;
+      width:100% !important;
+      border:0 !important;
+      box-shadow:none !important;
+      padding:0 !important;
+    }
+    .report-print-heading { display:block !important; text-align:center; margin-bottom:18px; }
+    .report-print-heading h3 { margin:0 0 4px; }
+    .report-print-heading p { margin:2px 0; }
+    .report-screen-heading, .no-print { display:none !important; visibility:hidden !important; }
+    .table-responsive { overflow:visible !important; }
+    table { width:100% !important; font-size:9pt; }
+    thead { display:table-header-group; }
+    tr { break-inside:avoid; }
+  }
+</style>
 <h4 class="display-font mb-1">Module &amp; Attendance Reports</h4>
 <p class="text-muted small mb-3">
-  Current session:
-  <?= $currentWindow ? e(ClassAttendance::describeWindow($currentWindow)) : 'No active session window' ?>
+  <?= e($periodLabel) ?> &middot; University-wide finalized attendance reporting
 </p>
 
-<div class="row g-3 mb-4">
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Ongoing Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= count($modules) ?></div></div></div>
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Attendance Decisions Recorded</div><div class="stat-value"><?= $overallTotal ?></div></div></div>
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
-    <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
-  </div></div>
+<div class="btn-group mb-3" role="group" aria-label="Report type">
+  <a class="btn btn-sm <?= $reportMode === 'class' ? 'btn-semas' : 'btn-outline-dark' ?>" href="?report=class"><i class="bi bi-people me-1"></i> Class Attendance</a>
+  <a class="btn btn-sm <?= $reportMode === 'assessment' ? 'btn-semas' : 'btn-outline-dark' ?>" href="?report=assessment&amp;assessment_type=CAT"><i class="bi bi-journal-check me-1"></i> CAT / Exam Report</a>
 </div>
 
+<div class="row g-3 mb-4">
+  <?php if ($reportMode === 'assessment'): ?>
+    <div class="col-12">
+      <div class="text-muted small">
+        Latest scheduled <?= e($assessmentType) ?>:
+        <strong><?= e($latestAssessmentRow['module_title'] ?? 'No matching schedule') ?></strong>
+        <?php if ($latestAssessmentRow): ?>&middot; <?= date('d M Y', strtotime($latestAssessmentRow['scheduled_date'])) ?><?php endif; ?>
+      </div>
+    </div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label"><?= e($assessmentType) ?> Sitting</div><div class="stat-value"><?= $latestAssessmentStats['scheduled'] ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Registered Candidates</div><div class="stat-value"><?= $latestAssessmentStats['registered'] ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Sat Assessment</div><div class="stat-value text-success"><?= $latestAssessmentStats['sat'] ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Absent Candidates</div><div class="stat-value text-danger"><?= $latestAssessmentStats['absent'] ?></div></div></div>
+  <?php else: ?>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= count($modules) ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Closed Sessions</div><div class="stat-value"><?= $summarySessions ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Special Cases / 3+ Missed</div><div class="stat-value text-danger"><?= $summarySpecial ?></div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
+    <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
+    </div></div>
+  <?php endif; ?>
+</div>
+
+<?php if ($reportMode === 'assessment'): ?>
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
-    <div class="col-md-4"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>"></div>
-    <div class="col-md-3">
+    <input type="hidden" name="report" value="assessment">
+    <div class="col-lg-2 col-md-4"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>" placeholder="Module name"></div>
+    <div class="col-lg-2 col-md-4">
       <select name="department_id" class="form-select form-select-sm">
         <option value="">All Departments</option>
         <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>" <?= (string) $deptFilter === (string) $d['department_id'] ? 'selected' : '' ?>><?= e($d['department_name']) ?></option><?php endforeach; ?>
       </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg-2 col-md-4">
       <select name="session" class="form-select form-select-sm">
         <option value="" <?= $sessionFilter === '' ? 'selected' : '' ?>>All Sessions</option>
         <option value="Day" <?= $sessionFilter === 'Day' ? 'selected' : '' ?>>Day</option>
@@ -265,7 +578,164 @@ require __DIR__ . '/../partials/layout_top.php';
         <option value="Weekend" <?= $sessionFilter === 'Weekend' ? 'selected' : '' ?>>Weekend</option>
       </select>
     </div>
-    <div class="col-md-2"><button class="btn btn-sm btn-semas w-100"><i class="bi bi-search me-1"></i> Filter</button></div>
+    <div class="col-lg-2 col-md-4">
+      <select name="assessment_type" class="form-select form-select-sm">
+        <option value="CAT" <?= $assessmentType === 'CAT' ? 'selected' : '' ?>>CAT Report</option>
+        <option value="Exam" <?= $assessmentType === 'Exam' ? 'selected' : '' ?>>Exam Report</option>
+      </select>
+    </div>
+    <div class="col-lg-2 col-md-4">
+      <select name="period" class="form-select form-select-sm">
+        <option value="daily" <?= $period === 'daily' ? 'selected' : '' ?>>Daily</option>
+        <option value="weekly" <?= $period === 'weekly' ? 'selected' : '' ?>>Weekly</option>
+        <option value="monthly" <?= $period === 'monthly' ? 'selected' : '' ?>>Monthly</option>
+      </select>
+    </div>
+    <div class="col-lg-2 col-md-4"><input type="date" name="date" class="form-control form-control-sm" value="<?= e($anchor->format('Y-m-d')) ?>" max="<?= date('Y-m-d') ?>"></div>
+    <div class="col-lg-2 col-md-4"><button class="btn btn-sm btn-semas w-100"><i class="bi bi-file-earmark-bar-graph me-1"></i> Generate Report</button></div>
+  </form>
+</div>
+
+<div class="semas-card p-3 mb-3 report-print-area <?= $printTarget === 'assessment-summary' ? 'print-selected' : '' ?>">
+  <div class="report-print-heading">
+    <h3><?= e($universityName) ?></h3>
+    <p><strong>University-Wide <?= e($assessmentType) ?> Attendance Report</strong></p>
+    <p><?= e(Semester::label($activeSemester)) ?> &middot; <?= e($periodLabel) ?> &middot; <?= e($sessionLabel) ?></p>
+  </div>
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <div class="report-screen-heading">
+      <h6 class="display-font mb-0"><?= e($assessmentType) ?> University Summary</h6>
+      <span class="text-muted small"><?= e($periodLabel) ?> &middot; <?= e($sessionLabel) ?></span>
+    </div>
+    <a class="btn btn-sm btn-outline-dark no-print" target="_blank" href="?<?= e(http_build_query(array_merge(array_diff_key($_GET, ['print' => true]), ['export' => 'assessment-summary-pdf']))) ?>"><i class="bi bi-file-earmark-pdf me-1"></i> Open PDF Report</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr><th>Date / Time</th><th>Module</th><th>Department</th><th>Session</th><th>Room</th><th>Lecturer</th><th>Invigilator</th><th>Registered</th><th>Sat</th><th>Absent</th><th>Missed Sign-Out</th><th>Submission</th><th class="no-print"></th></tr>
+      </thead>
+      <tbody>
+        <?php foreach ($assessmentRows as $row):
+          $detailQuery = $_GET;
+          $detailQuery['report'] = 'assessment';
+          $detailQuery['assessment_type'] = $assessmentType;
+          $detailQuery['schedule_id'] = (int) $row['schedule_id'];
+        ?>
+          <tr>
+            <td class="text-nowrap"><strong><?= date('d M Y', strtotime($row['scheduled_date'])) ?></strong><div class="text-muted small"><?= $row['start_time'] ? date('h:i A', strtotime($row['start_time'])) : '-' ?><?= $row['end_time'] ? ' - ' . date('h:i A', strtotime($row['end_time'])) : '' ?></div></td>
+            <td class="fw-semibold"><?= e($row['module_title']) ?></td>
+            <td><?= e($row['department_name'] ?? '-') ?></td>
+            <td><?= e($row['session_type'] ?? '-') ?></td>
+            <td><?= e($row['room'] ?? '-') ?></td>
+            <td><?= e($row['lecturer_name'] ?? '-') ?></td>
+            <td><?= e($row['invigilator_name'] ?? '-') ?></td>
+            <td><?= (int) $row['registered_count'] ?></td>
+            <td class="text-success fw-semibold"><?= (int) $row['sat_count'] ?></td>
+            <td class="text-danger fw-semibold"><?= (int) $row['absent_count'] ?></td>
+            <td class="<?= (int) $row['missed_signout_count'] ? 'text-warning fw-semibold' : '' ?>"><?= (int) $row['missed_signout_count'] ?></td>
+            <td><span class="badge <?= $row['submitted_at'] ? 'badge-completed' : 'bg-warning text-dark' ?>"><?= $row['submitted_at'] ? 'Submitted' : 'Pending' ?></span></td>
+            <td class="no-print"><a class="btn btn-sm btn-outline-dark text-nowrap" href="?<?= e(http_build_query($detailQuery)) ?>">View Students</a></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$assessmentRows): ?><tr><td colspan="13" class="text-muted text-center py-4">No <?= e($assessmentType) ?> schedules match this report period and filters.</td></tr><?php endif; ?>
+      </tbody>
+      <?php if ($assessmentRows): ?>
+        <tfoot class="table-light fw-bold">
+          <tr><td colspan="7">University Total</td><td><?= $assessmentTotals['registered'] ?></td><td class="text-success"><?= $assessmentTotals['sat'] ?></td><td class="text-danger"><?= $assessmentTotals['absent'] ?></td><td><?= $assessmentTotals['missed_signout'] ?></td><td><?= $assessmentTotals['submitted'] ?>/<?= $assessmentTotals['scheduled'] ?></td><td class="no-print"></td></tr>
+        </tfoot>
+      <?php endif; ?>
+    </table>
+  </div>
+</div>
+
+<?php if ($selectedAssessment): ?>
+<div class="semas-card p-3 report-print-area <?= $printTarget === 'assessment-register' ? 'print-selected' : '' ?>">
+  <div class="report-print-heading">
+    <h3><?= e($universityName) ?></h3>
+    <p><strong><?= e($selectedAssessment['exam_type']) ?> Assessment Attendance Register</strong></p>
+    <p><?= e($selectedAssessment['module_title']) ?> &middot; <?= date('d F Y', strtotime($selectedAssessment['scheduled_date'])) ?> &middot; Room <?= e($selectedAssessment['room']) ?></p>
+  </div>
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div class="report-screen-heading">
+      <h6 class="display-font mb-1">Student Assessment Register / <?= e($selectedAssessment['module_title']) ?></h6>
+      <div class="text-muted small"><?= e($selectedAssessment['exam_type']) ?> &middot; <?= date('d F Y', strtotime($selectedAssessment['scheduled_date'])) ?> &middot; Room <?= e($selectedAssessment['room']) ?> &middot; Invigilator: <?= e($selectedAssessment['invigilator_name'] ?? '-') ?></div>
+    </div>
+    <a class="btn btn-sm btn-outline-dark no-print" target="_blank" href="?<?= e(http_build_query(array_merge($_GET, ['print' => 'assessment-register']))) ?>"><i class="bi bi-printer me-1"></i> Print Register</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>#</th><th>Registration Number</th><th>Student</th><th>Eligibility</th><th>Sign In</th><th>Sign Out</th><th>Assessment Status</th><th>Missed Reason</th></tr></thead>
+      <tbody>
+        <?php foreach ($assessmentRoster as $index => $student):
+          $studentStatus = !$student['signin_time']
+              ? 'Absent'
+              : (!$student['signout_time'] || $student['signout_status'] === 'Absent' ? 'Missed Sign-Out' : 'Completed');
+        ?>
+          <tr class="<?= $studentStatus === 'Absent' ? 'table-danger' : ($studentStatus === 'Missed Sign-Out' ? 'table-warning' : '') ?>">
+            <td><?= $index + 1 ?></td>
+            <td><?= e($student['reg_number'] ?? '-') ?></td>
+            <td class="fw-semibold"><?= e($student['full_name']) ?></td>
+            <td><?= e($student['eligibility'] ?? 'Pending') ?></td>
+            <td><?= $student['signin_time'] ? date('h:i A', strtotime($student['signin_time'])) : '-' ?></td>
+            <td><?= $student['signout_time'] ? date('h:i A', strtotime($student['signout_time'])) : '-' ?></td>
+            <td><span class="badge <?= $studentStatus === 'Completed' ? 'badge-completed' : ($studentStatus === 'Absent' ? 'bg-danger' : 'bg-warning text-dark') ?>"><?= e($studentStatus) ?></span></td>
+            <td><?= e($student['missed_reason'] ?? '-') ?><?php if (!empty($student['missed_notes'])): ?><div class="text-muted small"><?= e($student['missed_notes']) ?></div><?php endif; ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php else: ?>
+<div class="semas-card p-3 mb-3">
+  <form method="get" class="row g-2">
+    <input type="hidden" name="report" value="<?= e($reportMode) ?>">
+    <div class="col-lg-2 col-md-4"><input name="q" class="form-control form-control-sm" value="<?= e($search) ?>" placeholder="Module name"></div>
+    <div class="col-lg-2 col-md-4">
+      <select name="department_id" class="form-select form-select-sm">
+        <option value="">All Departments</option>
+        <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>" <?= (string) $deptFilter === (string) $d['department_id'] ? 'selected' : '' ?>><?= e($d['department_name']) ?></option><?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-lg-2 col-md-4">
+      <select name="session" class="form-select form-select-sm">
+        <option value="" <?= $sessionFilter === '' ? 'selected' : '' ?>>All Sessions</option>
+        <option value="Day" <?= $sessionFilter === 'Day' ? 'selected' : '' ?>>Day</option>
+        <option value="Evening" <?= $sessionFilter === 'Evening' ? 'selected' : '' ?>>Evening</option>
+        <option value="Weekend" <?= $sessionFilter === 'Weekend' ? 'selected' : '' ?>>Weekend</option>
+      </select>
+    </div>
+    <div class="col-lg-2 col-md-4">
+      <?php if ($reportMode === 'assessment'): ?>
+        <select name="assessment_type" class="form-select form-select-sm">
+          <option value="CAT" <?= $assessmentType === 'CAT' ? 'selected' : '' ?>>CAT Report</option>
+          <option value="Exam" <?= $assessmentType === 'Exam' ? 'selected' : '' ?>>Exam Report</option>
+        </select>
+      <?php else: ?>
+        <select name="period" class="form-select form-select-sm">
+          <option value="daily" <?= $period === 'daily' ? 'selected' : '' ?>>Daily Report</option>
+          <option value="weekly" <?= $period === 'weekly' ? 'selected' : '' ?>>Weekly Report</option>
+          <option value="monthly" <?= $period === 'monthly' ? 'selected' : '' ?>>Monthly Report</option>
+        </select>
+      <?php endif; ?>
+    </div>
+    <div class="col-lg-2 col-md-4">
+      <?php if ($reportMode === 'assessment'): ?>
+        <select name="period" class="form-select form-select-sm">
+          <option value="daily" <?= $period === 'daily' ? 'selected' : '' ?>>Daily</option>
+          <option value="weekly" <?= $period === 'weekly' ? 'selected' : '' ?>>Weekly</option>
+          <option value="monthly" <?= $period === 'monthly' ? 'selected' : '' ?>>Monthly</option>
+        </select>
+      <?php else: ?>
+        <input type="date" name="date" class="form-control form-control-sm" value="<?= e($anchor->format('Y-m-d')) ?>" max="<?= date('Y-m-d') ?>">
+      <?php endif; ?>
+    </div>
+    <?php if ($reportMode === 'assessment'): ?>
+      <div class="col-lg-2 col-md-4"><input type="date" name="date" class="form-control form-control-sm" value="<?= e($anchor->format('Y-m-d')) ?>" max="<?= date('Y-m-d') ?>"></div>
+    <?php endif; ?>
+    <div class="col-lg-2 col-md-4"><button class="btn btn-sm btn-semas w-100"><i class="bi bi-file-earmark-bar-graph me-1"></i> Generate Report</button></div>
   </form>
 </div>
 
@@ -331,33 +801,65 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
-<div class="semas-card p-3">
+<div class="semas-card p-3 report-print-area <?= $printTarget === 'class-summary' ? 'print-selected' : '' ?>">
+  <div class="report-print-heading">
+    <h3><?= e($universityName) ?></h3>
+    <p><strong>University-Wide Module &amp; Class Attendance Report</strong></p>
+    <p><?= e(Semester::label($activeSemester)) ?> &middot; <?= e($periodLabel) ?> &middot; <?= e($sessionLabel) ?></p>
+  </div>
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <div class="report-screen-heading">
+      <h6 class="display-font mb-0">All Modules Summary</h6>
+      <span class="text-muted small"><?= e($periodLabel) ?></span>
+    </div>
+    <a class="btn btn-sm btn-outline-dark no-print" target="_blank" href="?<?= e(http_build_query(array_merge($_GET, ['print' => 'class-summary']))) ?>"><i class="bi bi-printer me-1"></i> Print Report</a>
+  </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>Module</th><th>Department</th><th>Lecturer</th><th>Session</th><th>Room</th><th>Students</th><th>Sessions</th><th>P</th><th>L</th><th>A</th><th>Attendance</th></tr></thead>
+      <thead><tr><th>Module Name</th><th>Lecturer</th><th>Room</th><th>Sessions</th><th>Registered Students</th><th>Presents</th><th>Absent</th><th>Late</th><th>Special Case (3+)</th><th>Attendance</th></tr></thead>
       <tbody>
         <?php foreach ($modules as $m):
             $rate = (int) $m['total_signins'] > 0 ? round((int) $m['attended_signins'] / (int) $m['total_signins'] * 100) : null;
-            $slotLabel = ($m['session_type'] === 'Weekend' && !empty($m['weekend_slot'])) ? 'Weekend / ' . $m['weekend_slot'] : $m['session_type'];
         ?>
           <tr>
             <td class="fw-semibold"><?= e($m['module_title']) ?></td>
-            <td><?= e($m['department_name'] ?? '-') ?></td>
             <td><?= e($m['lecturer_name'] ?? '-') ?></td>
-            <td><?= e($slotLabel ?: '-') ?></td>
             <td><?= e($m['room_name'] ?? '-') ?></td>
-            <td><?= (int) $m['student_count'] ?></td>
             <td><?= (int) $m['sessions_held'] ?></td>
+            <td><?= (int) $m['student_count'] ?></td>
             <td><span style="color:#155724;"><?= (int) $m['present_count'] ?></span></td>
-            <td><span style="color:#856404;"><?= (int) $m['late_count'] ?></span></td>
             <td><span style="color:#721c24;"><?= (int) $m['absent_count'] ?></span></td>
+            <td><span style="color:#856404;"><?= (int) $m['late_count'] ?></span></td>
+            <td><span class="badge <?= (int) $m['special_count'] > 0 ? 'bg-danger' : 'bg-light text-dark border' ?>"><?= (int) $m['special_count'] ?></span></td>
             <td><?= $rate === null ? '<span class="text-muted">No data</span>' : '<span class="badge ' . ($rate >= 75 ? 'badge-completed' : 'badge-urgent') . '">' . $rate . '%</span>' ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$modules): ?><tr><td colspan="11" class="text-muted small text-center py-3">No ongoing modules match your filters.</td></tr><?php endif; ?>
+        <?php if (!$modules): ?><tr><td colspan="10" class="text-muted small text-center py-3">No modules match your filters.</td></tr><?php endif; ?>
       </tbody>
+      <?php if ($modules): ?>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="3">All Selected Modules</td>
+            <td><?= $summarySessions ?></td>
+            <td><?= $summaryStudents ?></td>
+            <td class="text-success"><?= $summaryPresent ?></td>
+            <td class="text-danger"><?= $summaryAbsent ?></td>
+            <td style="color:#856404;"><?= $summaryLate ?></td>
+            <td class="text-danger"><?= $summarySpecial ?></td>
+            <td><?= $overallRate ?>%</td>
+          </tr>
+        </tfoot>
+      <?php endif; ?>
     </table>
   </div>
 </div>
 
+<?php endif; ?>
+<?php if ($printTarget !== ''): ?>
+<script>
+window.addEventListener('load', function () {
+  window.print();
+});
+</script>
+<?php endif; ?>
 <?php require __DIR__ . '/../partials/layout_bottom.php'; ?>

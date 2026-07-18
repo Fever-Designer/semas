@@ -7,6 +7,7 @@ Module::autoCompleteExpired();
 $pageTitle = 'CAT / Exam Eligibility';
 $activeNav = 'eligibility';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 $isCoordinator = Auth::role() === 'Coordinator';
 

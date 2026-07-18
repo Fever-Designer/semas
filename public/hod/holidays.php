@@ -6,6 +6,7 @@ Auth::requireRole(['HOD', 'Coordinator']);
 $pageTitle = 'Holidays & Umuganda';
 $activeNav = 'holidays';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 $isCoordinator = Auth::role() === 'Coordinator';
 $today = date('Y-m-d');

@@ -5,6 +5,7 @@ Auth::requireRole(['Dean']);
 header('Content-Type: application/json');
 
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $eventId = (int) ($_GET['event_id'] ?? $_POST['event_id'] ?? 0);
 $mode = $_GET['mode'] ?? $_POST['mode'] ?? '';
 

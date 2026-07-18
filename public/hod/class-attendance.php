@@ -7,6 +7,7 @@ Module::autoCompleteExpired();
 $pageTitle     = 'Attendance & Module Reports';
 $activeNav     = 'hod-attendance';
 $db            = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me            = Auth::user();
 $today         = ClassAttendance::now()->format('Y-m-d');
 $isCoordinator = Auth::role() === 'Coordinator';
@@ -195,6 +196,36 @@ if ($isCoordinator) {
     $overallSessionFilter = 'Weekend';
 }
 
+// HoD analytics period. The anchor date lets the same controls inspect any
+// day, calendar week (Monday-Sunday), or calendar month.
+$analyticsPeriod = $_GET['period'] ?? 'monthly';
+if (!in_array($analyticsPeriod, ['daily', 'weekly', 'monthly'], true)) {
+    $analyticsPeriod = 'monthly';
+}
+$analyticsDate = $_GET['analytics_date'] ?? $today;
+$analyticsDateObject = DateTimeImmutable::createFromFormat('!Y-m-d', $analyticsDate);
+if (!$analyticsDateObject || $analyticsDateObject->format('Y-m-d') !== $analyticsDate) {
+    $analyticsDate = $today;
+    $analyticsDateObject = new DateTimeImmutable($today);
+}
+if ($analyticsPeriod === 'daily') {
+    $analyticsFrom = $analyticsDate;
+    $analyticsTo = $analyticsDate;
+    $analyticsRangeLabel = $analyticsDateObject->format('d M Y');
+} elseif ($analyticsPeriod === 'weekly') {
+    $weekStart = $analyticsDateObject->modify('monday this week');
+    $weekEnd = $weekStart->modify('+6 days');
+    $analyticsFrom = $weekStart->format('Y-m-d');
+    $analyticsTo = $weekEnd->format('Y-m-d');
+    $analyticsRangeLabel = $weekStart->format('d M') . ' - ' . $weekEnd->format('d M Y');
+} else {
+    $monthStart = $analyticsDateObject->modify('first day of this month');
+    $monthEnd = $analyticsDateObject->modify('last day of this month');
+    $analyticsFrom = $monthStart->format('Y-m-d');
+    $analyticsTo = $monthEnd->format('Y-m-d');
+    $analyticsRangeLabel = $analyticsDateObject->format('F Y');
+}
+
 $moduleId = (int) ($_GET['module_id'] ?? 0);
 $module   = null;
 foreach ($allModules as $am) {
@@ -322,8 +353,10 @@ if ($viewMode === 'overall') {
             "SELECT session_id, session_date, window_name FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
         );
         $sessStmt2->execute(['mid' => $amId]);
-        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today, $am) {
+        $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today, $am, $analyticsFrom, $analyticsTo) {
             return $s['session_date'] <= $today
+                && $s['session_date'] >= $analyticsFrom
+                && $s['session_date'] <= $analyticsTo
                 && (empty($am['start_date']) || $s['session_date'] >= $am['start_date'])
                 && (empty($am['end_date']) || $s['session_date'] <= $am['end_date'])
                 && !in_array($s['session_date'], $excludeDates, true)
@@ -456,7 +489,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <div class="d-flex gap-2 flex-wrap">
       <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $detailModuleId ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer me-1"></i>Print Report</a>
       <a href="<?= APP_URL ?>/hod/attendance-sheet-excel.php?module_id=<?= $detailModuleId ?>" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Excel Report</a>
-      <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i>Back to Modules</a>
+      <a href="?view=overall&amp;session=<?= e($overallSessionFilter) ?>&amp;period=<?= e($analyticsPeriod) ?>&amp;analytics_date=<?= e($analyticsDate) ?><?= !empty($_GET['special']) ? '&amp;special=1' : '' ?>" class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-left me-1"></i>Back to Modules</a>
     </div>
   </div>
 
@@ -519,8 +552,8 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <div class="row g-3 mb-3">
   <div class="col-md-4"><div class="stat-card"><div class="stat-label">Ongoing Modules / <?= e($sessionLabel) ?></div><div class="stat-value"><?= $modulesShown ?></div></div></div>
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Total Sign-Ins Recorded</div><div class="stat-value"><?= $overallTotal ?></div></div></div>
-  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Overall Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label">Attendance Records / <?= e($analyticsRangeLabel) ?></div><div class="stat-value"><?= $overallTotal ?></div></div></div>
+  <div class="col-md-4"><div class="stat-card"><div class="stat-label"><?= e(ucfirst($analyticsPeriod)) ?> Attendance Rate</div><div class="stat-value"><?= $overallRate ?>%</div>
     <div class="progress mt-2" style="height:6px;"><div class="progress-bar" style="width:<?= $overallRate ?>%;background-color:var(--semas-gold);"></div></div>
   </div></div>
 </div>
@@ -529,7 +562,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <form method="GET" class="row g-2 align-items-center">
     <input type="hidden" name="view" value="overall">
     <?php if (!empty($_GET['special'])): ?><input type="hidden" name="special" value="1"><?php endif; ?>
-    <div class="col-md-5">
+    <div class="col-md-3">
       <label class="form-label small mb-1">Session</label>
       <select name="session" class="form-select form-select-sm" onchange="this.form.submit()" <?= $isCoordinator ? 'disabled' : '' ?>>
         <option value="" <?= $overallSessionFilter === '' ? 'selected' : '' ?>>All Sessions</option>
@@ -539,7 +572,20 @@ require __DIR__ . '/../partials/layout_top.php';
       </select>
       <?php if ($isCoordinator): ?><input type="hidden" name="session" value="Weekend"><?php endif; ?>
     </div>
-    <div class="col-md-7 text-md-end">
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Analytics period</label>
+      <select name="period" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="daily" <?= $analyticsPeriod === 'daily' ? 'selected' : '' ?>>Daily</option>
+        <option value="weekly" <?= $analyticsPeriod === 'weekly' ? 'selected' : '' ?>>Weekly</option>
+        <option value="monthly" <?= $analyticsPeriod === 'monthly' ? 'selected' : '' ?>>Monthly</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Date</label>
+      <input type="date" name="analytics_date" value="<?= e($analyticsDate) ?>" max="<?= e($today) ?>" class="form-control form-control-sm" onchange="this.form.submit()">
+    </div>
+    <div class="col-md-3 text-md-end">
+      <div class="small fw-semibold mb-1"><?= e($analyticsRangeLabel) ?></div>
       <span class="text-muted small">
         Current session: <?= $currentWindow ? e(ClassAttendance::describeWindow($currentWindow)) : 'No active session window' ?>
       </span>
@@ -556,7 +602,7 @@ require __DIR__ . '/../partials/layout_top.php';
     <span><span class="px-2 py-0 rounded fw-bold" style="background:#fff3cd;color:#856404;">⚠ 3 absences</span> Special Case / Not Allowed (<?= $totalSpecialCases ?>)</span>
     <span><span class="px-2 py-0 rounded fw-bold" style="background:#f8d7da;color:#721c24;">⛔ 4+ absences</span> Critical / Not Allowed (<?= $totalCritical ?>)</span>
   </div>
-  <a href="?view=overall&session=<?= e($overallSessionFilter) ?><?= empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
+  <a href="?view=overall&amp;session=<?= e($overallSessionFilter) ?>&amp;period=<?= e($analyticsPeriod) ?>&amp;analytics_date=<?= e($analyticsDate) ?><?= empty($_GET['special']) ? '&amp;special=1' : '' ?>" class="btn btn-sm <?= !empty($_GET['special']) ? 'btn-semas-gold' : 'btn-outline-dark' ?>">
     <i class="bi bi-funnel me-1"></i> <?= !empty($_GET['special']) ? 'Showing At-Risk Students (2+)' : 'Show At-Risk Students (2+)' ?>
   </a>
 </div>
@@ -594,7 +640,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php if (!$ms['critical'] && !$ms['special'] && !$ms['warning']): ?><span class="text-muted small">No flagged students</span><?php endif; ?>
         </div>
         <div class="d-flex gap-2 mt-auto flex-wrap">
-          <a href="?view=overall&session=<?= e($overallSessionFilter) ?>&detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&special=1' : '' ?>" class="btn btn-sm btn-outline-dark flex-grow-1">
+          <a href="?view=overall&amp;session=<?= e($overallSessionFilter) ?>&amp;period=<?= e($analyticsPeriod) ?>&amp;analytics_date=<?= e($analyticsDate) ?>&amp;detail_module=<?= $ms['module_id'] ?><?= !empty($_GET['special']) ? '&amp;special=1' : '' ?>" class="btn btn-sm btn-outline-dark flex-grow-1">
             <i class="bi bi-people me-1"></i>Student Details
           </a>
           <a href="<?= APP_URL ?>/hod/attendance-sheet-print.php?module_id=<?= $ms['module_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Print module attendance report">

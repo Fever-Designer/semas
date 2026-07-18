@@ -6,6 +6,7 @@ Auth::requireRole(['Student']);
 $pageTitle = 'Events';
 $activeNav = 'events';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $user = Auth::user();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register') {

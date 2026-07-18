@@ -7,6 +7,7 @@ $pageTitle = 'Assignments';
 $activeNav = 'modules';
 
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 
 /**

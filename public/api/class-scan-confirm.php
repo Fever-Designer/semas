@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrf_verify();
 
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 $sessionId     = (int) $_POST['session_id'];
 $studentUserId = (int) $_POST['user_id'];

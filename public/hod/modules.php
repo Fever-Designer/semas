@@ -7,6 +7,7 @@ Module::autoCompleteExpired();
 $pageTitle  = 'Manage Modules';
 $activeNav  = 'modules';
 $db         = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me         = Auth::user();
 $today      = date('Y-m-d');
 $intakeList = availableIntakes();
@@ -218,6 +219,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$stu) {
             flash('error', "No active student found with reg number: {$regNum}");
         } else {
+            if (Module::isDisciplinarilyBlocked($db, $modId, (int) $stu['user_id'])) {
+                flash('error', Module::disciplinaryBlockMessage($stu['full_name']));
+                redirect('/hod/modules.php');
+            }
+            $activeDisciplinaryModule = Module::activeDisciplinaryModule($db, (int) $stu['user_id']);
+            if ($activeDisciplinaryModule) {
+                flash('error', Module::activeDisciplinaryEnrollmentMessage($stu['full_name'], $activeDisciplinaryModule));
+                redirect('/hod/modules.php');
+            }
             $completedStmt = $db->prepare(
                 "SELECT cm.module_title
                  FROM modules target
@@ -716,7 +726,12 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
 
       <!-- Room -->
       <div class="col-md-6">
-        <label class="form-label small fw-semibold">Room <span class="text-muted small">(available for selected session)</span></label>
+        <div class="d-flex align-items-center justify-content-between gap-2">
+          <label class="form-label small fw-semibold mb-1">Room <span class="text-muted small">(available for selected session)</span></label>
+          <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" onclick="toggleAddRoom('<?= e($uid) ?>')">
+            <i class="bi bi-plus-circle me-1"></i>Add new
+          </button>
+        </div>
         <select name="room_id" class="form-select form-select-sm module-room-select" id="room-<?= $uid ?>" data-current-room-id="<?= (int) ($currentRoomId ?? 0) ?>">
           <option value="">/ TBC /</option>
           <?php
@@ -728,6 +743,12 @@ function moduleFormFields(string $uid, array $lecturers, array $rooms, array $in
             <option value="<?= $currentRoomId ?>" selected>[Current: <?= e($mod['room_name'] ?? '') ?>]</option>
           <?php endif; ?>
         </select>
+        <div class="input-group input-group-sm mt-2" id="add-room-<?= $uid ?>" style="display:none;">
+          <input type="text" class="form-control" id="new-room-name-<?= $uid ?>" maxlength="100" placeholder="Enter room name">
+          <button type="button" class="btn btn-outline-success" onclick="saveNewRoom('<?= e($uid) ?>', this)">Save</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="toggleAddRoom('<?= e($uid) ?>', false)" aria-label="Cancel">Cancel</button>
+        </div>
+        <div class="small mt-1" id="add-room-feedback-<?= $uid ?>" style="display:none;"></div>
       </div>
 
       <!-- Intakes -->
@@ -781,6 +802,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 <?php endif; ?>
 const MODULE_INTAKES = <?= json_encode($moduleIntakesMap) ?>;
+const MODULE_CSRF = <?= json_encode(csrf_token()) ?>;
 
 // Pre-check intakes for each edit modal
 document.addEventListener('DOMContentLoaded', function() {
@@ -847,7 +869,78 @@ function refreshRoomsForSession(select) {
 }
 
 function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleAddRoom(uid, show) {
+    var wrap = document.getElementById('add-room-' + uid);
+    var input = document.getElementById('new-room-name-' + uid);
+    var feedback = document.getElementById('add-room-feedback-' + uid);
+    if (!wrap) return;
+    var shouldShow = typeof show === 'boolean' ? show : wrap.style.display === 'none';
+    wrap.style.display = shouldShow ? 'flex' : 'none';
+    if (feedback) feedback.style.display = 'none';
+    if (shouldShow && input) {
+        input.focus();
+    } else if (input) {
+        input.value = '';
+    }
+}
+
+function saveNewRoom(uid, button) {
+    var input = document.getElementById('new-room-name-' + uid);
+    var feedback = document.getElementById('add-room-feedback-' + uid);
+    var roomSelect = document.getElementById('room-' + uid);
+    var roomName = input ? input.value.trim() : '';
+    if (roomName.length < 2) {
+        feedback.className = 'small mt-1 text-danger';
+        feedback.textContent = 'Enter a room name with at least 2 characters.';
+        feedback.style.display = '';
+        return;
+    }
+
+    button.disabled = true;
+    feedback.className = 'small mt-1 text-muted';
+    feedback.textContent = 'Adding room...';
+    feedback.style.display = '';
+
+    fetch(window.SEMAS_BASE_URL + '/api/available-rooms.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+        body: new URLSearchParams({csrf_token: MODULE_CSRF, room_name: roomName})
+    })
+        .then(function(response) {
+            return response.json().then(function(data) {
+                if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to add the room.');
+                return data;
+            });
+        })
+        .then(function(data) {
+            var room = data.room;
+            document.querySelectorAll('.module-room-select').forEach(function(select) {
+                var option = Array.from(select.options).find(function(item) {
+                    return String(item.value) === String(room.room_id);
+                });
+                if (!option) {
+                    option = new Option(room.room_name, room.room_id);
+                    select.add(option);
+                }
+                if (select === roomSelect) select.value = String(room.room_id);
+            });
+            feedback.className = 'small mt-1 text-success';
+            feedback.textContent = data.message;
+            feedback.style.display = '';
+            document.getElementById('add-room-' + uid).style.display = 'none';
+            input.value = '';
+        })
+        .catch(function(error) {
+            feedback.className = 'small mt-1 text-danger';
+            feedback.textContent = error.message;
+            feedback.style.display = '';
+        })
+        .finally(function() {
+            button.disabled = false;
+        });
 }
 
 // ── Enroll student lookup ──────────────────────────────────────────────

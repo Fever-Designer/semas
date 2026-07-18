@@ -23,6 +23,8 @@ require_once __DIR__ . '/../includes/Delivery.php';
 require_once __DIR__ . '/../includes/Suggestion.php';
 require_once __DIR__ . '/../includes/Announcement.php';
 require_once __DIR__ . '/../includes/ClassAttendance.php';
+require_once __DIR__ . '/../includes/AttendanceWarning.php';
+require_once __DIR__ . '/../includes/Semester.php';
 require_once __DIR__ . '/../includes/Settings.php';
 require_once __DIR__ . '/../includes/Module.php';
 require_once __DIR__ . '/../includes/Eligibility.php';

@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrf_verify();
 
 $db         = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me         = Auth::user();
 $scheduleId = (int) ($_POST['schedule_id'] ?? 0);
 $action     = $_POST['action'] ?? ''; // sign_in | sign_out | submit | search | preview

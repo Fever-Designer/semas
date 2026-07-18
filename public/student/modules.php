@@ -7,6 +7,7 @@ Module::autoCompleteExpired();
 $pageTitle = 'Module Registration';
 $activeNav = 'modules';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me = Auth::user();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -46,6 +47,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$module) {
             flash('error', 'Module not available for registration.');
         } else {
+            if (Module::isDisciplinarilyBlocked($db, $moduleId, (int) $me['user_id'])) {
+                flash('error', Module::disciplinaryBlockMessage('You'));
+                redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
+            }
+            $activeDisciplinaryModule = Module::activeDisciplinaryModule($db, (int) $me['user_id']);
+            if ($activeDisciplinaryModule) {
+                flash('error', Module::activeDisciplinaryEnrollmentMessage('You', $activeDisciplinaryModule));
+                redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
+            }
+            if (!Module::isStudentRegistrationOpen($module)) {
+                flash('error', Module::lateRegistrationMessage($module));
+                redirect('/student/modules?tab=' . ($_GET['tab'] ?? 'browse'));
+            }
             $completedSameTitle = $db->prepare(
                 "SELECT 1 FROM modules cm
                  JOIN module_enrollments ce ON ce.module_id = cm.module_id AND ce.user_id = :uid
@@ -127,6 +141,7 @@ $browseModules = $browseStmt->fetchAll();
 $myEnrolledIds = $db->prepare('SELECT module_id FROM module_enrollments WHERE user_id = :uid');
 $myEnrolledIds->execute(['uid' => $me['user_id']]);
 $myEnrolledIds = array_map('intval', $myEnrolledIds->fetchAll(PDO::FETCH_COLUMN));
+$activeRegistrationBlock = Module::activeDisciplinaryModule($db, (int) $me['user_id']);
 
 // Module titles the student has already completed (a later re-offering of the
 // same title shouldn't be suggested again in Browse).
@@ -204,7 +219,11 @@ require __DIR__ . '/../partials/layout_top.php';
   <?php foreach ($grouped as $deptName => $mods): ?>
     <h6 class="display-font mb-2"><?= e($deptName) ?></h6>
     <div class="row g-3 mb-4">
-      <?php foreach ($mods as $m): $isEnrolled = in_array((int) $m['module_id'], $myEnrolledIds, true); ?>
+      <?php foreach ($mods as $m):
+        $isEnrolled = in_array((int) $m['module_id'], $myEnrolledIds, true);
+        $registrationOpen = Module::isStudentRegistrationOpen($m);
+        $permanentlyBlocked = Module::isDisciplinarilyBlocked($db, (int) $m['module_id'], (int) $me['user_id']);
+      ?>
         <div class="col-md-4">
           <div class="semas-card p-3 h-100">
             <h6 class="fw-semibold mb-1"><?= e($m['module_title']) ?></h6>
@@ -215,6 +234,14 @@ require __DIR__ . '/../partials/layout_top.php';
             </p>
             <?php if ($isEnrolled): ?>
               <span class="badge badge-completed">Registered</span>
+            <?php elseif ($permanentlyBlocked): ?>
+              <span class="badge bg-danger">Disciplinary block</span>
+            <?php elseif ($activeRegistrationBlock): ?>
+              <button class="btn btn-sm btn-secondary" disabled>Registration suspended</button>
+              <div class="text-danger small mt-1">Wait until <?= e($activeRegistrationBlock['module_title']) ?> is completed.</div>
+            <?php elseif (!$registrationOpen): ?>
+              <button class="btn btn-sm btn-secondary" disabled>Registration closed</button>
+              <div class="text-muted small mt-1">Contact your HOD for late registration.</div>
             <?php else: ?>
               <button class="btn btn-sm btn-semas-gold"
                 onclick="openRegisterConfirm(<?= (int) $m['module_id'] ?>, <?= e(json_encode($m['module_title'])) ?>, <?= e(json_encode($m['lecturer_name'] ?? 'TBA')) ?>, <?= e(json_encode(Module::sessionLabel($m))) ?>)">

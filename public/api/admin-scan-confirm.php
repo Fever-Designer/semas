@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrf_verify();
 
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 $eventId = (int) $_POST['event_id'];
 $studentUserId = (int) $_POST['user_id'];
 $method = $_POST['method'] === 'manual' ? 'Manual' : 'StaffScan';

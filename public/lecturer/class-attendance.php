@@ -14,6 +14,7 @@ Module::autoCompleteExpired();
 $pageTitle = 'Manage Attendance';
 $activeNav = 'class-attendance';
 $db        = Database::connection();
+Semester::enforceAcademicWrite($db);
 $me        = Auth::user();
 $today     = ClassAttendance::now()->format('Y-m-d');
 

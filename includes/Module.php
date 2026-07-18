@@ -12,6 +12,115 @@ declare(strict_types=1);
 final class Module
 {
     public const MAX_ONGOING_ENROLLMENTS = 3;
+    public const DISCIPLINARY_ABSENCE_THRESHOLD = 4;
+
+    public static function isDisciplinarilyBlocked(PDO $db, int $moduleId, int $userId): bool
+    {
+        self::ensureDisciplinaryBlocksTable($db);
+        $stmt = $db->prepare(
+            'SELECT 1 FROM module_disciplinary_blocks
+             WHERE module_id = :mid AND user_id = :uid LIMIT 1'
+        );
+        $stmt->execute(['mid' => $moduleId, 'uid' => $userId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public static function disciplinaryBlockMessage(string $studentName): string
+    {
+        return $studentName . ' cannot be registered for this module because a permanent disciplinary block was issued after '
+            . self::DISCIPLINARY_ABSENCE_THRESHOLD . ' pre-CAT effective absences.';
+    }
+
+    public static function activeDisciplinaryModule(PDO $db, int $userId): ?array
+    {
+        self::ensureDisciplinaryBlocksTable($db);
+        $stmt = $db->prepare(
+            "SELECT m.module_id, m.module_title, b.blocked_at
+             FROM module_disciplinary_blocks b
+             JOIN modules m ON m.module_id = b.module_id
+             WHERE b.user_id = :uid AND m.status = 'Ongoing'
+             ORDER BY b.blocked_at DESC
+             LIMIT 1"
+        );
+        $stmt->execute(['uid' => $userId]);
+        return $stmt->fetch() ?: null;
+    }
+
+    public static function activeDisciplinaryEnrollmentMessage(string $studentName, array $blockedModule): string
+    {
+        return $studentName . ' cannot be registered for another module while the disciplinary module "'
+            . ($blockedModule['module_title'] ?? 'Unknown Module')
+            . '" is still Ongoing. Registration becomes available after that module is Completed.';
+    }
+
+    public static function isStudentRegistrationOpen(array $module, ?DateTimeInterface $today = null): bool
+    {
+        if (empty($module['start_date'])) {
+            return true;
+        }
+        $today = $today ?: new DateTimeImmutable('today');
+        $deadline = (new DateTimeImmutable((string) $module['start_date']))->modify('+2 days');
+        return $today <= $deadline;
+    }
+
+    public static function lateRegistrationMessage(array $module): string
+    {
+        $deadline = !empty($module['start_date'])
+            ? (new DateTimeImmutable((string) $module['start_date']))->modify('+2 days')->format('d M Y')
+            : '';
+        return 'The student registration period for "' . ($module['module_title'] ?? 'this module')
+            . '" has closed' . ($deadline !== '' ? ' on ' . $deadline : '')
+            . '. Only the HOD can register a student after the two-day registration window.';
+    }
+
+    public static function applyDisciplinaryBlock(PDO $db, int $moduleId, int $userId, int $missedDays, int $sessionId): bool
+    {
+        self::ensureDisciplinaryBlocksTable($db);
+        $db->beginTransaction();
+        try {
+            $insert = $db->prepare(
+                'INSERT IGNORE INTO module_disciplinary_blocks
+                    (module_id, user_id, missed_days, triggered_session_id, reason, blocked_at)
+                 VALUES (:mid, :uid, :missed, :sid, :reason, NOW())'
+            );
+            $insert->execute([
+                'mid' => $moduleId,
+                'uid' => $userId,
+                'missed' => $missedDays,
+                'sid' => $sessionId,
+                'reason' => 'Automatically de-registered after reaching four pre-CAT effective absences.',
+            ]);
+            $created = $insert->rowCount() === 1;
+            $db->prepare('DELETE FROM cat_exam_eligibility WHERE module_id = :mid AND user_id = :uid')
+               ->execute(['mid' => $moduleId, 'uid' => $userId]);
+            $db->prepare('DELETE FROM module_enrollments WHERE module_id = :mid AND user_id = :uid')
+               ->execute(['mid' => $moduleId, 'uid' => $userId]);
+            $db->commit();
+            return $created;
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        }
+    }
+
+    private static function ensureDisciplinaryBlocksTable(PDO $db): void
+    {
+        $db->exec(
+            'CREATE TABLE IF NOT EXISTS module_disciplinary_blocks (
+                block_id INT AUTO_INCREMENT PRIMARY KEY,
+                module_id INT NOT NULL,
+                user_id INT NOT NULL,
+                missed_days INT NOT NULL,
+                triggered_session_id INT NULL,
+                reason VARCHAR(255) NOT NULL,
+                blocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_module_disciplinary_block (module_id, user_id),
+                FOREIGN KEY (module_id) REFERENCES modules(module_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (triggered_session_id) REFERENCES class_sessions(session_id) ON DELETE SET NULL
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+    }
 
     public static function autoCompleteExpired(): void
     {

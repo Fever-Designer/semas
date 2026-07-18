@@ -5,8 +5,9 @@ declare(strict_types=1);
  *  so the two export formats can never drift apart. */
 function build_attendance_report_rows(PDO $db, array $filters): array
 {
-    $where = [];
-    $params = [];
+    $semester = Semester::requireActive($db);
+    $where = ['e.semester_id = :report_semester_id'];
+    $params = ['report_semester_id' => (int) $semester['id']];
 
     if (!empty($filters['event_id'])) {
         $where[] = 'e.event_id = :event_id';

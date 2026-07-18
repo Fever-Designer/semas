@@ -21,7 +21,6 @@ if ($role === 'Principal') {
         'total_hods'      => (int) $db->query("SELECT COUNT(*) FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='HOD'")->fetchColumn(),
         'total_deans'     => (int) $db->query("SELECT COUNT(*) FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='Dean'")->fetchColumn(),
         'total_departments' => (int) $db->query('SELECT COUNT(*) FROM departments')->fetchColumn(),
-        'total_modules'   => (int) $db->query('SELECT COUNT(*) FROM modules')->fetchColumn(),
     ];
     $recentStaff = $db->query(
         "SELECT u.full_name, u.email, r.role_name, u.created_at FROM users u JOIN roles r ON r.role_id = u.role_id
@@ -188,10 +187,13 @@ require __DIR__ . '/partials/layout_top.php';
     <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-badge-fill stat-icon"></i><div class="stat-label">Total Deans</div><div class="stat-value"><?= $stats['total_deans'] ?></div></div></div>
   </div>
   <div class="row g-3 mb-3">
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-building stat-icon"></i><div class="stat-label">Total Departments</div><div class="stat-value"><?= $stats['total_departments'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-journal-bookmark-fill stat-icon"></i><div class="stat-label">Total Modules</div><div class="stat-value"><?= $stats['total_modules'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-person-check-fill stat-icon"></i><div class="stat-label">Active Users</div><div class="stat-value"><?= $stats['active_users'] ?></div></div></div>
-    <div class="col-md-6 col-lg-3"><div class="stat-card"><i class="bi bi-hourglass-split stat-icon"></i><div class="stat-label">Pending Accounts</div><div class="stat-value"><?= $stats['pending_users'] ?></div></div></div>
+    <div class="col-md-6 col-lg-4"><div class="stat-card"><i class="bi bi-building stat-icon"></i><div class="stat-label">Total Departments</div><div class="stat-value"><?= $stats['total_departments'] ?></div></div></div>
+    <div class="col-md-6 col-lg-4"><div class="stat-card"><i class="bi bi-person-check-fill stat-icon"></i><div class="stat-label">Active Users</div><div class="stat-value"><?= $stats['active_users'] ?></div></div></div>
+    <div class="col-md-6 col-lg-4">
+      <a href="<?= APP_URL ?>/admin/suggestions.php" class="text-decoration-none text-reset">
+        <div class="stat-card"><i class="bi bi-chat-left-text stat-icon"></i><div class="stat-label">Pending Suggestions</div><div class="stat-value"><?= $pendingSuggestions ?></div></div>
+      </a>
+    </div>
   </div>
   <div class="row g-3 mb-4">
     <div class="col-md-6">
@@ -210,7 +212,6 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="semas-card p-3 mb-4">
     <div class="d-flex gap-2 flex-wrap">
       <a href="<?= APP_URL ?>/admin/users.php" class="btn btn-semas-gold btn-sm"><i class="bi bi-people me-1"></i> Manage Users</a>
-      <a href="<?= APP_URL ?>/admin/module-reports.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Module &amp; Attendance Reports</a>
       <a href="<?= APP_URL ?>/admin/audit-log.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-clock-history me-1"></i> Audit Log</a>
       <a href="<?= APP_URL ?>/admin/settings.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-gear me-1"></i> Settings &amp; Branding</a>
       <a href="<?= APP_URL ?>/admin/suggestions.php" class="btn btn-outline-dark btn-sm"><i class="bi bi-chat-left-text me-1"></i> Suggestion Box (<?= $pendingSuggestions ?>)</a>

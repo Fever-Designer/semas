@@ -7,6 +7,7 @@ Announcement::purgeExpired();
 $pageTitle = 'Events & Announcement Management';
 $activeNav = 'events';
 $db = Database::connection();
+Semester::enforceAcademicWrite($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     csrf_verify();
