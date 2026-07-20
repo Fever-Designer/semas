@@ -14,13 +14,25 @@ $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
 
 switch ($action) {
     case 'list':
-        RoleNotificationService::generateFor($userId, (string) Auth::role());
-        $items = NotificationCenter::recent($userId, 20);
-        echo json_encode([
-            'ok' => true,
-            'unread_count' => NotificationCenter::unreadCount($userId),
-            'items' => $items,
-        ]);
+        try {
+            RoleNotificationService::generateFor($userId, (string) Auth::role());
+        } catch (Throwable $e) {
+            // Generated role alerts are supplementary; one unavailable source
+            // must not prevent the user's existing notifications from loading.
+            error_log('Role notification generation failed: ' . $e->getMessage());
+        }
+        try {
+            $items = NotificationCenter::recent($userId, 20);
+            echo json_encode([
+                'ok' => true,
+                'unread_count' => NotificationCenter::unreadCount($userId),
+                'items' => $items,
+            ]);
+        } catch (Throwable $e) {
+            error_log('Notification list failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'message' => 'Notifications are temporarily unavailable.']);
+        }
         break;
 
     case 'mark_read':

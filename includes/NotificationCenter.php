@@ -12,6 +12,8 @@ declare(strict_types=1);
  */
 final class NotificationCenter
 {
+    private static ?bool $hasActionUrl = null;
+
     public static function notify(
         int $userId,
         string $title,
@@ -22,14 +24,22 @@ final class NotificationCenter
     ): void
     {
         $db = Database::connection();
-        $db->prepare(
-            'INSERT INTO notifications (user_id, title, body, category, related_announcement_id, action_url)
-             VALUES (:uid, :title, :body, :category, :aid, :action_url)'
-        )->execute([
+        $params = [
             'uid' => $userId, 'title' => $title, 'body' => $body,
             'category' => $category, 'aid' => $relatedAnnouncementId,
-            'action_url' => self::internalActionUrl($actionUrl),
-        ]);
+        ];
+        if (self::hasActionUrl($db)) {
+            $params['action_url'] = self::internalActionUrl($actionUrl);
+            $db->prepare(
+                'INSERT INTO notifications (user_id, title, body, category, related_announcement_id, action_url)
+                 VALUES (:uid, :title, :body, :category, :aid, :action_url)'
+            )->execute($params);
+        } else {
+            $db->prepare(
+                'INSERT INTO notifications (user_id, title, body, category, related_announcement_id)
+                 VALUES (:uid, :title, :body, :category, :aid)'
+            )->execute($params);
+        }
     }
 
     public static function notifyMany(array $userIds, string $title, string $body, string $category = 'System', ?int $relatedAnnouncementId = null): void
@@ -55,7 +65,7 @@ final class NotificationCenter
         $exists->execute(['uid' => $userId, 'title' => $title]);
         if ($exists->fetchColumn()) {
             $safeActionUrl = self::internalActionUrl($actionUrl);
-            if ($safeActionUrl !== null) {
+            if ($safeActionUrl !== null && self::hasActionUrl($db)) {
                 $db->prepare(
                     'UPDATE notifications
                      SET action_url = :action_url
@@ -82,12 +92,16 @@ final class NotificationCenter
 
     public static function recent(int $userId, int $limit = 20): array
     {
-        $stmt = Database::connection()->prepare(
-            "SELECT n.*,
-                    COALESCE(n.action_url,
+        $db = Database::connection();
+        $actionExpression = self::hasActionUrl($db)
+            ? "COALESCE(n.action_url,
                         CASE WHEN n.related_announcement_id IS NOT NULL
                              THEN '/announcements/board.php' ELSE NULL END
-                    ) AS action_url
+                    )"
+            : "CASE WHEN n.related_announcement_id IS NOT NULL
+                    THEN '/announcements/board.php' ELSE NULL END";
+        $stmt = $db->prepare(
+            "SELECT n.*, {$actionExpression} AS action_url
              FROM notifications n
              WHERE n.user_id = :uid
              ORDER BY n.created_at DESC LIMIT :lim"
@@ -142,5 +156,15 @@ final class NotificationCenter
 
         // Notification links must stay inside SEMAS.
         return str_starts_with($url, '/') && !str_starts_with($url, '//') ? $url : null;
+    }
+
+    private static function hasActionUrl(PDO $db): bool
+    {
+        if (self::$hasActionUrl !== null) {
+            return self::$hasActionUrl;
+        }
+        $stmt = $db->query("SHOW COLUMNS FROM notifications LIKE 'action_url'");
+        self::$hasActionUrl = (bool) $stmt->fetch();
+        return self::$hasActionUrl;
     }
 }
