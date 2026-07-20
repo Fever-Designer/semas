@@ -6,6 +6,7 @@ header('Content-Type: application/json');
 
 $db = Database::connection();
 Semester::enforceAcademicWrite($db);
+EventLifecycle::sync($db);
 $eventId = (int) ($_GET['event_id'] ?? $_POST['event_id'] ?? 0);
 $mode = $_GET['mode'] ?? $_POST['mode'] ?? '';
 
@@ -14,6 +15,10 @@ $evStmt->execute(['id' => $eventId]);
 $event = $evStmt->fetch();
 if (!$event) {
     echo json_encode(['ok' => false, 'message' => 'Event not found.']);
+    exit;
+}
+if ($event['status'] !== 'Ongoing') {
+    echo json_encode(['ok' => false, 'message' => 'Attendance can only be marked while this event is ongoing.']);
     exit;
 }
 
@@ -30,6 +35,15 @@ function student_payload(PDO $db, array $event, int $userId): array
     $student = $stmt->fetch();
     if (!$student) {
         return ['ok' => false, 'message' => 'Student not found.'];
+    }
+
+    $registration = $db->prepare(
+        "SELECT registration_id FROM event_registrations
+         WHERE event_id = :e AND user_id = :u AND status = 'Registered'"
+    );
+    $registration->execute(['e' => $event['event_id'], 'u' => $userId]);
+    if (!$registration->fetchColumn()) {
+        return ['ok' => false, 'message' => 'This student is not registered for the selected event.'];
     }
 
     $already = $db->prepare('SELECT attendance_id, checkin_time FROM attendance_logs WHERE event_id = :e AND user_id = :u');
@@ -122,11 +136,15 @@ if ($mode === 'search') {
         exit;
     }
     $stmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number FROM users u JOIN roles r ON r.role_id = u.role_id
+        "SELECT u.user_id, u.full_name, u.reg_number
+         FROM users u
+         JOIN roles r ON r.role_id = u.role_id
+         JOIN event_registrations er ON er.user_id = u.user_id
+            AND er.event_id = :event_id AND er.status = 'Registered'
          WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q)
          LIMIT 10"
     );
-    $stmt->execute(['q' => "%$q%"]);
+    $stmt->execute(['event_id' => $eventId, 'q' => "%$q%"]);
     echo json_encode(['ok' => true, 'results' => $stmt->fetchAll()]);
     exit;
 }

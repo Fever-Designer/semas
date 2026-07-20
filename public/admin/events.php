@@ -8,6 +8,7 @@ $pageTitle = 'Events & Announcement Management';
 $activeNav = 'events';
 $db = Database::connection();
 Semester::enforceAcademicWrite($db);
+EventLifecycle::sync($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     csrf_verify();
@@ -57,6 +58,8 @@ $events = $db->query(
     "SELECT e.*, (SELECT COUNT(*) FROM attendance_logs a WHERE a.event_id=e.event_id) AS attendees
      FROM events e ORDER BY e.event_date DESC"
 )->fetchAll();
+$activeEvents = array_values(array_filter($events, static fn(array $event): bool => in_array($event['status'], ['Scheduled', 'Ongoing'], true)));
+$eventHistory = array_values(array_filter($events, static fn(array $event): bool => $event['status'] === 'Completed'));
 $announcements = $db->query(
     "SELECT * FROM announcements ORDER BY posted_at DESC LIMIT 15"
 )->fetchAll();
@@ -109,12 +112,12 @@ require __DIR__ . '/../partials/layout_top.php';
 </div>
 
 <div class="semas-card p-3 mb-4">
-  <h6 class="display-font mb-3">All Events</h6>
+  <h6 class="display-font mb-3">Active Events</h6>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead><tr><th>Event</th><th>Venue</th><th>Date</th><th>Status</th><th>Check-ins</th><th>QR</th></tr></thead>
       <tbody>
-        <?php foreach ($events as $ev): ?>
+        <?php foreach ($activeEvents as $ev): ?>
           <tr>
             <td class="fw-semibold"><?= e($ev['title']) ?></td>
             <td><?= e($ev['venue']) ?></td>
@@ -124,6 +127,33 @@ require __DIR__ . '/../partials/layout_top.php';
             <td><a href="<?= APP_URL ?>/admin/qr.php?event_id=<?= (int) $ev['event_id'] ?>" class="small">View QR</a></td>
           </tr>
         <?php endforeach; ?>
+        <?php if (!$activeEvents): ?><tr><td colspan="6" class="text-muted text-center py-3">No scheduled or ongoing events.</td></tr><?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="semas-card p-3 mb-4">
+  <h6 class="display-font mb-1"><i class="bi bi-clock-history me-1"></i> Event History</h6>
+  <p class="text-muted small">Completed events are read-only. Their attendance remains available for review and reporting.</p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Event</th><th>Venue</th><th>Date</th><th>Status</th><th>Attendance</th><th>Reports</th></tr></thead>
+      <tbody>
+        <?php foreach ($eventHistory as $ev): ?>
+          <tr>
+            <td class="fw-semibold"><?= e($ev['title']) ?></td>
+            <td><?= e($ev['venue']) ?></td>
+            <td><?= e($ev['event_date']) ?></td>
+            <td><span class="badge badge-completed">Completed</span></td>
+            <td><a href="<?= APP_URL ?>/admin/event-participants.php?event_id=<?= (int) $ev['event_id'] ?>" class="btn btn-sm btn-outline-dark">View Attendance (<?= (int) $ev['attendees'] ?>)</a></td>
+            <td>
+              <a href="<?= APP_URL ?>/reports/export-pdf.php?event_id=<?= (int) $ev['event_id'] ?>" target="_blank" class="btn btn-sm btn-semas">PDF</a>
+              <a href="<?= APP_URL ?>/reports/export-excel.php?event_id=<?= (int) $ev['event_id'] ?>" class="btn btn-sm btn-semas-gold">Excel</a>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$eventHistory): ?><tr><td colspan="6" class="text-muted text-center py-3">No completed events yet.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>
@@ -170,7 +200,7 @@ require __DIR__ . '/../partials/layout_top.php';
         <label class="form-label small">Related Event (required if Event Participants)</label>
         <select name="event_id" class="form-select">
           <option value="">None</option>
-          <?php foreach ($events as $ev): ?><option value="<?= (int) $ev['event_id'] ?>"><?= e($ev['title']) ?></option><?php endforeach; ?>
+          <?php foreach ($activeEvents as $ev): ?><option value="<?= (int) $ev['event_id'] ?>"><?= e($ev['title']) ?></option><?php endforeach; ?>
         </select>
       </div>
       <div class="col-12"><label class="form-label small">Message</label><textarea name="message" class="form-control" rows="3" required></textarea></div>

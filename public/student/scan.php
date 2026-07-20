@@ -38,36 +38,23 @@ require __DIR__ . '/../partials/layout_top.php';
     return;
   }
 
-  if (!navigator.geolocation) {
-    show('danger', 'GPS is not supported on this device/browser.');
-    return;
-  }
-
-  statusEl.innerHTML = '<div class="text-muted small"><div class="spinner-border spinner-border-sm me-1"></div>Getting your location...</div>';
-
-  navigator.geolocation.getCurrentPosition(function (pos) {
-    statusEl.innerHTML = '<div class="text-muted small"><div class="spinner-border spinner-border-sm me-1"></div>Confirming attendance...</div>';
-    fetch('<?= APP_URL ?>/api/checkin.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event_id: eventId,
-        token: token,
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        csrf_token: csrf
-      })
+  statusEl.innerHTML = '<div class="text-muted small"><div class="spinner-border spinner-border-sm me-1"></div>Confirming attendance...</div>';
+  fetch('<?= APP_URL ?>/api/checkin.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_id: eventId,
+      token: token,
+      csrf_token: csrf
     })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      show(data.ok ? 'success' : 'danger', data.message || 'Unable to complete check-in.');
-    })
-    .catch(function () {
-      show('danger', 'Network error. Please try scanning again.');
-    });
-  }, function () {
-    show('danger', 'Location access is required for event check-in. Enable GPS/location and scan again.');
-  }, { enableHighAccuracy: true, timeout: 10000 });
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    show(data.ok ? 'success' : 'danger', data.message || 'Unable to complete check-in.');
+  })
+  .catch(function () {
+    show('danger', 'Network error. Please try scanning again.');
+  });
 })();
 </script>
 

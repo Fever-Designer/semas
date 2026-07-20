@@ -20,21 +20,36 @@ if (!hash_equals($_SESSION['csrf_token'] ?? '', (string) ($input['csrf_token'] ?
 
 $eventId = (int) ($input['event_id'] ?? 0);
 $token = (string) ($input['token'] ?? '');
-$lat = isset($input['latitude']) ? (float) $input['latitude'] : null;
-$lng = isset($input['longitude']) ? (float) $input['longitude'] : null;
 
-if (!$eventId || $token === '' || $lat === null || $lng === null) {
+if (!$eventId || $token === '') {
     echo json_encode(['ok' => false, 'message' => 'Missing scan data. Please try scanning again.']);
     exit;
 }
 
 $db = Database::connection();
+EventLifecycle::sync($db);
 $stmt = $db->prepare('SELECT * FROM events WHERE event_id = :id');
 $stmt->execute(['id' => $eventId]);
 $event = $stmt->fetch();
 
 if (!$event) {
     echo json_encode(['ok' => false, 'message' => 'Event not found.']);
+    exit;
+}
+
+if ($event['status'] !== 'Ongoing') {
+    echo json_encode(['ok' => false, 'message' => 'Attendance can only be marked while this event is ongoing.']);
+    exit;
+}
+
+$userId = Auth::id();
+$registration = $db->prepare(
+    "SELECT registration_id FROM event_registrations
+     WHERE event_id = :e AND user_id = :u AND status = 'Registered'"
+);
+$registration->execute(['e' => $eventId, 'u' => $userId]);
+if (!$registration->fetchColumn()) {
+    echo json_encode(['ok' => false, 'message' => 'You are not registered for this event.']);
     exit;
 }
 
@@ -45,16 +60,7 @@ if (!$verify['ok'] || (int) $verify['data']['event_id'] !== $eventId) {
     exit;
 }
 
-// 2. GPS validation / must be within the configured radius of the venue (or campus default).
-$gps = GpsService::withinCampus(
-    $lat, $lng,
-    $event['latitude'] !== null ? (float) $event['latitude'] : null,
-    $event['longitude'] !== null ? (float) $event['longitude'] : null
-);
-
-$userId = Auth::id();
-
-// 3. Anti-duplicate / the UNIQUE(event_id, user_id) constraint is the real guarantee;
+// 2. Anti-duplicate / the UNIQUE(event_id, user_id) constraint is the real guarantee;
 //    we also pre-check so we can return a friendly message instead of a raw SQL error.
 $existing = $db->prepare('SELECT attendance_id FROM attendance_logs WHERE event_id = :e AND user_id = :u');
 $existing->execute(['e' => $eventId, 'u' => $userId]);
@@ -63,23 +69,12 @@ if ($existing->fetch()) {
     exit;
 }
 
-if (!$gps['passed']) {
-    AuditLog::record($userId, 'ATTENDANCE_DENIED_GPS', 'events', $eventId,
-        "distance={$gps['distance_meters']}m radius={$gps['radius_meters']}m");
-    echo json_encode([
-        'ok' => false,
-        'message' => "You appear to be {$gps['distance_meters']}m from the venue (allowed radius: {$gps['radius_meters']}m). Move closer and try again.",
-    ]);
-    exit;
-}
-
 try {
     $db->prepare(
-        'INSERT INTO attendance_logs (event_id, user_id, verification_method, latitude, longitude, distance_meters, gps_passed, device_info)
-         VALUES (:e, :u, :method, :lat, :lng, :dist, 1, :device)'
+        'INSERT INTO attendance_logs (event_id, user_id, verification_method, device_info)
+         VALUES (:e, :u, :method, :device)'
     )->execute([
         'e' => $eventId, 'u' => $userId, 'method' => 'QR',
-        'lat' => $lat, 'lng' => $lng, 'dist' => $gps['distance_meters'],
         'device' => $_SERVER['HTTP_USER_AGENT'] ?? null,
     ]);
 } catch (PDOException $e) {

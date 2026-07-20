@@ -6,6 +6,7 @@ Auth::requireRole(['Dean']);
 $pageTitle = 'Attendance & QR Codes';
 $activeNav = 'attendance';
 $db = Database::connection();
+EventLifecycle::sync($db);
 
 $eventId = (int) ($_GET['event_id'] ?? 0);
 $stmt = $db->prepare('SELECT * FROM events WHERE event_id = :id');
@@ -13,10 +14,12 @@ $stmt->execute(['id' => $eventId]);
 $event = $stmt->fetch();
 
 if (!$event) {
-    $events = $db->query('SELECT event_id, title FROM events ORDER BY event_date DESC')->fetchAll();
+    $events = $db->query("SELECT event_id, title FROM events WHERE status = 'Ongoing' ORDER BY event_date DESC")->fetchAll();
 }
 
-$qrToken = $event ? QrService::buildPayload((int) $event['event_id'], $event['qr_secret']) : null;
+$qrToken = $event && $event['status'] === 'Ongoing'
+    ? QrService::buildPayload((int) $event['event_id'], $event['qr_secret'])
+    : null;
 $scanUrl = $event ? APP_URL . '/student/scan.php?e=' . $event['event_id'] . '&t=' . $qrToken : null;
 $qrImage = $scanUrl ? SimpleQr::pngDataUri($scanUrl, 4, 3) : null;
 
@@ -36,6 +39,9 @@ require __DIR__ . '/../partials/layout_top.php';
       </tbody>
     </table>
   </div>
+<?php elseif ($event['status'] !== 'Ongoing'): ?>
+  <div class="alert alert-info">This event is not ongoing. Completed events are available in Event History.</div>
+  <a href="<?= APP_URL ?>/admin/events.php" class="btn btn-outline-dark">View Event History</a>
 <?php else: ?>
   <div class="semas-card p-4 mx-auto text-center" style="max-width:480px;">
     <h6 class="display-font text-start mb-1"><?= e($event['title']) ?></h6>
@@ -64,9 +70,16 @@ require __DIR__ . '/../partials/layout_top.php';
       }
     </script>
     <button class="btn btn-semas-gold mt-3"><i class="bi bi-printer me-1"></i> Print QR Code</button>
+    <?php if ($event['status'] === 'Ongoing'): ?>
+      <a href="<?= APP_URL ?>/admin/scan-student.php?event_id=<?= (int) $event['event_id'] ?>" class="btn btn-semas mt-3">
+        <i class="bi bi-camera me-1"></i> Scan Student QR
+      </a>
+    <?php else: ?>
+      <button class="btn btn-secondary mt-3" disabled><i class="bi bi-camera me-1"></i> Scanner Available When Ongoing</button>
+    <?php endif; ?>
     <p class="text-muted mt-3" style="font-size:0.72rem;">
-      This QR encodes an HMAC-signed, encrypted token and expires automatically. Students must be physically
-      within the configured campus radius for their scan to be accepted.
+      This QR encodes an HMAC-signed, encrypted token and expires automatically. Only registered students
+      can check in while the event is ongoing. The Dean can also scan a registered student's personal QR code.
     </p>
   </div>
 <?php endif; ?>

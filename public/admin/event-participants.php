@@ -6,11 +6,23 @@ Auth::requireRole(['Dean']);
 $pageTitle = 'Event Participants';
 $activeNav = 'events';
 $db = Database::connection();
+EventLifecycle::sync($db);
 
 $eventId = (int) ($_GET['event_id'] ?? ($_POST['event_id'] ?? 0));
+$event = null;
+if ($eventId) {
+    $eventStmt = $db->prepare('SELECT * FROM events WHERE event_id = :id');
+    $eventStmt->execute(['id' => $eventId]);
+    $event = $eventStmt->fetch() ?: null;
+}
+$readOnly = $event && $event['status'] === 'Completed';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
+    if (!$event || $readOnly) {
+        flash('error', $readOnly ? 'Completed event attendance is read-only.' : 'Event not found.');
+        redirect('/admin/event-participants.php?event_id=' . $eventId);
+    }
     $action = $_POST['action'] ?? '';
     $regId = (int) ($_POST['registration_id'] ?? 0);
 
@@ -34,7 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/admin/event-participants.php?event_id=' . $eventId);
 }
 
-$events = $db->query('SELECT event_id, title, event_date FROM events ORDER BY event_date DESC')->fetchAll();
+$events = $db->query("SELECT event_id, title, event_date, status FROM events WHERE status = 'Ongoing' ORDER BY event_date DESC")->fetchAll();
+if ($event && $event['status'] === 'Completed') {
+    array_unshift($events, $event);
+}
 
 $participants = [];
 if ($eventId) {
@@ -61,6 +76,9 @@ if ($eventId) {
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Event Participants</h4>
+<?php if ($readOnly): ?>
+  <div class="alert alert-info small"><i class="bi bi-lock-fill me-1"></i>This completed event is read-only. Attendance can be viewed and exported for reports.</div>
+<?php endif; ?>
 
 <div class="semas-card p-3 mb-3">
   <form method="get" class="row g-2">
@@ -96,20 +114,21 @@ require __DIR__ . '/../partials/layout_top.php';
             <td><span class="badge badge-<?= $p['reg_status'] === 'Registered' ? 'completed' : ($p['reg_status'] === 'Waitlisted' ? 'urgent' : 'cancelled') ?>"><?= e($p['reg_status']) ?></span></td>
             <td><?= $p['attended'] ? '<span class="badge badge-completed">Present</span>' : '<span class="badge badge-cancelled">Not yet</span>' ?></td>
             <td class="text-nowrap">
-              <?php if (!$p['attended']): ?>
+              <?php if (!$readOnly && !$p['attended']): ?>
               <form method="post" class="d-inline">
                 <?= csrf_field() ?><input type="hidden" name="action" value="mark_present">
                 <input type="hidden" name="event_id" value="<?= $eventId ?>"><input type="hidden" name="user_id" value="<?= (int) $p['user_id'] ?>">
                 <button class="btn btn-sm btn-outline-dark">Mark Present</button>
               </form>
               <?php endif; ?>
-              <?php if ($p['reg_status'] !== 'Cancelled'): ?>
+              <?php if (!$readOnly && $p['reg_status'] !== 'Cancelled'): ?>
               <form method="post" class="d-inline" onsubmit="return confirm('Remove this participant from the event?');">
                 <?= csrf_field() ?><input type="hidden" name="action" value="remove">
                 <input type="hidden" name="registration_id" value="<?= (int) $p['registration_id'] ?>">
                 <button class="btn btn-sm btn-outline-danger">Remove</button>
               </form>
               <?php endif; ?>
+              <?php if ($readOnly): ?><span class="text-muted small">Read only</span><?php endif; ?>
             </td>
           </tr>
         <?php endforeach; ?>

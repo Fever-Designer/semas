@@ -145,6 +145,38 @@ if (!$showPublicHolidayNotice) {
     }
 }
 
+// Track whether this student has already completed the lecturer's currently
+// open phase. The API remains the final duplicate-attendance safeguard; this
+// prevents offering the same scan action again in the UI.
+$completedDemoPhases = [];
+if ($demoSessions) {
+    $phaseLogStmt = $db->prepare(
+        "SELECT attendance_type, verification_method
+         FROM class_attendance_logs
+         WHERE session_id = :sid AND user_id = :uid"
+    );
+    foreach ($demoSessions as $mid => $demoSession) {
+        $phaseLogStmt->execute([
+            'sid' => $demoSession['session_id'],
+            'uid' => $me['user_id'],
+        ]);
+        $hasRealSignIn = false;
+        $hasSignOut = false;
+        foreach ($phaseLogStmt->fetchAll() as $phaseLog) {
+            if ($phaseLog['attendance_type'] === 'Sign In'
+                && in_array((string) $phaseLog['verification_method'], ['QR', 'Manual'], true)) {
+                $hasRealSignIn = true;
+            }
+            if ($phaseLog['attendance_type'] === 'Sign Out') {
+                $hasSignOut = true;
+            }
+        }
+        $completedDemoPhases[(int) $mid] = $demoSession['attendance_phase'] === 'SignOut'
+            ? $hasSignOut
+            : $hasRealSignIn;
+    }
+}
+
 $signoutSessions = [];
 if (!$showPublicHolidayNotice) {
     foreach ($allModules as $am) {
@@ -175,6 +207,7 @@ if ($moduleIdParam) {
         if ((int) $am['module_id'] === $moduleIdParam) {
             $scannedModuleTitle    = $am['module_title'];
             $scannedModuleScanable = isset($demoSessions[$moduleIdParam])
+                && empty($completedDemoPhases[$moduleIdParam])
                 && $am['status'] === 'Ongoing';
             break;
         }
@@ -261,13 +294,14 @@ require __DIR__ . '/../partials/layout_top.php';
         $amId = (int) $am['module_id'];
         $isActive = $amId === $selectedId;
         $demoPhase = $demoSessions[$amId]['attendance_phase'] ?? null;
-        $scanable = $demoPhase !== null && $am['status'] === 'Ongoing';
+        $phaseCompleted = !empty($completedDemoPhases[$amId]);
+        $scanable = $demoPhase !== null && !$phaseCompleted && $am['status'] === 'Ongoing';
       ?>
       <a href="?module_id=<?= $amId ?>"
          class="btn btn-sm text-nowrap <?= $isActive ? 'btn-semas' : 'btn-outline-secondary' ?>"
          style="<?= $isActive ? '' : 'opacity:.75;' ?>">
         <?= e($am['module_title']) ?>
-        <?php if ($am['status'] === 'Completed'): ?>
+        <?php if ($am['status'] === 'Completed' || $phaseCompleted): ?>
           <span class="badge bg-secondary ms-1" style="font-size:.6rem;">Done</span>
         <?php elseif ($demoPhase === 'SignOut' || ($scanable && isset($signoutSessions[$amId]))): ?>
           <span class="badge bg-primary ms-1" style="font-size:.6rem;">Sign Out</span>
@@ -360,7 +394,8 @@ $sessLabel = ($module['session_type'] === 'Weekend' && $slot) ? "Weekend / {$slo
 $hasOpenSignout = isset($signoutSessions[$moduleId]);
 $demoPhase = $demoSessions[$moduleId]['attendance_phase'] ?? null;
 $isDemoSignout = $demoPhase === 'SignOut';
-$isScanable = $demoPhase !== null && $module['status'] === 'Ongoing';
+$phaseCompleted = !empty($completedDemoPhases[$moduleId]);
+$isScanable = $demoPhase !== null && !$phaseCompleted && $module['status'] === 'Ongoing';
 ?>
 
 <!-- Module info + summary card -->

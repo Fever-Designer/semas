@@ -7,6 +7,7 @@ $pageTitle = 'Events';
 $activeNav = 'events';
 $db = Database::connection();
 Semester::enforceAcademicWrite($db);
+EventLifecycle::sync($db);
 $user = Auth::user();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register') {
@@ -89,7 +90,9 @@ $stmt = $db->prepare(
     "SELECT e.*,
         (SELECT COUNT(*) FROM event_registrations er WHERE er.event_id=e.event_id AND er.status='Registered') AS registered_count,
         (SELECT status FROM event_registrations er2 WHERE er2.event_id=e.event_id AND er2.user_id=:uid LIMIT 1) AS my_status
-     FROM events e ORDER BY e.event_date"
+     FROM events e
+     WHERE e.status IN ('Scheduled', 'Ongoing')
+     ORDER BY e.event_date"
 );
 $stmt->execute(['uid' => $user['user_id']]);
 $events = $stmt->fetchAll();

@@ -6,7 +6,9 @@ Auth::requireRole(['Dean']);
 $pageTitle = 'Scan / Mark Attendance';
 $activeNav = 'attendance';
 $db = Database::connection();
-$events = $db->query("SELECT event_id, title, event_date FROM events WHERE status IN ('Scheduled','Ongoing') ORDER BY event_date")->fetchAll();
+EventLifecycle::sync($db);
+$events = $db->query("SELECT event_id, title, event_date FROM events WHERE status = 'Ongoing' ORDER BY event_date")->fetchAll();
+$selectedEventId = (int) ($_GET['event_id'] ?? 0);
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
@@ -20,7 +22,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <label class="form-label small">Event</label>
   <select id="eventSelect" class="form-select" style="max-width:420px;">
     <option value="">Select an event...</option>
-    <?php foreach ($events as $ev): ?><option value="<?= (int) $ev['event_id'] ?>"><?= e($ev['title']) ?> &middot; <?= e($ev['event_date']) ?></option><?php endforeach; ?>
+    <?php foreach ($events as $ev): ?><option value="<?= (int) $ev['event_id'] ?>" <?= $selectedEventId === (int) $ev['event_id'] ? 'selected' : '' ?>><?= e($ev['title']) ?> &middot; <?= e($ev['event_date']) ?></option><?php endforeach; ?>
   </select>
 </div>
 

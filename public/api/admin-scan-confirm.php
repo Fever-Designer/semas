@@ -13,6 +13,7 @@ csrf_verify();
 
 $db = Database::connection();
 Semester::enforceAcademicWrite($db);
+EventLifecycle::sync($db);
 $eventId = (int) $_POST['event_id'];
 $studentUserId = (int) $_POST['user_id'];
 $method = $_POST['method'] === 'manual' ? 'Manual' : 'StaffScan';
@@ -22,6 +23,21 @@ $evStmt->execute(['id' => $eventId]);
 $event = $evStmt->fetch();
 if (!$event) {
     echo json_encode(['ok' => false, 'message' => 'Event not found.']);
+    exit;
+}
+
+if ($event['status'] !== 'Ongoing') {
+    echo json_encode(['ok' => false, 'message' => 'Attendance can only be marked while this event is ongoing.']);
+    exit;
+}
+
+$registration = $db->prepare(
+    "SELECT registration_id FROM event_registrations
+     WHERE event_id = :e AND user_id = :u AND status = 'Registered'"
+);
+$registration->execute(['e' => $eventId, 'u' => $studentUserId]);
+if (!$registration->fetchColumn()) {
+    echo json_encode(['ok' => false, 'message' => 'This student is not registered for the selected event.']);
     exit;
 }
 

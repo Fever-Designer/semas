@@ -6,6 +6,7 @@ header('Content-Type: application/json');
 
 $eventId = (int) ($_GET['event_id'] ?? 0);
 $db = Database::connection();
+EventLifecycle::sync($db);
 $stmt = $db->prepare('SELECT * FROM events WHERE event_id = :id');
 $stmt->execute(['id' => $eventId]);
 $event = $stmt->fetch();
@@ -13,6 +14,11 @@ $event = $stmt->fetch();
 if (!$event) {
     http_response_code(404);
     echo json_encode(['ok' => false]);
+    exit;
+}
+if ($event['status'] !== 'Ongoing') {
+    http_response_code(409);
+    echo json_encode(['ok' => false, 'message' => 'QR codes can only be refreshed while the event is ongoing.']);
     exit;
 }
 

@@ -87,23 +87,11 @@ function startScanner() {
 
 function onScanSuccess(decodedText) {
   html5QrCode.stop().then(function() { scannerRunning = false; });
-  document.getElementById('result').innerHTML = '<p class="text-muted small">Getting your location...</p>';
-
-  if (!navigator.geolocation) {
-    document.getElementById('result').innerHTML =
-      '<div class="alert alert-danger small">GPS is not supported on this device/browser.</div>';
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    submitCheckin(decodedText, pos.coords.latitude, pos.coords.longitude);
-  }, function() {
-    document.getElementById('result').innerHTML =
-      '<div class="alert alert-danger small">Could not get your location. Enable GPS and try again.</div>';
-  }, { enableHighAccuracy: true, timeout: 10000 });
+  document.getElementById('result').innerHTML = '<p class="text-muted small">Confirming attendance...</p>';
+  submitCheckin(decodedText);
 }
 
-function submitCheckin(qrUrl, lat, lng) {
+function submitCheckin(qrUrl) {
   var url = new URL(qrUrl);
   var eventId = url.searchParams.get('event_id');
   var token   = url.searchParams.get('t');
@@ -111,7 +99,7 @@ function submitCheckin(qrUrl, lat, lng) {
   fetch('<?= APP_URL ?>/api/checkin.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId, token: token, latitude: lat, longitude: lng, csrf_token: '<?= csrf_token() ?>' })
+    body: JSON.stringify({ event_id: eventId, token: token, csrf_token: '<?= csrf_token() ?>' })
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
