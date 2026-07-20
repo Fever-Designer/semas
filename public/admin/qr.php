@@ -13,32 +13,38 @@ $stmt = $db->prepare('SELECT * FROM events WHERE event_id = :id');
 $stmt->execute(['id' => $eventId]);
 $event = $stmt->fetch();
 
-if (!$event) {
-    $events = $db->query("SELECT event_id, title FROM events WHERE status = 'Ongoing' ORDER BY event_date DESC")->fetchAll();
-}
+$ongoingEvents = $db->query(
+    "SELECT event_id, title, event_date, start_time, end_time
+     FROM events WHERE status = 'Ongoing' ORDER BY event_date, start_time"
+)->fetchAll();
 
 $qrToken = $event && $event['status'] === 'Ongoing'
     ? QrService::buildPayload((int) $event['event_id'], $event['qr_secret'])
     : null;
-$scanUrl = $event ? APP_URL . '/student/scan.php?e=' . $event['event_id'] . '&t=' . $qrToken : null;
+$scanUrl = $qrToken ? APP_URL . '/student/scan.php?e=' . $event['event_id'] . '&t=' . $qrToken : null;
 $qrImage = $scanUrl ? SimpleQr::pngDataUri($scanUrl, 4, 3) : null;
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Event QR Code</h4>
 
+<div class="semas-card p-3 mb-3">
+  <label class="form-label small fw-semibold">Ongoing Events</label>
+  <select class="form-select" onchange="if(this.value){window.location.href='?event_id='+this.value;}">
+    <option value="">Select an ongoing event...</option>
+    <?php foreach ($ongoingEvents as $ongoingEvent): ?>
+      <option value="<?= (int) $ongoingEvent['event_id'] ?>" <?= $eventId === (int) $ongoingEvent['event_id'] ? 'selected' : '' ?>>
+        <?= e($ongoingEvent['title']) ?> &middot; <?= e($ongoingEvent['event_date']) ?>, <?= e($ongoingEvent['start_time']) ?>/<?= e($ongoingEvent['end_time']) ?>
+      </option>
+    <?php endforeach; ?>
+  </select>
+  <?php if (!$ongoingEvents): ?>
+    <div class="text-muted small mt-2">There are no ongoing events right now.</div>
+  <?php endif; ?>
+</div>
+
 <?php if (!$event): ?>
-  <div class="semas-card p-3">
-    <h6 class="display-font mb-3">Select an Event</h6>
-    <table class="table table-sm align-middle">
-      <thead><tr><th>Event</th><th></th></tr></thead>
-      <tbody>
-        <?php foreach ($events as $ev): ?>
-          <tr><td><?= e($ev['title']) ?></td><td><a href="?event_id=<?= (int) $ev['event_id'] ?>" class="btn btn-sm btn-outline-dark">View QR</a></td></tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
+  <div class="alert alert-light border small">Select an ongoing event above to display its attendance QR code.</div>
 <?php elseif ($event['status'] !== 'Ongoing'): ?>
   <div class="alert alert-info">This event is not ongoing. Completed events are available in Event History.</div>
   <a href="<?= APP_URL ?>/admin/events.php" class="btn btn-outline-dark">View Event History</a>
