@@ -26,7 +26,10 @@ $qrImage = $scanUrl ? SimpleQr::pngDataUri($scanUrl, 4, 3) : null;
 
 require __DIR__ . '/../partials/layout_top.php';
 ?>
-<h4 class="display-font mb-1">Event QR Code</h4>
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h4 class="display-font mb-0">Attendance &amp; QR Codes</h4>
+  <span class="badge bg-success"><?= count($ongoingEvents) ?> Ongoing</span>
+</div>
 
 <div class="semas-card p-3 mb-3">
   <label class="form-label small fw-semibold">Ongoing Events</label>
@@ -40,6 +43,21 @@ require __DIR__ . '/../partials/layout_top.php';
   </select>
   <?php if (!$ongoingEvents): ?>
     <div class="text-muted small mt-2">There are no ongoing events right now.</div>
+  <?php else: ?>
+    <div class="table-responsive mt-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Ongoing Event</th><th>Date &amp; Time</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($ongoingEvents as $ongoingEvent): ?>
+            <tr>
+              <td class="fw-semibold"><?= e($ongoingEvent['title']) ?></td>
+              <td class="small text-muted"><?= e($ongoingEvent['event_date']) ?>, <?= e($ongoingEvent['start_time']) ?>/<?= e($ongoingEvent['end_time']) ?></td>
+              <td class="text-end"><a href="?event_id=<?= (int) $ongoingEvent['event_id'] ?>" class="btn btn-sm btn-outline-dark">View QR</a></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
   <?php endif; ?>
 </div>
 
