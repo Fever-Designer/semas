@@ -10,17 +10,30 @@ $db = Database::connection();
 Semester::enforceAcademicWrite($db);
 EventLifecycle::sync($db);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_event_status') {
+    csrf_verify();
+    $eventId = (int) ($_POST['event_id'] ?? 0);
+    $newStatus = (string) ($_POST['status'] ?? '');
+    if (!in_array($newStatus, ['Ongoing', 'Completed'], true)) {
+        flash('error', 'Invalid event status.');
+    } else {
+        $statusStmt = $db->prepare("UPDATE events SET status = :status WHERE event_id = :id AND status <> 'Cancelled'");
+        $statusStmt->execute(['status' => $newStatus, 'id' => $eventId]);
+        AuditLog::record(Auth::id(), 'EVENT_STATUS_CHANGED', 'events', $eventId, "status=$newStatus");
+        flash('success', $newStatus === 'Ongoing' ? 'Event started. Attendance and QR scanning are now available.' : 'Event completed and moved to history.');
+    }
+    redirect('/admin/events.php');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     csrf_verify();
     $secret = QrService::generateSecret();
     $db->prepare(
-        'INSERT INTO events (title, description, venue, capacity, registration_deadline, waitlist_enabled, event_date, start_time, end_time, department_id, created_by, qr_secret, qr_expires_at)
-         VALUES (:title, :desc, :venue, :capacity, :deadline, :waitlist, :date, :start, :end, :dept, :uid, :secret, DATE_ADD(NOW(), INTERVAL :ttl HOUR))'
+        'INSERT INTO events (title, description, venue, registration_deadline, event_date, start_time, end_time, department_id, created_by, qr_secret, qr_expires_at)
+         VALUES (:title, :desc, :venue, :deadline, :date, :start, :end, :dept, :uid, :secret, DATE_ADD(NOW(), INTERVAL :ttl HOUR))'
     )->execute([
         'title' => $_POST['title'], 'desc' => $_POST['description'] ?: null, 'venue' => $_POST['venue'],
-        'capacity' => $_POST['capacity'] ?: null,
         'deadline' => $_POST['registration_deadline'] ?: null,
-        'waitlist' => isset($_POST['waitlist_enabled']) ? 1 : 0,
         'date' => $_POST['event_date'], 'start' => $_POST['start_time'], 'end' => $_POST['end_time'],
         'dept' => $_POST['department_id'] ?: null, 'uid' => Auth::id(), 'secret' => $secret,
         'ttl' => (int) env('QR_DEFAULT_EXPIRY_HOURS', 6) ?: 6,
@@ -99,12 +112,7 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php foreach ($departments as $d): ?><option value="<?= (int) $d['department_id'] ?>"><?= e($d['department_name']) ?></option><?php endforeach; ?>
         </select>
       </div>
-      <div class="col-md-3"><label class="form-label small">Capacity</label><input type="number" min="1" name="capacity" class="form-control"></div>
       <div class="col-md-5"><label class="form-label small">Registration Deadline</label><input type="datetime-local" name="registration_deadline" class="form-control"></div>
-      <div class="col-md-4 d-flex align-items-end">
-        <div class="form-check"><input type="checkbox" name="waitlist_enabled" id="waitlist_enabled" class="form-check-input" value="1">
-          <label class="form-check-label small" for="waitlist_enabled">Enable waiting list when full</label></div>
-      </div>
       <div class="col-12"><label class="form-label small">Description</label><textarea name="description" class="form-control" rows="2"></textarea></div>
     </div>
     <button class="btn btn-semas-gold mt-3"><i class="bi bi-qr-code me-1"></i> Save &amp; Generate QR Code</button>
@@ -124,7 +132,20 @@ require __DIR__ . '/../partials/layout_top.php';
             <td><?= e($ev['event_date']) ?></td>
             <td><span class="badge badge-<?= badge_for_status($ev['status']) ?>"><?= e($ev['status']) ?></span></td>
             <td><?= (int) $ev['attendees'] ?></td>
-            <td><a href="<?= APP_URL ?>/admin/qr.php?event_id=<?= (int) $ev['event_id'] ?>" class="small">View QR</a></td>
+            <td class="text-nowrap">
+              <?php if ($ev['status'] === 'Ongoing'): ?>
+                <a href="<?= APP_URL ?>/admin/qr.php?event_id=<?= (int) $ev['event_id'] ?>" class="btn btn-sm btn-outline-dark">View QR</a>
+                <form method="post" class="d-inline" onsubmit="return confirm('Complete this event and move it to history?');">
+                  <?= csrf_field() ?><input type="hidden" name="action" value="set_event_status"><input type="hidden" name="event_id" value="<?= (int) $ev['event_id'] ?>"><input type="hidden" name="status" value="Completed">
+                  <button class="btn btn-sm btn-outline-secondary">Complete</button>
+                </form>
+              <?php else: ?>
+                <form method="post" class="d-inline">
+                  <?= csrf_field() ?><input type="hidden" name="action" value="set_event_status"><input type="hidden" name="event_id" value="<?= (int) $ev['event_id'] ?>"><input type="hidden" name="status" value="Ongoing">
+                  <button class="btn btn-sm btn-semas">Start Event</button>
+                </form>
+              <?php endif; ?>
+            </td>
           </tr>
         <?php endforeach; ?>
         <?php if (!$activeEvents): ?><tr><td colspan="6" class="text-muted text-center py-3">No scheduled or ongoing events.</td></tr><?php endif; ?>
@@ -150,6 +171,10 @@ require __DIR__ . '/../partials/layout_top.php';
             <td>
               <a href="<?= APP_URL ?>/reports/export-pdf.php?event_id=<?= (int) $ev['event_id'] ?>" target="_blank" class="btn btn-sm btn-semas">PDF</a>
               <a href="<?= APP_URL ?>/reports/export-excel.php?event_id=<?= (int) $ev['event_id'] ?>" class="btn btn-sm btn-semas-gold">Excel</a>
+              <form method="post" class="d-inline">
+                <?= csrf_field() ?><input type="hidden" name="action" value="set_event_status"><input type="hidden" name="event_id" value="<?= (int) $ev['event_id'] ?>"><input type="hidden" name="status" value="Ongoing">
+                <button class="btn btn-sm btn-outline-secondary">Reopen</button>
+              </form>
             </td>
           </tr>
         <?php endforeach; ?>

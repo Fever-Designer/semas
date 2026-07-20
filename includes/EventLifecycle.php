@@ -3,21 +3,15 @@ declare(strict_types=1);
 
 final class EventLifecycle
 {
-    /** Keep event status aligned with its configured date and time. */
+    /** Apply event-wide consistency rules without changing lifecycle status. */
     public static function sync(PDO $db): void
     {
-        $db->exec(
-            "UPDATE events
-             SET status = 'Completed'
-             WHERE status IN ('Scheduled', 'Ongoing')
-               AND TIMESTAMP(event_date, end_time) < NOW()"
-        );
+        // Campus events have unlimited attendance; release any registrations
+        // left on the legacy waiting list.
+        $db->exec("UPDATE event_registrations SET status = 'Registered' WHERE status = 'Waitlisted'");
 
-        $db->exec(
-            "UPDATE events
-             SET status = 'Ongoing'
-             WHERE status = 'Scheduled'
-               AND NOW() BETWEEN TIMESTAMP(event_date, start_time) AND TIMESTAMP(event_date, end_time)"
-        );
+        // Event dates are informational. A Dean explicitly starts and
+        // completes an event, so an Ongoing event remains live regardless of
+        // its scheduled date and time.
     }
 }
