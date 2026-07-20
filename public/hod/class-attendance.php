@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/hod/class-attendance.php?module_id=' . $moduleId);
         }
         $rangeStmt = $db->prepare(
-            'SELECT cs.session_date, m.start_date, m.end_date
+            'SELECT cs.session_date, m.start_date, m.end_date, m.exam_date
              FROM class_sessions cs JOIN modules m ON m.module_id = cs.module_id
              WHERE cs.session_id = :sid AND cs.module_id = :mid'
         );
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Date and window are required.');
             redirect('/hod/class-attendance.php?module_id=' . $moduleId);
         }
-        $sessionModuleStmt = $db->prepare('SELECT status, start_date, end_date FROM modules WHERE module_id = :mid');
+        $sessionModuleStmt = $db->prepare('SELECT status, start_date, end_date, exam_date FROM modules WHERE module_id = :mid');
         $sessionModuleStmt->execute(['mid' => $moduleId]);
         $sessionModule = $sessionModuleStmt->fetch();
         if (!$sessionModule || $sessionModule['status'] !== 'Ongoing') {

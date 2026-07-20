@@ -91,6 +91,13 @@ final class Module
                 'reason' => 'Automatically de-registered after reaching four pre-CAT effective absences.',
             ]);
             $created = $insert->rowCount() === 1;
+            if (!$created) {
+                // An existing disciplinary record may have been overridden by
+                // an HOD/Coordinator re-enrollment. Do not de-register again
+                // for the same already-recorded disciplinary incident.
+                $db->commit();
+                return false;
+            }
             $db->prepare('DELETE FROM cat_exam_eligibility WHERE module_id = :mid AND user_id = :uid')
                ->execute(['mid' => $moduleId, 'uid' => $userId]);
             $db->prepare('DELETE FROM module_enrollments WHERE module_id = :mid AND user_id = :uid')
@@ -130,8 +137,10 @@ final class Module
              JOIN modules m ON m.module_id = cs.module_id
              SET cs.status = 'Closed'
              WHERE cs.status = 'Open'
-               AND m.end_date IS NOT NULL
-               AND m.end_date < CURDATE()"
+               AND (
+                   (m.exam_date IS NOT NULL AND m.exam_date <= CURDATE())
+                   OR (m.end_date IS NOT NULL AND m.end_date < CURDATE())
+               )"
         );
         $db->exec(
             "UPDATE modules m

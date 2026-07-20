@@ -20,7 +20,7 @@ $method        = ($_POST['method'] ?? 'manual') === 'qr' ? 'QR' : 'Manual';
 
 $sessStmt = $db->prepare(
     "SELECT cs.*, l.user_id AS lecturer_user_id, m.module_title, m.module_id,
-            m.start_date, m.end_date
+            m.start_date, m.end_date, m.exam_date
      FROM class_sessions cs
      JOIN modules m ON m.module_id = cs.module_id
      JOIN lecturers l ON l.lecturer_id = m.lecturer_id

@@ -12,11 +12,12 @@ $me        = Auth::user();
 // Fetch this lecturer's ongoing modules
 $modStmt = $db->prepare(
     "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot,
-            m.start_date, m.end_date, m.module_qr_secret, r.room_name
+            m.start_date, m.end_date, m.exam_date, m.module_qr_secret, r.room_name
      FROM modules m
      LEFT JOIN rooms r ON r.room_id = m.room_id
      LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
      WHERE m.status = 'Ongoing'
+       AND (m.exam_date IS NULL OR m.exam_date > CURDATE())
        AND (lt.user_id = :uid OR :role IN ('HOD','Coordinator'))
      ORDER BY m.module_title"
 );
@@ -168,7 +169,6 @@ require __DIR__ . '/../partials/layout_top.php';
           <img src="<?= e($moduleQrImage) ?>" alt="Permanent module attendance QR" width="220" height="220"
                style="display:block;max-width:100%;height:auto;">
         </div>
-        <div class="small text-muted mt-2">Permanent module QR created by the Head Of Department.</div>
       <?php else: ?>
         <div class="alert alert-warning small">
           This module has no classroom QR. Ask the Head Of Department to generate it from Manage Modules.
@@ -339,7 +339,7 @@ function renderPhaseState(data) {
     } else if (completed) {
         document.getElementById('qrStatus').textContent = 'Attendance Closed';
         document.getElementById('qrStatus').className = 'badge bg-secondary';
-        document.getElementById('qrExpiry').textContent = 'Sign In and Sign Out are complete.';
+        document.getElementById('qrExpiry').textContent = '';
     } else if (sessionId) {
         document.getElementById('qrStatus').textContent = 'Sign In Closed';
         document.getElementById('qrStatus').className = 'badge bg-warning text-dark';

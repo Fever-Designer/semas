@@ -179,15 +179,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$stu) {
             flash('error', "No active student found with reg number: {$regNum}");
         } else {
-            if (Module::isDisciplinarilyBlocked($db, $modId, (int) $stu['user_id'])) {
-                flash('error', Module::disciplinaryBlockMessage($stu['full_name']));
-                redirect('/coordinator/modules.php');
-            }
+            $disciplinaryOverride = Module::isDisciplinarilyBlocked($db, $modId, (int) $stu['user_id']);
             $activeDisciplinaryModule = Module::activeDisciplinaryModule($db, (int) $stu['user_id']);
-            if ($activeDisciplinaryModule) {
-                flash('error', Module::activeDisciplinaryEnrollmentMessage($stu['full_name'], $activeDisciplinaryModule));
-                redirect('/coordinator/modules.php');
-            }
+            $disciplinaryOverride = $disciplinaryOverride || (bool) $activeDisciplinaryModule;
             $registrationModuleStmt = $db->prepare('SELECT module_title, start_date FROM modules WHERE module_id = :mid');
             $registrationModuleStmt->execute(['mid' => $modId]);
             $registrationModule = $registrationModuleStmt->fetch() ?: [];
@@ -206,7 +200,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             try {
                 $db->prepare('INSERT INTO module_enrollments (module_id, user_id) VALUES (:m,:u)')->execute(['m' => $modId, 'u' => $stu['user_id']]);
-                flash('success', $stu['full_name'] . ' enrolled successfully.');
+                AuditLog::record(
+                    Auth::id(),
+                    $disciplinaryOverride ? 'MODULE_ENROLL_DISCIPLINARY_OVERRIDE' : 'MODULE_ENROLL',
+                    'modules',
+                    $modId,
+                    "user_id={$stu['user_id']}"
+                );
+                flash('success', $stu['full_name'] . ' enrolled successfully'
+                    . ($disciplinaryOverride ? ' by authorised disciplinary override.' : '.') );
             } catch (PDOException $e) {
                 flash('error', $e->getCode() === '23000' ? 'Student already enrolled.' : 'Enrollment failed.');
             }
@@ -665,7 +667,7 @@ function lookupStudent(modId) {
     errEl.style.display = 'none';
     if (!regNum) { errEl.textContent = 'Please enter a registration number.'; errEl.style.display = ''; return; }
 
-    fetch(window.SEMAS_BASE_URL + '/api/student-lookup.php?reg_number=' + encodeURIComponent(regNum) + '&module_id=' + modId)
+    fetch(window.SEMAS_BASE_URL + '/api/student-lookup?reg_number=' + encodeURIComponent(regNum) + '&module_id=' + modId)
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.ok) {

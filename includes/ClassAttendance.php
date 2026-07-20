@@ -69,19 +69,30 @@ final class ClassAttendance
     /**
      * Returns a user-facing error when a date falls outside a module's
      * configured attendance period, or null when recording is allowed.
-     * Start and end dates are inclusive.
+     * Start and end dates are inclusive. When an Exam date is configured,
+     * regular module attendance ends on the preceding calendar day.
      */
     public static function moduleDateRangeError(array $module, ?string $date = null): ?string
     {
         $date = $date ?: self::now()->format('Y-m-d');
         $startDate = trim((string) ($module['start_date'] ?? ''));
         $endDate = trim((string) ($module['end_date'] ?? ''));
+        $examDate = trim((string) ($module['exam_date'] ?? ''));
+
+        if ($examDate !== '') {
+            $dayBeforeExam = date('Y-m-d', strtotime($examDate . ' -1 day'));
+            if ($endDate === '' || $dayBeforeExam < $endDate) {
+                $endDate = $dayBeforeExam;
+            }
+        }
 
         if ($startDate !== '' && $date < $startDate) {
             return 'Attendance recording starts on ' . date('d M Y', strtotime($startDate)) . '.';
         }
         if ($endDate !== '' && $date > $endDate) {
-            return 'Attendance recording ended on ' . date('d M Y', strtotime($endDate)) . '.';
+            return $examDate !== '' && $endDate === date('Y-m-d', strtotime($examDate . ' -1 day'))
+                ? 'Module attendance was completed on ' . date('d M Y', strtotime($endDate)) . ', the day before the Exam.'
+                : 'Attendance recording ended on ' . date('d M Y', strtotime($endDate)) . '.';
         }
         return null;
     }

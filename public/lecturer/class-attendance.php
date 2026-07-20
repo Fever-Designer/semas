@@ -336,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Date and window are required.');
             redirect('/lecturer/live-session.php?module_id=' . $moduleId);
         }
-        $modStatus = $db->prepare("SELECT status, start_date, end_date FROM modules WHERE module_id = :mid");
+        $modStatus = $db->prepare("SELECT status, start_date, end_date, exam_date FROM modules WHERE module_id = :mid");
         $modStatus->execute(['mid' => $moduleId]);
         $sessionModule = $modStatus->fetch();
         if (!$sessionModule || $sessionModule['status'] !== 'Ongoing') {

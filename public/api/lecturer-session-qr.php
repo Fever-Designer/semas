@@ -329,7 +329,7 @@ if ($action === 'open_session') {
 
     $modStmt = $db->prepare(
         "SELECT m.module_id, m.module_title, m.session_type, m.weekend_slot,
-                m.start_date, m.end_date, r.room_name
+                m.start_date, m.end_date, m.exam_date, r.room_name
          FROM modules m
          LEFT JOIN rooms r ON r.room_id = m.room_id
          LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
@@ -446,7 +446,8 @@ if ($action === 'refresh') {
 
     $chk = $db->prepare(
         "SELECT cs.session_id, cs.module_id, cs.session_date, cs.status,
-                cs.attendance_phase, cs.demo_controlled, m.start_date, m.end_date FROM class_sessions cs
+                cs.attendance_phase, cs.demo_controlled, m.start_date, m.end_date, m.exam_date
+         FROM class_sessions cs
          JOIN modules m ON m.module_id = cs.module_id
          LEFT JOIN lecturers lt ON lt.lecturer_id = m.lecturer_id
          WHERE cs.session_id = :sid AND (lt.user_id = :uid OR :role IN ('HOD','Coordinator'))"
