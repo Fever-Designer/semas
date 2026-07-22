@@ -31,7 +31,7 @@ if (!function_exists('semas_email_open')) {
                                     SEM<span style="color:#D4A24C;">AS</span>
                                 </span>
                                 <span style="color:#A9B3CC;font-size:12px;">
-                                    &nbsp;· University of Kigali
+                                    &nbsp;· UNIVERSITY
                                 </span>
                             </td>
                         </tr>

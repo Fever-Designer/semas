@@ -58,7 +58,7 @@ $soutTime  = date('h:i A', strtotime($soutRecord['recorded_at']));
 $dayOfWeek = date('l', strtotime($schedule['scheduled_date']));
 $timeRange = date('h:i A', strtotime($schedule['start_time'])) . ' / ' . date('h:i A', strtotime($schedule['end_time']));
 $issuedAt  = date('d F Y, h:i A', strtotime($soutRecord['recorded_at']));
-$uniName   = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+$uniName   = 'UNIVERSITY';
 $brandLogo = Settings::get('logo_path');
 
 // Verification QR payload: sign with APP_KEY, expires 365 days (used only for slip authenticity)

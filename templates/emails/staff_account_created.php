@@ -4,5 +4,5 @@
 <p>Your temporary password is:</p>
 <p style="font-size:18px;font-weight:bold;background:#F4F6FB;padding:10px 14px;border-radius:8px;letter-spacing:1px;"><?= htmlspecialchars($temp_password) ?></p>
 <p>For security, please log in and change this password as soon as possible.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

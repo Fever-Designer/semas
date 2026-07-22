@@ -49,7 +49,7 @@ $data = $result['data'] ?? [];
 $db = Database::connection();
 $details = null;
 $brandLogo = Settings::get('logo_path');
-$uniName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+$uniName = 'UNIVERSITY';
 
 if ($result['ok'] && isset($data['schedule_id'], $data['user_id'])) {
     $stmt = $db->prepare(

@@ -109,7 +109,7 @@ $verifyUrl = APP_URL . '/verify-slip.php?t=' . $verifyToken;
 
 // Plain text is supported by ordinary QR scanners offline (unlike data: URLs,
 // which many phone cameras block). It also carries the signed online URL.
-$uniName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+$uniName = 'UNIVERSITY';
 try {
     $qrImage = SimpleQr::pngDataUri(SlipVerification::offlineText(
         $examType . ' Entry Slip',

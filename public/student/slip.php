@@ -44,7 +44,7 @@ if (!$module) {
 </head>
 <body>
 <div class="slip">
-  <h1>UNIVERSITY OF KIGALI</h1>
+  <h1>UNIVERSITY</h1>
   <div class="sub">CAT / EXAM ENTRY SLIP</div>
   <table>
     <tr><td class="label">Student Name</td><td><?= e($me['full_name']) ?></td></tr>

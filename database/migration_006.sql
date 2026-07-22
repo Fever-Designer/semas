@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 ) ENGINE=InnoDB;
 
 INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES
-    ('university_name', 'University of Kigali'),
+    ('university_name', 'UNIVERSITY'),
     ('theme_gold', '#D4A24C'),
     ('theme_ink', '#1E2A52'),
     ('academic_year', ''),

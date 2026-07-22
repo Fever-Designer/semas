@@ -2,5 +2,5 @@
 <p>Dear <?= htmlspecialchars($full_name) ?>,</p>
 <p>Your SEMAS account has been deactivated by an Principal. You will not be able to log in until it is reactivated.</p>
 <p>If you believe this is a mistake, please contact your department office or the SEMAS helpdesk.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

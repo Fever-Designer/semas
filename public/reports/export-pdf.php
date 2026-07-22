@@ -8,7 +8,7 @@ use Dompdf\Options;
 
 $db = Database::connection();
 $currentUser = Auth::user();
-$universityName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+$universityName = 'UNIVERSITY';
 $principalStmt = $db->prepare(
     "SELECT u.full_name
      FROM users u

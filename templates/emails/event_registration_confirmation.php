@@ -8,5 +8,5 @@
   <tr><td style="font-weight:bold;">Time</td><td><?= htmlspecialchars($event['start_time']) ?> / <?= htmlspecialchars($event['end_time']) ?></td></tr>
 </table>
 <p>Your personal QR code will be used to confirm your attendance at the venue. You can view it any time from your SEMAS dashboard.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

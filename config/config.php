@@ -61,7 +61,7 @@ define('MAIL_ENCRYPTION', env('MAIL_ENCRYPTION', 'tls'));   // tls | ssl
 define('MAIL_USERNAME', env('MAIL_USERNAME', ''));
 define('MAIL_PASSWORD', env('MAIL_PASSWORD', ''));          // Gmail: use an App Password, not your login password
 define('MAIL_FROM_ADDRESS', env('MAIL_FROM_ADDRESS', 'noreply@uok.ac.rw'));
-define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'University of Kigali / SEMAS'));
+define('MAIL_FROM_NAME', env('MAIL_FROM_NAME', 'UNIVERSITY / SEMAS'));
 
 // ---------------------------------------------------------------------
 // SMS / pick ONE provider in .env: vonage | africastalking

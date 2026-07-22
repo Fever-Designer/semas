@@ -7,5 +7,5 @@
   <tr><td style="font-weight:bold;">Checked in at</td><td><?= htmlspecialchars($checkin_time) ?></td></tr>
 </table>
 <p>If you did not check in to this event yourself, please contact the SEMAS helpdesk immediately.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

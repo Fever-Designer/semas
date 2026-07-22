@@ -18,5 +18,5 @@
     <td style="padding-top:6px;">Time:<br><?= htmlspecialchars(date('h:i A', strtotime($announcement['posted_at'] ?? 'now'))) ?></td>
   </tr>
 </table>
-<p>Best regards,<br>University of Kigali</p>
+<p>Best regards,<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

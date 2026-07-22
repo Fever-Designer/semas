@@ -1,7 +1,7 @@
 -- =====================================================================
 -- SEMAS / Student Event Management and Announcement System
 -- Full production database schema (MySQL 8+ / MariaDB 10.4+)
--- University of Kigali
+-- UNIVERSITY
 -- =====================================================================
 
 SET NAMES utf8mb4;

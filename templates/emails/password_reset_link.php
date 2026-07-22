@@ -5,5 +5,5 @@
   <a href="<?= htmlspecialchars($reset_url) ?>" style="background:#1E2A52;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:bold;display:inline-block;">Reset My Password</a>
 </p>
 <p>This link will expire in <?= RESET_LINK_EXPIRY_MINUTES ?> minutes. If you did not request a password reset, please ignore this email / your password will not be changed.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

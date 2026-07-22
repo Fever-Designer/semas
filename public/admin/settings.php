@@ -28,14 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $errors = [];
 
-    $universityName = trim((string) ($_POST['university_name'] ?? ''));
-    if ($universityName === '') {
-        $errors[] = 'University name is required.';
-    } elseif (mb_strlen($universityName) > 150) {
-        $errors[] = 'University name must be 150 characters or fewer.';
-    } else {
-        Settings::set('university_name', $universityName, (int) $me['user_id']);
-    }
+    Settings::set('university_name', 'UNIVERSITY', (int) $me['user_id']);
 
     foreach (['font_family', 'heading_font'] as $field) {
         $font = (string) ($_POST[$field] ?? '');
@@ -118,7 +111,7 @@ require __DIR__ . '/../partials/layout_top.php';
   <div class="semas-card p-3 mb-3">
     <h6 class="display-font mb-3">University Branding</h6>
     <div class="row g-3">
-      <div class="col-12"><label class="form-label small">University Name</label><input name="university_name" class="form-control" maxlength="150" required value="<?= e($settings['university_name'] ?? '') ?>"></div>
+      <div class="col-12"><label class="form-label small">University Name</label><input class="form-control" value="UNIVERSITY" readonly></div>
       <div class="col-md-3">
         <label class="form-label small">University Logo</label>
         <?php if (!empty($settings['logo_path'])): ?><div class="mb-1"><img src="<?= APP_URL . '/' . e($settings['logo_path']) ?>" style="height:36px;"></div><?php endif; ?>

@@ -5,5 +5,5 @@
   <span style="display:inline-block;background:#F3F5FA;border:1px dashed #1E2A52;border-radius:8px;padding:14px 28px;font-size:28px;font-weight:bold;letter-spacing:6px;color:#1E2A52;"><?= htmlspecialchars($code) ?></span>
 </p>
 <p>This code will expire in a few minutes. Never share this code with anyone, including anyone claiming to be SEMAS support staff.</p>
-<p>Best regards,<br>University Administration<br>University of Kigali</p>
+<p>Best regards,<br>University Administration<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

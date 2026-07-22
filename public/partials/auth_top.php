@@ -19,7 +19,7 @@ $authContrastText = static function (string $hex): string {
     $blue = hexdec(substr($hex, 5, 2));
     return (($red * 299 + $green * 587 + $blue * 114) / 1000) >= 150 ? '#111827' : '#FFFFFF';
 };
-$authUniversityName = Settings::get('university_name', 'University of Kigali');
+$authUniversityName = 'UNIVERSITY';
 $authLogo = Settings::get('logo_path');
 $authFavicon = Settings::get('favicon_path');
 $authBackground = Settings::get('login_background_path');

@@ -20,7 +20,7 @@ $printTarget = $_GET['print'] ?? '';
 if (!in_array($printTarget, ['', 'class-summary', 'assessment-summary', 'assessment-register'], true)) {
     $printTarget = '';
 }
-$universityName = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+$universityName = 'UNIVERSITY';
 $period = $_GET['period'] ?? 'monthly';
 $anchorInput = $_GET['date'] ?? date('Y-m-d');
 $anchor = DateTime::createFromFormat('!Y-m-d', $anchorInput) ?: new DateTime('today');

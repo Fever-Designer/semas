@@ -21,7 +21,7 @@ final class Delivery
             $announcement['event_id'] ?? null
         );
 
-        $uniName    = Settings::get('university_name', 'University of Kigali');
+        $uniName    = 'UNIVERSITY';
         $senderName = $announcement['sender_name'] ?? 'SEMAS';
 
         foreach ($recipients as $user) {

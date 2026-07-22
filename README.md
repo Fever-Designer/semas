@@ -1,5 +1,5 @@
 # SEMAS / Student Event Management and Announcement System
-University of Kigali · PHP / MySQL implementation
+UNIVERSITY · PHP / MySQL implementation
 
 This is a real, runnable PHP 8 + MySQL codebase implementing the core SEMAS
 features end-to-end: authentication with email verification, OTP, password
@@ -206,7 +206,7 @@ and an HOD had no way to see Dean accounts at all. Both are now role-aware.
   faculty-scoped to university-wide / see that section; this paragraph originally described a
   faculty-scoped version that no longer exists.)
 - `public/announcements/board.php` / a searchable/filterable/paginated announcement feed for every
-  role, rendering the exact "University of Kigali / Sent by / Role / Date / Time" block from the spec
+  role, rendering the exact "UNIVERSITY / Sent by / Role / Date / Time" block from the spec
   (`public/partials/announcement_card.php`); the same partial is reused on `admin/events.php`,
   `hod/announcements.php`, and `dean/announcements.php` so the format never drifts between pages.
   The announcement email template (`templates/emails/announcement_notification.php`) shows the same

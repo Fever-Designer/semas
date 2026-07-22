@@ -4,7 +4,7 @@
 
 ## 1. Project overview
 
-SEMAS is a University of Kigali web information system for student accounts, academic modules, class and assessment attendance, CAT/exam eligibility, announcements, assignments, events, suggestions, reporting, and operational notifications.
+SEMAS is a UNIVERSITY web information system for student accounts, academic modules, class and assessment attendance, CAT/exam eligibility, announcements, assignments, events, suggestions, reporting, and operational notifications.
 
 ### Registrar-controlled semester context
 

@@ -33,5 +33,5 @@
 
 <p>Please ensure you complete your module registration before the semester begins. Log in to SEMAS to register for your modules.</p>
 <p><a href="<?= htmlspecialchars($login_url) ?>" style="display:inline-block;background:#1E2A52;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;">Log In to SEMAS</a></p>
-<p>Best regards,<br>Registrar's Office<br>University of Kigali</p>
+<p>Best regards,<br>Registrar's Office<br>UNIVERSITY</p>
 <?php semas_email_close(); ?>

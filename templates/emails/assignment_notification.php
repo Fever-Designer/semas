@@ -37,5 +37,5 @@
   </tr>
 </table>
 
-<p>Best regards,<br>SEMAS / University of Kigali</p>
+<p>Best regards,<br>SEMAS / UNIVERSITY</p>
 <?php semas_email_close(); ?>

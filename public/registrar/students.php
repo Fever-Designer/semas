@@ -12,7 +12,7 @@ $me = Auth::user();
 $studentRoleId = (int) $db->query("SELECT role_id FROM roles WHERE role_name='Student' LIMIT 1")->fetchColumn();
 
 /**
- * Detect intake from a University of Kigali registration number.
+ * Detect intake from a UNIVERSITY registration number.
  * Format: [YYY][N]XXXXXX where YYY = year code (260=2026, 250=2025 …)
  * and N (4th character, index 3) = 1→JAN, 5→MAY, 9→SEPT.
  */

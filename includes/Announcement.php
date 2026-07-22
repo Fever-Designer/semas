@@ -90,7 +90,7 @@ final class Announcement
     /** Deliver to an explicit, pre-scoped recipient list (used by HOD/Dean/Lecturer send pages). */
     private static function deliverTo(array $recipients, array $announcement): void
     {
-        $uniName    = Settings::get('university_name', 'University of Kigali');
+        $uniName    = 'UNIVERSITY';
         $senderName = $announcement['sender_name'] ?? 'SEMAS';
 
         foreach ($recipients as $user) {
@@ -193,7 +193,7 @@ final class Announcement
         $date = date('d F Y', strtotime($a['posted_at']));
         $time = date('h:i A', strtotime($a['posted_at']));
         $html  = '<div class="announcement-sentby">';
-        $html .= '<div class="text-center text-muted small mb-2">University of Kigali</div>';
+        $html .= '<div class="text-center text-muted small mb-2">UNIVERSITY</div>';
         $html .= '<h6 class="display-font text-center mb-3">' . ($a['priority'] === 'Urgent' ? 'Important Announcement' : e($a['title'])) . '</h6>';
         if ($a['priority'] === 'Urgent') {
             $html .= '<p class="fw-semibold text-center mb-3">' . e($a['title']) . '</p>';

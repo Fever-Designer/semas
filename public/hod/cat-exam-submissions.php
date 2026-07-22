@@ -134,7 +134,7 @@ if ($scheduleId) {
 
     // ── Excel export ─────────────────────────────────────────────────────
     if ($export === 'excel') {
-        $uniName  = mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8');
+        $uniName  = 'UNIVERSITY';
         $examDate = $schedDetail ? date('d F Y', strtotime($schedDetail['scheduled_date'])) : '';
 
         $spreadsheet = new Spreadsheet();
@@ -217,7 +217,7 @@ if ($scheduleId) {
           .signature strong { display: block; }
           @media print { .no-print { display: none; } }
         </style></head><body>
-        <h1><?= e(mb_strtoupper(Settings::get('university_name', 'University of Kigali'), 'UTF-8')) ?></h1>
+        <h1>UNIVERSITY</h1>
         <p class="report-title"><?= e($schedDetail['exam_type']) ?> ATTENDANCE LIST</p>
         <table style="margin:0 0 14px;">
           <tr>

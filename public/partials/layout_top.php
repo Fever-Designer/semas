@@ -19,7 +19,7 @@ if ($user) {
     $unread = (int) $stmt->fetchColumn();
 }
 
-$brandName = Settings::get('university_name', 'University of Kigali');
+$brandName = 'UNIVERSITY';
 $brandLogo = Settings::get('logo_path');
 $themeGold = Settings::get('theme_gold', '#D4A24C');
 $themeInk = Settings::get('theme_ink', '#1E2A52');

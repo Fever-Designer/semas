@@ -26,7 +26,7 @@ $posted = $postedAt ? strtotime($postedAt) : time();
   <!-- University Header -->
   <div class="text-center text-muted"
        style="font-size:0.72rem;letter-spacing:.04em;text-transform:uppercase;">
-    <?= e(Settings::get('university_name', 'SMART EDUCATION MANAGEMENT SYSTEM')) ?>
+    UNIVERSITY
   </div>
 
   <!-- Title + Badges -->
