@@ -64,12 +64,10 @@ $accentButtonHoverText = $contrastText($accentButtonHover);
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= e($pageTitle ?? APP_NAME) ?> / SEMAS</title>
 <?php if (Settings::get('favicon_path')): ?><link rel="icon" href="<?= APP_URL . '/' . e(Settings::get('favicon_path')) ?>"><?php endif; ?>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="<?= APP_URL ?>/assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+<link href="<?= APP_URL ?>/assets/vendor/bootstrap-icons/font/bootstrap-icons.min.css" rel="stylesheet">
 <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.css">
+<link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/nprogress/nprogress.css">
 <style>
 :root {
   --semas-gold: <?= $themeGold ?>;
@@ -90,9 +88,9 @@ $accentButtonHoverText = $contrastText($accentButtonHover);
 .semas-main { animation: semasIn 0.15s ease-out; }
 @keyframes semasIn { from { opacity: 0.4; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/nprogress@0.2.0/nprogress.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/nprogress/nprogress.min.js"></script>
 <script>NProgress.configure({ showSpinner: false, trickleSpeed: 60 }); NProgress.start();</script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 </head>
 <body>
 <script>

@@ -21,7 +21,7 @@ final class AttendanceWarning
         if (!empty($module['cat_date']) && $module['session_date'] >= $module['cat_date']) return 0;
 
         $students = $db->prepare(
-            'SELECT u.user_id, u.full_name, u.email FROM module_enrollments me
+            'SELECT u.user_id, u.full_name, u.email, me.registered_at FROM module_enrollments me
              JOIN users u ON u.user_id = me.user_id WHERE me.module_id = :mid'
         );
         $students->execute(['mid' => $moduleId]);
@@ -32,7 +32,8 @@ final class AttendanceWarning
                 $db,
                 $moduleId,
                 (int) $student['user_id'],
-                $module['cat_date'] ?: null
+                $module['cat_date'] ?: null,
+                (string) $student['registered_at']
             );
             if ($missedDays < self::THRESHOLD) continue;
 
@@ -83,6 +84,7 @@ final class AttendanceWarning
                             'announcement' => [
                                 'title' => $disciplinaryTitle,
                                 'category' => 'Academic',
+                                'priority' => 'High',
                                 'message' => $disciplinaryBody,
                             ],
                         ], (int) $student['user_id']);
@@ -100,7 +102,13 @@ final class AttendanceWarning
         return $sent;
     }
 
-    private static function effectiveMissedDays(PDO $db, int $moduleId, int $userId, ?string $catDate): int
+    private static function effectiveMissedDays(
+        PDO $db,
+        int $moduleId,
+        int $userId,
+        ?string $catDate,
+        string $enrolledAt
+    ): int
     {
         $stmt = $db->prepare(
             "SELECT attendance_day, MAX(has_present) AS has_present, MAX(has_late) AS has_late
@@ -116,6 +124,7 @@ final class AttendanceWarning
                  LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id
                     AND so.user_id = :uid2 AND so.attendance_type = 'Sign Out'
                  WHERE cs.module_id = :mid AND cs.status = 'Closed'
+                   AND cs.start_time >= :enrolled_at
                    AND cs.session_date < :cat_cutoff
                    AND NOT EXISTS (
                        SELECT 1 FROM holidays h
@@ -128,6 +137,7 @@ final class AttendanceWarning
             'uid' => $userId,
             'uid2' => $userId,
             'mid' => $moduleId,
+            'enrolled_at' => $enrolledAt,
             'cat_cutoff' => $catDate ?: '9999-12-31',
         ]);
         $absent = 0;

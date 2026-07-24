@@ -62,13 +62,25 @@ final class Eligibility
         $expectedDates = self::expectedAttendanceDates($module, $examType);
         $totalSessions = count($expectedDates);
 
-        $studentsStmt = $db->prepare('SELECT user_id FROM module_enrollments WHERE module_id = :mid');
+        $studentsStmt = $db->prepare(
+            'SELECT user_id, registered_at FROM module_enrollments WHERE module_id = :mid'
+        );
         $studentsStmt->execute(['mid' => $moduleId]);
-        $studentIds = $studentsStmt->fetchAll(PDO::FETCH_COLUMN);
+        $students = $studentsStmt->fetchAll();
 
         $generated = 0;
-        foreach ($studentIds as $userId) {
-            $metrics = self::attendanceMetricsForDates($db, $moduleId, (int) $userId, $expectedDates);
+        foreach ($students as $student) {
+            $userId = (int) $student['user_id'];
+            $enrolledAt = (string) $student['registered_at'];
+            $studentDates = self::datesInEnrollmentCycle($db, $moduleId, $expectedDates, $enrolledAt);
+            $totalSessions = count($studentDates);
+            $metrics = self::attendanceMetricsForDates(
+                $db,
+                $moduleId,
+                $userId,
+                $studentDates,
+                $enrolledAt
+            );
             $present = $metrics['present'];
             $late = $metrics['late'];
             $leftEarly = $metrics['left_early'];
@@ -152,6 +164,54 @@ final class Eligibility
         }
 
         return $generated;
+    }
+
+    /**
+     * A re-enrollment starts a new attendance cycle. On the enrollment date,
+     * include the class only when its actual start time was after enrollment.
+     *
+     * @param string[] $expectedDates
+     * @return string[]
+     */
+    private static function datesInEnrollmentCycle(
+        PDO $db,
+        int $moduleId,
+        array $expectedDates,
+        string $enrolledAt
+    ): array {
+        if (!$expectedDates) {
+            return [];
+        }
+
+        $enrollmentDate = substr($enrolledAt, 0, 10);
+        $dates = array_values(array_filter(
+            $expectedDates,
+            static fn(string $date): bool => $date >= $enrollmentDate
+        ));
+        if (!$dates) {
+            return [];
+        }
+
+        $sameDayKey = array_search($enrollmentDate, $dates, true);
+        if ($sameDayKey !== false) {
+            $stmt = $db->prepare(
+                'SELECT 1 FROM class_sessions
+                 WHERE module_id = :mid AND session_date = :session_date
+                   AND start_time >= :enrolled_at
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                'mid' => $moduleId,
+                'session_date' => $enrollmentDate,
+                'enrolled_at' => $enrolledAt,
+            ]);
+            if (!$stmt->fetchColumn()) {
+                unset($dates[$sameDayKey]);
+                $dates = array_values($dates);
+            }
+        }
+
+        return $dates;
     }
 
     public static function statusFor(int $moduleId, int $userId, string $examType): ?array
@@ -254,14 +314,25 @@ final class Eligibility
      * @param string[] $expectedDates
      * @return array{present:int,late:int,left_early:int}
      */
-    private static function attendanceMetricsForDates(PDO $db, int $moduleId, int $userId, array $expectedDates): array
+    private static function attendanceMetricsForDates(
+        PDO $db,
+        int $moduleId,
+        int $userId,
+        array $expectedDates,
+        string $enrolledAt
+    ): array
     {
         if (!$expectedDates) {
             return ['present' => 0, 'late' => 0, 'left_early' => 0];
         }
 
         $placeholders = [];
-        $params = ['mid' => $moduleId, 'uid' => $userId, 'uid2' => $userId];
+        $params = [
+            'mid' => $moduleId,
+            'uid' => $userId,
+            'uid2' => $userId,
+            'enrolled_at' => $enrolledAt,
+        ];
         foreach ($expectedDates as $i => $date) {
             $key = 'd' . $i;
             $placeholders[] = ':' . $key;
@@ -277,7 +348,9 @@ final class Eligibility
              FROM class_sessions cs
              LEFT JOIN class_attendance_logs si ON si.session_id = cs.session_id AND si.user_id = :uid AND si.attendance_type = 'Sign In'
              LEFT JOIN class_attendance_logs so ON so.session_id = cs.session_id AND so.user_id = :uid2 AND so.attendance_type = 'Sign Out'
-             WHERE cs.module_id = :mid AND cs.session_date IN (" . implode(',', $placeholders) . ")
+             WHERE cs.module_id = :mid
+               AND cs.start_time >= :enrolled_at
+               AND cs.session_date IN (" . implode(',', $placeholders) . ")
              GROUP BY cs.session_date"
         );
         $stmt->execute($params);

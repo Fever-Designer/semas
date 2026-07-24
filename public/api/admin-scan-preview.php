@@ -68,7 +68,7 @@ function student_payload(PDO $db, array $event, int $userId): array
 }
 
 if ($mode === 'qr') {
-    // Decode the student's PERSONAL QR (built the same way as student/my-qr.php).
+    // Decode the student's personal QR from student/my-qr.php.
     $token = trim((string) ($_POST['token'] ?? $_GET['token'] ?? ''));
     if (filter_var($token, FILTER_VALIDATE_URL)) {
         $query = [];
@@ -129,23 +129,28 @@ if ($mode === 'qr') {
     exit;
 }
 
-if ($mode === 'search') {
-    $q = trim($_GET['q'] ?? '');
-    if ($q === '') {
-        echo json_encode(['ok' => true, 'results' => []]);
+if ($mode === 'manual') {
+    $regNumber = trim((string) ($_GET['reg_number'] ?? $_POST['reg_number'] ?? ''));
+    if (!preg_match('/^\d{10}$/', $regNumber)) {
+        echo json_encode(['ok' => false, 'message' => 'Enter the complete 10-digit registration number.']);
         exit;
     }
     $stmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number
+        "SELECT u.user_id
          FROM users u
          JOIN roles r ON r.role_id = u.role_id
          JOIN event_registrations er ON er.user_id = u.user_id
             AND er.event_id = :event_id AND er.status = 'Registered'
-         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q)
-         LIMIT 10"
+         WHERE r.role_name = 'Student' AND u.reg_number = :reg_number
+         LIMIT 1"
     );
-    $stmt->execute(['event_id' => $eventId, 'q' => "%$q%"]);
-    echo json_encode(['ok' => true, 'results' => $stmt->fetchAll()]);
+    $stmt->execute(['event_id' => $eventId, 'reg_number' => $regNumber]);
+    $userId = $stmt->fetchColumn();
+    if (!$userId) {
+        echo json_encode(['ok' => false, 'message' => 'No student registered for this event has that registration number.']);
+        exit;
+    }
+    echo json_encode(student_payload($db, $event, (int) $userId));
     exit;
 }
 

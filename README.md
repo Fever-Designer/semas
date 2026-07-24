@@ -1,25 +1,20 @@
 # SEMAS / Student Event Management and Announcement System
 UNIVERSITY · PHP / MySQL implementation
 
-This is a real, runnable PHP 8 + MySQL codebase implementing the core SEMAS
+This is a real, runnable PHP 8.2+ and MySQL/MariaDB codebase implementing the core SEMAS
 features end-to-end: authentication with email verification, OTP, password
 reset, HMAC-signed/encrypted QR attendance with GPS validation, role-based
 dashboards (Administrator / Dean / HOD / Student), announcements with real
 email + SMS delivery, an AI-style notification generator, and PDF/Excel
 attendance exports.
 
-**It has not been executed in the environment that wrote it** (no PHP
-interpreter was available there, and there is no internet access to fetch
-Composer packages or send real mail/SMS). Treat this as a careful first
-implementation to run, test, and debug in your own XAMPP/LAMP environment /
-not as something already verified working end-to-end.
+The repository includes a live-database migration runner and a read-only
+system check. After configuration, run `php scripts/migrate.php` followed by
+`php scripts/system-check.php`.
 
 ## 1. Requirements
 
-- PHP 7.2 or newer (this codebase avoids PHP 8-only syntax / arrow functions,
-  union return types, `str_starts_with()`, typed properties, etc. / so it
-  also runs on PHP 7.2/7.4, which is what many existing XAMPP installs ship
-  with, not just PHP 8+)
+- PHP 8.2 or newer, matching `composer.json`
 - PHP extensions: `pdo_mysql`, `openssl`, `curl`, `mbstring`, `gd`
 - MySQL 8 or MariaDB 10.4+
 - Composer (to install PHPMailer, DomPDF, PhpSpreadsheet)
@@ -33,6 +28,7 @@ cd semas-php
 composer install                      # fetches PHPMailer, DomPDF, PhpSpreadsheet
 cp .env.example .env                   # then edit .env with your real credentials
 mysql -u root -p < database/schema.sql # creates the `semas` database and tables
+php scripts/migrate.php                # applies every numbered migration in order
 ```
 
 Point your web server's document root at the `public/` folder (XAMPP: put
@@ -41,6 +37,13 @@ should be `http://localhost/semas-php/public`).
 
 Create the first Principal account directly in the database or from your
 trusted provisioning process. Do not keep public setup scripts in production.
+
+For an existing database that already has migrations through 028 but no
+`schema_migrations` ledger, run this once:
+
+```bash
+php scripts/migrate.php --baseline=028
+```
 
 ## 3. Configure real email (.env)
 

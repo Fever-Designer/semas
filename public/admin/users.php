@@ -273,8 +273,11 @@ if ($myRole === 'Principal') {
     }
 }
 if ($search !== '') {
-    $where[] = '(u.full_name LIKE :search OR u.email LIKE :search OR u.reg_number LIKE :search)';
-    $params['search'] = "%$search%";
+    $where[] = '(u.full_name LIKE :search_name OR u.email LIKE :search_email OR u.reg_number LIKE :search_reg)';
+    $like = "%$search%";
+    $params['search_name'] = $like;
+    $params['search_email'] = $like;
+    $params['search_reg'] = $like;
 }
 if ($roleFilter !== '') {
     $where[] = 'r.role_name = :role';

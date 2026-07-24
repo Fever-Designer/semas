@@ -418,7 +418,7 @@ require __DIR__ . '/../partials/layout_top.php';
   </div>
 </div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/html5-qrcode/html5-qrcode.min.js"></script>
 <script>
 const APP_URL = window.SEMAS_BASE_URL;
 const CSRF    = '<?= csrf_token() ?>';

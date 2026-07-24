@@ -40,10 +40,8 @@ $authHeadingFont = $authFontStacks[Settings::get('heading_font', 'times')] ?? $a
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= e($pageTitle ?? 'SEMAS') ?> / SEMAS</title>
 <?php if ($authFavicon): ?><link rel="icon" href="<?= APP_URL . '/' . e($authFavicon) ?>"><?php endif; ?>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="<?= APP_URL ?>/assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+<link href="<?= APP_URL ?>/assets/vendor/bootstrap-icons/font/bootstrap-icons.min.css" rel="stylesheet">
 <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
 <style>
 :root {

@@ -14,7 +14,7 @@ require __DIR__ . '/../partials/layout_top.php';
 ?>
 <h4 class="display-font mb-1">Scan / Mark Attendance</h4>
 <p class="text-muted small mb-4">
-  Point your camera at the student ID card barcode or QR code, then check the card before confirming attendance.
+  Scan the personal QR code shown on the student's SEMAS page, then review the profile before confirming attendance.
   Either way, nothing is saved until you confirm the preview below.
 </p>
 
@@ -29,50 +29,55 @@ require __DIR__ . '/../partials/layout_top.php';
 <div class="row g-3">
   <div class="col-md-6">
     <div class="semas-card p-3">
-      <h6 class="display-font mb-2"><i class="bi bi-qr-code-scan me-1"></i> Method 2: Check Student Card</h6>
-      <p class="text-muted small mb-2">Keep the card in view until the student preview appears.</p>
+      <h6 class="display-font mb-2"><i class="bi bi-qr-code-scan me-1"></i> Method 2: Scan Student QR</h6>
+      <p class="text-muted small mb-2">Scan the personal QR code from the student's My QR Code page.</p>
       <div id="reader" style="width:100%;"></div>
-      <button id="startScanBtn" class="btn btn-sm btn-semas-gold mt-2"><i class="bi bi-camera me-1"></i> Check Card</button>
-      <div id="scanHint" class="text-muted small mt-2" style="display:none;">Scanning... keep the card in view.</div>
+      <button id="startScanBtn" class="btn btn-sm btn-semas-gold mt-2"><i class="bi bi-camera me-1"></i> Scan Student QR</button>
+      <div id="scanHint" class="text-muted small mt-2" style="display:none;">Scanning... keep the student's QR code in view.</div>
     </div>
   </div>
   <div class="col-md-6">
     <div class="semas-card p-3">
       <h6 class="display-font mb-2"><i class="bi bi-search me-1"></i> Method 3: Manual Search</h6>
       <form id="searchForm" class="d-flex gap-2 mb-2" onsubmit="return false;">
-        <input id="searchBox" class="form-control">
+        <input id="searchBox" class="form-control" inputmode="numeric" pattern="\d{10}" maxlength="10" autocomplete="off" placeholder="Registration number" required>
         <button id="searchBtn" class="btn btn-semas text-nowrap">Search</button>
       </form>
-      <div id="searchResults"></div>
-      <div id="foundBar" class="alert alert-success small d-none mt-2 d-flex justify-content-between align-items-center">
-        <span id="foundText"></span>
-        <button id="confirmFoundBtn" class="btn btn-sm btn-semas-gold">Confirm &amp; View Profile</button>
+      <div id="manualFeedback" class="alert alert-danger small py-2 px-3 mb-0" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title display-font" id="profileModalTitle">Student Profile / Confirm Attendance</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex gap-3">
+          <img id="prevPhoto" src="" alt="Student profile photo" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
+          <div>
+            <div class="fw-semibold" id="prevName"></div>
+            <div class="text-muted small" id="prevReg"></div>
+            <div class="text-muted small" id="prevDept"></div>
+            <div class="text-muted small" id="prevFaculty"></div>
+            <div class="text-muted small" id="prevSession"></div>
+          </div>
+        </div>
+        <div id="prevWarning" class="alert alert-warning small mt-3 mb-0" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelBtn" type="button" class="btn btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
+        <button id="confirmBtn" type="button" class="btn btn-semas">Confirm Attendance</button>
       </div>
     </div>
   </div>
 </div>
-
-<div id="previewPanel" class="semas-card p-3 mt-3" style="display:none;">
-  <h6 class="display-font mb-3">Student Profile / Confirm Attendance</h6>
-  <div class="d-flex gap-3">
-    <img id="prevPhoto" src="" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--semas-gold);">
-    <div>
-      <div class="fw-semibold" id="prevName"></div>
-      <div class="text-muted small" id="prevReg"></div>
-      <div class="text-muted small" id="prevDept"></div>
-      <div class="text-muted small" id="prevFaculty"></div>
-      <div class="text-muted small" id="prevSession"></div>
-    </div>
-  </div>
-  <div id="prevWarning" class="alert alert-warning small mt-3" style="display:none;"></div>
-  <div class="mt-3">
-    <button id="confirmBtn" class="btn btn-semas">Confirm Attendance</button>
-    <button id="cancelBtn" class="btn btn-outline-dark">Cancel</button>
-  </div>
-</div>
 <div id="resultMsg" class="mt-3"></div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/html5-qrcode/html5-qrcode.min.js"></script>
 <script>
 const APP_URL = window.SEMAS_BASE_URL;
 const CSRF = '<?= csrf_token() ?>';
@@ -87,7 +92,7 @@ function getEventId() {
 
 function showPreview(data, method) {
   if (!data.ok) { document.getElementById('resultMsg').innerHTML = '<div class="alert alert-danger small">' + data.message + '</div>'; return; }
-  pendingPreview = { user_id: data.student.user_id, method: method };
+  pendingPreview = data.already_marked ? null : { user_id: data.student.user_id, method: method };
   document.getElementById('prevPhoto').src = data.student.photo_url;
   document.getElementById('prevName').textContent = data.student.full_name;
   document.getElementById('prevReg').textContent = 'Reg. No: ' + (data.student.reg_number || '/');
@@ -95,13 +100,21 @@ function showPreview(data, method) {
   document.getElementById('prevFaculty').textContent = 'Faculty: ' + (data.student.faculty || '/');
   document.getElementById('prevSession').textContent = 'Session: ' + (data.student.session_type || '/');
   const warn = document.getElementById('prevWarning');
+  const confirmBtn = document.getElementById('confirmBtn');
   if (data.already_marked) {
     warn.style.display = '';
-    warn.textContent = 'This student is already marked present (at ' + data.checkin_time + '). Confirming again will be blocked.';
+    warn.textContent = 'Attendance already exists for this student (checked in at ' + data.checkin_time + ').';
+    confirmBtn.disabled = true;
   } else {
     warn.style.display = 'none';
+    confirmBtn.disabled = false;
   }
-  document.getElementById('previewPanel').style.display = '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).show();
+}
+
+function showRequestError(message) {
+  document.getElementById('resultMsg').innerHTML = '<div class="alert alert-danger small"></div>';
+  document.querySelector('#resultMsg .alert').textContent = message;
 }
 
 document.getElementById('startScanBtn').addEventListener('click', function () {
@@ -114,57 +127,72 @@ document.getElementById('startScanBtn').addEventListener('click', function () {
   html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 240 }, function (decodedText) {
     html5QrCode.stop().finally(function () {
       document.getElementById('startScanBtn').disabled = false;
-      document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Check Card';
+      document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Scan Student QR';
       document.getElementById('scanHint').style.display = 'none';
     });
     fetch(APP_URL + '/api/admin-scan-preview.php?mode=qr&event_id=' + eventId + '&token=' + encodeURIComponent(decodedText))
-      .then(r => r.json()).then(data => showPreview(data, 'qr'));
+      .then(function (r) { if (!r.ok) throw new Error('QR lookup failed.'); return r.json(); })
+      .then(data => showPreview(data, 'qr'))
+      .catch(function () { showRequestError('The student QR could not be checked. Please try again.'); });
   }).catch(function () {
     document.getElementById('startScanBtn').disabled = false;
-    document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Check Card';
+    document.getElementById('startScanBtn').innerHTML = '<i class="bi bi-camera me-1"></i> Scan Student QR';
     document.getElementById('scanHint').style.display = 'none';
     document.getElementById('resultMsg').innerHTML = '<div class="alert alert-danger small">Camera not available. Allow camera permission and try again.</div>';
   });
 });
 
-let searchTimer;
 function doManualSearch() {
-  const q = document.getElementById('searchBox').value;
+  const input = document.getElementById('searchBox');
+  const regNumber = input.value.trim();
   const eventId = document.getElementById('eventSelect').value;
   if (!eventId) { alert('Please select an event first.'); return; }
-  if (q.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
-  fetch(APP_URL + '/api/admin-scan-preview.php?mode=search&event_id=' + eventId + '&q=' + encodeURIComponent(q))
-    .then(r => r.json()).then(function (data) {
-      document.getElementById('searchResults').innerHTML = (data.results || []).map(function (s) {
-        return '<div class="border-bottom py-1 small" style="cursor:pointer;" data-uid="' + s.user_id + '" data-name="' + s.full_name + '" data-reg="' + (s.reg_number || '') + '">' +
-               s.full_name + ' <span class="text-muted">(' + (s.reg_number || '/') + ')</span></div>';
-      }).join('') || '<p class="text-muted small mb-0">No matching students found.</p>';
+  const feedback = document.getElementById('manualFeedback');
+  feedback.style.display = 'none';
+  bootstrap.Modal.getInstance(document.getElementById('profileModal'))?.hide();
+  pendingPreview = null;
+  if (!/^\d{10}$/.test(regNumber)) {
+    feedback.textContent = 'Enter the complete 10-digit registration number.';
+    feedback.style.display = '';
+    return;
+  }
+  fetch(APP_URL + '/api/admin-scan-preview.php?mode=manual&event_id=' + eventId + '&reg_number=' + encodeURIComponent(regNumber))
+    .then(function (r) { if (!r.ok) throw new Error('Search failed.'); return r.json(); })
+    .then(function (data) {
+      if (!data.ok) {
+        feedback.textContent = data.message || 'Student not found.';
+        feedback.style.display = '';
+        return;
+      }
+      showPreview(data, 'manual');
+    })
+    .catch(function () {
+      feedback.textContent = 'Manual search could not be completed. Please try again.';
+      feedback.style.display = '';
     });
 }
 document.getElementById('searchBtn').addEventListener('click', doManualSearch);
-document.getElementById('searchBox').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(doManualSearch, 300); });
-document.getElementById('searchBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') doManualSearch(); });
-
-let foundUserId = null;
-document.getElementById('searchResults').addEventListener('click', function (e) {
-  const row = e.target.closest('[data-uid]');
-  if (!row) return;
-  foundUserId = row.getAttribute('data-uid');
-  document.getElementById('foundText').textContent = 'Found: ' + row.getAttribute('data-name') + ' (Reg: ' + (row.getAttribute('data-reg') || '/') + ')';
-  document.getElementById('foundBar').classList.remove('d-none');
-  document.getElementById('previewPanel').style.display = 'none';
-});
-
-document.getElementById('confirmFoundBtn').addEventListener('click', function () {
-  const eventId = getEventId();
-  if (!eventId || !foundUserId) return;
-  fetch(APP_URL + '/api/admin-scan-preview.php?mode=select&event_id=' + eventId + '&user_id=' + foundUserId)
-    .then(r => r.json()).then(function (data) { document.getElementById('foundBar').classList.add('d-none'); showPreview(data, 'manual'); });
-});
-
-document.getElementById('cancelBtn').addEventListener('click', function () {
+document.getElementById('searchBox').addEventListener('input', function () {
+  this.value = this.value.replace(/\D+/g, '').slice(0, 10);
+  document.getElementById('manualFeedback').style.display = 'none';
+  bootstrap.Modal.getInstance(document.getElementById('profileModal'))?.hide();
   pendingPreview = null;
-  document.getElementById('previewPanel').style.display = 'none';
+});
+document.getElementById('searchBox').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    doManualSearch();
+  }
+});
+
+document.getElementById('eventSelect').addEventListener('change', function () {
+  pendingPreview = null;
+  bootstrap.Modal.getInstance(document.getElementById('profileModal'))?.hide();
+  document.getElementById('manualFeedback').style.display = 'none';
+});
+
+document.getElementById('profileModal').addEventListener('hidden.bs.modal', function () {
+  pendingPreview = null;
 });
 
 document.getElementById('confirmBtn').addEventListener('click', function () {
@@ -177,7 +205,7 @@ document.getElementById('confirmBtn').addEventListener('click', function () {
   }).then(r => r.json()).then(function (data) {
     document.getElementById('resultMsg').innerHTML = '<div class="alert alert-' + (data.ok ? 'success' : 'danger') + ' small">' + data.message + '</div>';
     if (data.ok) {
-      document.getElementById('previewPanel').style.display = 'none';
+      bootstrap.Modal.getInstance(document.getElementById('profileModal'))?.hide();
       pendingPreview = null;
     }
   });

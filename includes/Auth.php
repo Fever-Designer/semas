@@ -5,9 +5,34 @@ final class Auth
 {
     public static function start(): void
     {
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
         if (session_status() === PHP_SESSION_NONE) {
-            session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
+            ini_set('session.use_strict_mode', '1');
+            ini_set('session.use_only_cookies', '1');
+            $secure = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+                || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+            session_set_cookie_params([
+                'httponly' => true,
+                'secure' => $secure,
+                'samesite' => 'Lax',
+                'path' => '/',
+            ]);
             session_start();
+        }
+        if (!empty($_SESSION['user_id'])) {
+            $now = time();
+            $createdAt = (int) ($_SESSION['created_at'] ?? $now);
+            $lastActivity = (int) ($_SESSION['last_activity'] ?? $now);
+            if (($now - $lastActivity) > SESSION_IDLE_TIMEOUT_SECONDS
+                || ($now - $createdAt) > SESSION_ABSOLUTE_TIMEOUT_SECONDS) {
+                $_SESSION = [];
+                session_destroy();
+                return;
+            }
+            $_SESSION['created_at'] = $createdAt;
+            $_SESSION['last_activity'] = $now;
         }
     }
 
@@ -16,6 +41,23 @@ final class Auth
         // Returns ['ok' => bool, 'user' => array|null, 'error' => string|null]
         // Accepts email OR registration number as the first credential.
         $db = Database::connection();
+        $identifierHash = hash('sha256', mb_strtolower(trim($email), 'UTF-8'));
+        $ipAddress = substr((string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 0, 45);
+        $db->exec('DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL 1 DAY');
+        $limit = $db->prepare(
+            'SELECT COUNT(*) FROM login_attempts
+             WHERE identifier_hash = :identifier_hash
+               AND ip_address = :ip_address
+               AND attempted_at >= NOW() - INTERVAL 15 MINUTE'
+        );
+        $limit->execute(['identifier_hash' => $identifierHash, 'ip_address' => $ipAddress]);
+        if ((int) $limit->fetchColumn() >= 5) {
+            return [
+                'ok' => false,
+                'user' => null,
+                'error' => 'Too many failed login attempts. Wait 15 minutes before trying again.',
+            ];
+        }
         $stmt = $db->prepare(
             'SELECT u.*, r.role_name FROM users u
              JOIN roles r ON r.role_id = u.role_id
@@ -25,6 +67,9 @@ final class Auth
         $user = $stmt->fetch();
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
+            $db->prepare(
+                'INSERT INTO login_attempts (identifier_hash, ip_address) VALUES (:identifier_hash, :ip_address)'
+            )->execute(['identifier_hash' => $identifierHash, 'ip_address' => $ipAddress]);
             return ['ok' => false, 'user' => null, 'error' => 'Invalid email or password.'];
         }
         if ($user['status'] === 'Pending') {
@@ -33,6 +78,9 @@ final class Auth
         if ($user['status'] === 'Deactivated') {
             return ['ok' => false, 'user' => null, 'error' => 'Your account has been deactivated. Contact the Principal.'];
         }
+        $db->prepare(
+            'DELETE FROM login_attempts WHERE identifier_hash = :identifier_hash AND ip_address = :ip_address'
+        )->execute(['identifier_hash' => $identifierHash, 'ip_address' => $ipAddress]);
         return ['ok' => true, 'user' => $user, 'error' => null];
     }
 
@@ -45,6 +93,9 @@ final class Auth
         $_SESSION['full_name']            = $user['full_name'];
         $_SESSION['email']                = $user['email'];
         $_SESSION['must_change_password'] = (bool) ($user['must_change_password'] ?? false);
+        $_SESSION['created_at']            = time();
+        $_SESSION['last_activity']         = time();
+        $_SESSION['last_auth_at']          = time();
 
         $db = Database::connection();
         $db->prepare('UPDATE users SET last_login_at = NOW() WHERE user_id = :id')

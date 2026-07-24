@@ -119,9 +119,10 @@ if ($action === 'lookup') {
         "SELECT u.user_id, u.full_name, u.reg_number FROM users u
          JOIN roles r ON r.role_id = u.role_id
          JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
-         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q) LIMIT 10"
+         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q_name OR u.reg_number LIKE :q_reg) LIMIT 10"
     );
-    $partial->execute(['mid' => $schedule['module_id'], 'q' => "%$regNum%"]);
+    $like = "%$regNum%";
+    $partial->execute(['mid' => $schedule['module_id'], 'q_name' => $like, 'q_reg' => $like]);
     $results = $partial->fetchAll();
 
     if (count($results) === 0) {
@@ -243,9 +244,10 @@ if ($action === 'search') {
         "SELECT u.user_id, u.full_name, u.reg_number FROM users u
          JOIN roles r ON r.role_id = u.role_id
          JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
-         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q) LIMIT 10"
+         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q_name OR u.reg_number LIKE :q_reg) LIMIT 10"
     );
-    $stmt->execute(['mid' => $schedule['module_id'], 'q' => "%$q%"]);
+    $like = "%$q%";
+    $stmt->execute(['mid' => $schedule['module_id'], 'q_name' => $like, 'q_reg' => $like]);
     echo json_encode(['ok' => true, 'results' => $stmt->fetchAll()]);
     exit;
 }

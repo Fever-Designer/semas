@@ -7,7 +7,6 @@ if (Auth::check()) {
 }
 
 $errors = [];
-const OTP_LOGIN_ENABLED = false; // flip to true to require OTP on every login
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['step']) && $_POST['step'] === 'password') {
     csrf_verify();
@@ -17,11 +16,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['step']) && $_POST['st
 
     if (!$result['ok']) {
         $errors[] = $result['error'];
-    } elseif (OTP_LOGIN_ENABLED) {
+    } elseif (LOGIN_OTP_ENABLED) {
         $code = Otp::generate((int) $result['user']['user_id'], 'login', 'email');
-        Mailer::sendOtp($result['user'], $code, 'login verification');
-        $_SESSION['pending_login_uid'] = (int) $result['user']['user_id'];
-        redirect('/auth/login-otp.php');
+        if (Mailer::sendOtp($result['user'], $code, 'login verification')) {
+            $_SESSION['pending_login_uid'] = (int) $result['user']['user_id'];
+            redirect('/auth/login-otp.php');
+        }
+        $errors[] = 'The login verification email could not be sent. Please try again shortly.';
     } else {
         Auth::login($result['user']);
         redirect('/dashboard.php');

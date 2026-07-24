@@ -127,17 +127,28 @@ SQL
     {
         $db = Database::connection();
         $rows = $db->prepare(
-            'SELECT * FROM email_queue WHERE status = :status AND attempts < :max_att ORDER BY id ASC LIMIT :row_limit'
+            "SELECT * FROM email_queue
+             WHERE status IN ('pending', 'failed') AND attempts < :max_att
+             ORDER BY id ASC LIMIT :row_limit"
         );
-        $rows->bindValue('status', 'pending', PDO::PARAM_STR);
         $rows->bindValue('max_att', 5, PDO::PARAM_INT);
         $rows->bindValue('row_limit', $limit, PDO::PARAM_INT);
         $rows->execute();
 
         foreach ($rows->fetchAll() as $row) {
-            $db->prepare(
-                'UPDATE email_queue SET status = :status, attempts = attempts + 1 WHERE id = :id AND status = :pending'
-            )->execute(['status' => 'processing', 'id' => $row['id'], 'pending' => 'pending']);
+            $claim = $db->prepare(
+                'UPDATE email_queue
+                 SET status = :processing, attempts = attempts + 1
+                 WHERE id = :id AND status = :expected'
+            );
+            $claim->execute([
+                'processing' => 'processing',
+                'id' => $row['id'],
+                'expected' => $row['status'],
+            ]);
+            if ($claim->rowCount() !== 1) {
+                continue;
+            }
 
             $vars = (array) json_decode((string) $row['vars_json'], true);
             $userId = $row['user_id'] !== null ? (int) $row['user_id'] : null;

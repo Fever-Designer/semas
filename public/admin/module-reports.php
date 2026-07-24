@@ -287,6 +287,7 @@ if ($modules) {
          LEFT JOIN departments d ON d.department_id = m.department_id
          JOIN class_sessions cs ON cs.module_id = m.module_id
              AND cs.status = 'Closed'
+             AND cs.start_time >= me.registered_at
              AND cs.session_date BETWEEN " . $db->quote($dateFromSql) . " AND " . $db->quote($dateToSql) . "
              AND (m.cat_date IS NULL OR cs.session_date <> m.cat_date)
              AND (m.exam_date IS NULL OR cs.session_date <> m.exam_date)

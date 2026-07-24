@@ -576,7 +576,7 @@ $isScanable = $demoPhase !== null && !$phaseCompleted && $module['status'] === '
 <?php endif; // sessions ?>
 <?php endif; // allModules ?>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/html5-qrcode/html5-qrcode.min.js"></script>
 <script>
 const CSRF = '<?= csrf_token() ?>';
 let html5QrCode = null;

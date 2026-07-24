@@ -48,9 +48,15 @@ define('DB_CHARSET', 'utf8mb4');
 // App
 // ---------------------------------------------------------------------
 define('APP_NAME', 'SEMAS');
-define('APP_URL', env('APP_URL', 'http://localhost/semas/public'));
+define('APP_URL', env('APP_URL', 'https://localhost/semas/public'));
 define('APP_ENV', env('APP_ENV', 'local'));               // local | production
 define('APP_KEY', env('APP_KEY', ''));                     // 32+ random bytes, used for HMAC fallback
+define(
+    'LOGIN_OTP_ENABLED',
+    filter_var(env('LOGIN_OTP_ENABLED', APP_ENV === 'production' ? 'true' : 'false'), FILTER_VALIDATE_BOOLEAN)
+);
+define('SESSION_IDLE_TIMEOUT_SECONDS', (int) env('SESSION_IDLE_TIMEOUT_SECONDS', 1800));
+define('SESSION_ABSOLUTE_TIMEOUT_SECONDS', (int) env('SESSION_ABSOLUTE_TIMEOUT_SECONDS', 43200));
 
 // ---------------------------------------------------------------------
 // Mail (PHPMailer) / pick ONE provider profile in .env: gmail | outlook | university
@@ -97,3 +103,15 @@ define('DEFAULT_CAMPUS_RADIUS_M', 300);
 error_reporting(APP_ENV === 'local' ? E_ALL : 0);
 ini_set('display_errors', APP_ENV === 'local' ? '1' : '0');
 date_default_timezone_set('Africa/Kigali');
+
+if (APP_ENV === 'production') {
+    if (strlen(APP_KEY) < 32) {
+        throw new RuntimeException('Production requires an APP_KEY of at least 32 characters.');
+    }
+    if (!str_starts_with(strtolower(APP_URL), 'https://')) {
+        throw new RuntimeException('Production requires an HTTPS APP_URL.');
+    }
+    if (!LOGIN_OTP_ENABLED) {
+        throw new RuntimeException('Production requires LOGIN_OTP_ENABLED=true.');
+    }
+}

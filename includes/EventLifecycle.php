@@ -10,8 +10,14 @@ final class EventLifecycle
         // left on the legacy waiting list.
         $db->exec("UPDATE event_registrations SET status = 'Registered' WHERE status = 'Waitlisted'");
 
-        // Event dates are informational. A Dean explicitly starts and
-        // completes an event, so an Ongoing event remains live regardless of
-        // its scheduled date and time.
+        // Keep the Dean-controlled start action, but do not leave expired
+        // events permanently available for attendance. The extra 30 minutes
+        // matches the staff-confirmation grace window.
+        $db->exec(
+            "UPDATE events
+             SET status = 'Completed'
+             WHERE status IN ('Scheduled', 'Ongoing')
+               AND TIMESTAMP(event_date, end_time) + INTERVAL 30 MINUTE < NOW()"
+        );
     }
 }

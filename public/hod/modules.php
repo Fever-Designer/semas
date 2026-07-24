@@ -246,6 +246,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect('/hod/modules.php');
             }
             try {
+                if ($disciplinaryOverride) {
+                    Module::resetDisciplinaryEnrollmentCycle($db, $modId, (int) $stu['user_id']);
+                }
                 $db->prepare('INSERT INTO module_enrollments (module_id, user_id) VALUES (:m,:u)')->execute(['m' => $modId, 'u' => $stu['user_id']]);
                 $reason = $exceptionType ? " ({$exceptionType})" : '';
                 $auditAction = $disciplinaryOverride

@@ -16,8 +16,11 @@ $offset = ($page - 1) * $perPage;
 $where = [];
 $params = [];
 if ($search !== '') {
-    $where[] = '(u.full_name LIKE :q OR al.details LIKE :q OR al.entity_type LIKE :q)';
-    $params['q'] = "%$search%";
+    $where[] = '(u.full_name LIKE :q_name OR al.details LIKE :q_details OR al.entity_type LIKE :q_entity)';
+    $like = "%$search%";
+    $params['q_name'] = $like;
+    $params['q_details'] = $like;
+    $params['q_entity'] = $like;
 }
 if ($actionFilter !== '') {
     $where[] = 'al.action = :action';

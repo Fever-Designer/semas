@@ -75,10 +75,11 @@ if ($mode === 'search') {
         "SELECT u.user_id, u.full_name, u.reg_number FROM users u
          JOIN roles r ON r.role_id = u.role_id
          JOIN module_enrollments me ON me.user_id = u.user_id AND me.module_id = :mid
-         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q OR u.reg_number LIKE :q)
+         WHERE r.role_name = 'Student' AND (u.full_name LIKE :q_name OR u.reg_number LIKE :q_reg)
          LIMIT 10"
     );
-    $stmt->execute(['mid' => $session['module_id'], 'q' => "%$q%"]);
+    $like = "%$q%";
+    $stmt->execute(['mid' => $session['module_id'], 'q_name' => $like, 'q_reg' => $like]);
     echo json_encode(['ok' => true, 'results' => $stmt->fetchAll()]);
     exit;
 }

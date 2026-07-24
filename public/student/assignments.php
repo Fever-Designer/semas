@@ -211,11 +211,11 @@ require __DIR__ . '/../partials/layout_top.php';
 
     <!-- 3. Attachment download -->
     <?php if ($a['attachment_path']): ?>
-      <p class="small mb-2"><a href="<?= APP_URL . '/' . e($a['attachment_path']) ?>" target="_blank"><i class="bi bi-paperclip me-1"></i>Lecturer's attachment</a></p>
+      <p class="small mb-2"><a href="<?= APP_URL ?>/student/assignment-download.php?assignment_id=<?= (int) $a['assignment_id'] ?>&amp;type=attachment"><i class="bi bi-paperclip me-1"></i>Lecturer's attachment</a></p>
     <?php endif; ?>
 
     <?php if ($a['my_file']): ?>
-      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['my_submitted_at'] ?? '')))) ?> / <a href="<?= APP_URL . '/' . e($a['my_file']) ?>" target="_blank">View your file</a></p>
+      <p class="small text-success mb-2"><i class="bi bi-check-circle-fill"></i> Submitted <?= e((string) date('d M Y, h:i A', strtotime((string) ($a['my_submitted_at'] ?? '')))) ?> / <a href="<?= APP_URL ?>/student/assignment-download.php?assignment_id=<?= (int) $a['assignment_id'] ?>&amp;type=submission">Download your file</a></p>
     <?php endif; ?>
 
     <!-- 5. Submit button -->

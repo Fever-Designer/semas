@@ -249,7 +249,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ---------------------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------------------
-INSERT INTO roles (role_name) VALUES ('Administrator'), ('Dean'), ('HOD'), ('Student');
+INSERT INTO roles (role_name) VALUES ('Principal'), ('Dean'), ('HOD'), ('Student');
 
 INSERT INTO faculties (faculty_name, faculty_code) VALUES
     ('School of Computing and Information Technology', 'SCIT'),

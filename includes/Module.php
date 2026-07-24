@@ -110,6 +110,25 @@ final class Module
         }
     }
 
+    /**
+     * Prepare a student for an authorised HOD re-enrollment. Attendance logs
+     * remain available for audit, while the new enrollment timestamp becomes
+     * the start of a fresh attendance cycle.
+     */
+    public static function resetDisciplinaryEnrollmentCycle(PDO $db, int $moduleId, int $userId): void
+    {
+        self::ensureDisciplinaryBlocksTable($db);
+        $db->prepare(
+            'DELETE FROM module_disciplinary_blocks WHERE module_id = :mid AND user_id = :uid'
+        )->execute(['mid' => $moduleId, 'uid' => $userId]);
+        $db->prepare(
+            'DELETE FROM attendance_warning_deliveries WHERE module_id = :mid AND user_id = :uid'
+        )->execute(['mid' => $moduleId, 'uid' => $userId]);
+        $db->prepare(
+            'DELETE FROM cat_exam_eligibility WHERE module_id = :mid AND user_id = :uid'
+        )->execute(['mid' => $moduleId, 'uid' => $userId]);
+    }
+
     private static function ensureDisciplinaryBlocksTable(PDO $db): void
     {
         $db->exec(

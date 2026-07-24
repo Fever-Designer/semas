@@ -156,6 +156,7 @@ if ($status === 'Absent' && $student) {
                     'announcement' => [
                         'title'    => 'Attendance Warning / ' . $module['module_title'],
                         'category' => 'Academic',
+                        'priority' => 'High',
                         'message'  => 'You have missed ' . $absences . ' sessions of "' . $module['module_title'] . '". You may be marked ineligible for the CAT/Exam. Please contact your Head of Department immediately.',
                     ],
                 ], (int) $studentUserId);

@@ -1,6 +1,14 @@
 Options -Indexes
 RewriteEngine On
 
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+</IfModule>
+
 # Redirect /page.php → /page (GET only — redirecting POST/AJAX requests would
 # turn them into GETs and silently drop the request body).
 # THE_REQUEST is the original HTTP request line — never changes on internal rewrites,

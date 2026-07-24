@@ -264,7 +264,7 @@ if ($module) {
     }
 
     $stuStmt = $db->prepare(
-        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number
+        "SELECT u.user_id, u.full_name, u.reg_number, u.phone_number, e.registered_at
          FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
          WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
     );
@@ -350,7 +350,7 @@ if ($viewMode === 'overall') {
         ];
 
         $sessStmt2 = $db->prepare(
-            "SELECT session_id, session_date, window_name FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
+            "SELECT session_id, session_date, start_time, window_name FROM class_sessions WHERE module_id = :mid ORDER BY session_date ASC"
         );
         $sessStmt2->execute(['mid' => $amId]);
         $amSessions = array_values(array_filter($sessStmt2->fetchAll(), function ($s) use ($excludeDates, $today, $am, $analyticsFrom, $analyticsTo) {
@@ -367,7 +367,7 @@ if ($viewMode === 'overall') {
         }));
 
         $stuStmt2 = $db->prepare(
-            "SELECT u.user_id, u.full_name, u.reg_number
+            "SELECT u.user_id, u.full_name, u.reg_number, e.registered_at
              FROM users u JOIN module_enrollments e ON e.user_id = u.user_id
              WHERE e.module_id = :mid AND u.status = 'Active' ORDER BY u.full_name"
         );
@@ -400,6 +400,7 @@ if ($viewMode === 'overall') {
             $uid = (int) $stu['user_id'];
             $p = 0; $l = 0; $a = 0;
             foreach ($amSessions as $s) {
+                if ($s['start_time'] < $stu['registered_at']) continue;
                 $isAffectedHoliday = ($am['session_type'] ?? '') !== 'Weekend' && isset($allHolidays[$s['session_date']]);
                 if ($isAffectedHoliday || $s['session_date'] > $today) continue;
                 $fs = att_status($amMap[(int) $s['session_id']][$uid] ?? null, $s['session_date'], $today);
@@ -789,6 +790,7 @@ require __DIR__ . '/../partials/layout_top.php';
           $uid  = (int) $stu['user_id'];
           $pCnt = 0; $lCnt = 0; $aCnt = 0;
           foreach ($sessions as $s) {
+              if ($s['start_time'] < $stu['registered_at']) continue;
               if (isset($holidayMap[$s['session_date']]) || $s['session_date'] > $today) continue;
               $fs = att_status($attMap[(int)$s['session_id']][$uid] ?? null, $s['session_date'], $today);
               if ($fs === 'P') $pCnt++;
@@ -810,8 +812,9 @@ require __DIR__ . '/../partials/layout_top.php';
           <?php foreach ($sessions as $s):
             $sid   = (int) $s['session_id'];
             $isHol = isset($holidayMap[$s['session_date']]);
+            $beforeEnrollment = $s['start_time'] < $stu['registered_at'];
             $entry = $attMap[$sid][$uid] ?? null;
-            $fs    = att_status($entry, $s['session_date'], $today);
+            $fs    = $beforeEnrollment ? '' : att_status($entry, $s['session_date'], $today);
           ?>
           <?php if ($isHol): ?>
             <td class="text-center fw-bold" style="background:#fff3cd;color:#856404;">H</td>

@@ -1,6 +1,6 @@
 # SEMAS Technical Documentation
 
-> Reverse-engineered from the PHP, SQL, JavaScript, templates, configuration, and dependency manifests in this repository. This document describes the implementation, not the aspirational statements in `README.md`. The database model described here is the cumulative result of `database/schema.sql` followed by migrations 002 through 023.
+> Reverse-engineered from the PHP, SQL, JavaScript, templates, configuration, and dependency manifests in this repository. The database model is the cumulative result of `database/schema.sql` followed by migrations 002 through 031.
 
 ## 1. Project overview
 
@@ -830,15 +830,15 @@ Every file under `includes/` is summarized in the Backend services table. `boots
 
 ## 23. Missing, incomplete, unused, and technical debt
 
-- No current consolidated install schema; base schema omits migrations.
-- No migration runner/version table/rollback strategy.
-- No automated test suite, fixtures, static analysis, CI, or code coverage configuration.
+- The base schema still requires numbered migrations; `scripts/migrate.php` now applies and records them.
+- There is no rollback strategy or transactional cross-migration recovery.
+- `scripts/system-check.php` provides syntax, schema, asset, duplicate-attendance, stale-event, and SQL-pattern checks; there is still no unit/browser test suite or code coverage configuration.
 - Event approval workflow is not implemented.
 - Future announcement scheduling is not implemented.
 - No AI integration; retired AI table is dropped.
 - Poll and lost-and-found features are explicitly retired/dropped.
 - Student self-registration implementation is unreachable.
-- `lecturer/class-attendance.php` contains a full legacy page after an unconditional redirect.
+- `lecturer/class-attendance.php` is an authenticated compatibility redirect to the live attendance screen.
 - `api/class-checkin.php` represents an older class-check-in route and is secondary to the current live phase engine.
 - Composer QR dependency and custom `SimpleQr` overlap.
 - `modules.room` and `modules.room_id` duplicate room identity for backward compatibility.
@@ -852,18 +852,15 @@ Every file under `includes/` is summarized in the Backend services table. `boots
 
 ### High priority
 
-1. **Fresh-install role mismatch:** base schema seeds `Administrator`, while all current administrative code checks `Principal`. No visible migration renames/inserts Principal. A deployment built strictly from repository SQL may have no usable Principal role.
-2. **Fresh schema is incomplete:** installing only `schema.sql` causes missing columns/tables throughout the application. The README/manual migration approach is error-prone.
-3. **Suggestion schema drift/runtime DDL:** `Suggestion` queries `resolved_at` and `resolved_by`, but no SQL migration adds them. `admin/suggestions.php` tries to repair the schema with two swallowed `ALTER TABLE` statements at request time, without a foreign key. This requires application DDL permission and can fail silently, after which list queries fail.
-4. **Legacy code remains executable if redirect behavior changes:** the unreachable lecturer attendance implementation is over 1,000 lines and can diverge from the live engine.
-5. **Web-root file uploads:** direct paths can bypass record-level authorization and can create content-sniffing/execution risk under unsafe Apache configuration.
+1. **Fresh installs require migrations:** run `scripts/migrate.php` after the base schema; the runner records applied files in `schema_migrations`.
+2. **Profile/branding images remain web-served:** executable upload types are denied. Assignment files are denied direct access and use authorized download controllers.
 
 ### Medium priority
 
 6. **Authorization policy duplication:** scope predicates are embedded in pages, raising horizontal-access regression risk.
 7. **Database migrations are not uniformly idempotent:** reruns can fail on unguarded ALTERs; failed partial application has no transaction/version record.
 8. **N+1 and repeated aggregates:** dashboard, audience delivery, attendance analytics, and email loops execute many per-user/per-module queries.
-9. **Email queue duplicate-send race:** workers first select the same pending rows, then conditionally update each row to processing, but do not check whether that claim update affected a row. A worker that loses the claim still sends it.
+9. **Email worker supervision:** row claims are checked and failed messages retry up to five attempts, but production still needs a supervised worker.
 10. **Client-provided GPS/device trust:** both are spoofable and should not be described operationally as proof.
 11. **Static role matrix can become false documentation:** it is manually maintained separately from guards.
 
@@ -871,7 +868,7 @@ Every file under `includes/` is summarized in the Backend services table. `boots
 
 - Long-running mass email operations may exceed worker/runtime/provider limits.
 - CSV import and large report pages can consume substantial memory.
-- CDN failure disables styling, charts, icons, or scanners.
+- Frontend and QR-scanner libraries are vendored locally; optional remote avatar fallbacks may still be unavailable offline.
 - Event status is partly manual; stale Scheduled/Ongoing states can affect UI.
 - Many JSON APIs use application errors without consistent 4xx status codes.
 - Error display in local mode may reveal SQL/path details.

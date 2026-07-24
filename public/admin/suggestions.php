@@ -11,10 +11,6 @@ $viewerRole = Auth::role();
 $isPrincipal = $viewerRole === 'Principal';
 $canReply = in_array($viewerRole, ['Principal', 'Dean', 'HOD', 'Registrar', 'Coordinator'], true);
 
-// One-time migration: add resolved_by / resolved_at columns if missing
-try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_by INT NULL'); } catch (PDOException $e) {}
-try { $db->exec('ALTER TABLE suggestions ADD COLUMN resolved_at DATETIME NULL'); } catch (PDOException $e) {}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     if (($_POST['action'] ?? '') === 'submit') {
